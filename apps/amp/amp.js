@@ -1,6 +1,6 @@
 // Neon Orbit Amp: the player app of Neon OS
 import { icon } from "../../style-kit/icons.js";
-import { esc, clamp, toast, dialog, openMenu, closePop, Slider } from "../../style-kit/ui.js";
+import { esc, clamp, toast, dialog, choose, openMenu, closePop, Slider } from "../../style-kit/ui.js";
 import { Eng } from "../../core/engine.js";
 import { analyseSamples, decodeToMono } from "../../core/analysis.js";
 import { readTags, titleFromName, shrinkCover } from "../../core/tags.js";
@@ -159,6 +159,7 @@ $("plAdd").addEventListener("click", e => openMenu(e.currentTarget, [
   { text: "Add selected library songs", disabled: !mlSel.size, run: () => enqueue([...mlSel]) },
   { text: "Add everything in this library view", run: () => enqueue(mlVisible()) },
   { text: "Add files from your computer", disabled: !store.canWrite, key: "L", run: () => $("fileIn").click() },
+  { text: "Add a folder (searches inside)", disabled: !store.canWrite, run: () => $("folderIn").click() },
 ]));
 $("plRem").addEventListener("click", e => openMenu(e.currentTarget, [
   { text: "Remove selected", disabled: !plSel.size, key: "Del", run: () => removePlIdx([...plSel]) },
@@ -225,6 +226,7 @@ function renderTree() {
   $("treePls").innerHTML = playlistsSorted().map(p => `<button class="tree-item" data-pl="${esc(p.id)}" aria-current="${mlView.type === "pl" && mlView.id === p.id}">${icon("playlist")}<span class="name">${esc(p.name)}</span><span class="n">${p.tracks.filter(id => byId(id)).length}</span></button>`).join("");
   $("treeNew").hidden = !store.canWrite;
   $("mlAdd").hidden = !store.canWrite;
+  $("mlAddFolder").hidden = !store.canWrite;
 }
 $("treePls").addEventListener("click", e => { const b = e.target.closest("[data-pl]"); if (b) setMlView({ type: "pl", id: b.dataset.pl }); });
 $("treePls").addEventListener("dblclick", e => { const b = e.target.closest("[data-pl]"); if (!b) return; const p = plById(b.dataset.pl); if (p) { Eng.ensure(); setPl(p.tracks.filter(id => byId(id))); playIndex(S.shuffle ? Math.floor(Math.random() * pl.length) : 0); } });
@@ -247,7 +249,7 @@ function renderMl() {
   if (!ids.length) {
     $("mlRows").innerHTML = mlSearch.trim() ? `<div class="ml-empty"><b>No songs match “${esc(mlSearch.trim())}”.</b>Try a title, artist or album.</div>`
       : p ? `<div class="ml-empty"><b>This playlist is empty.</b>Select songs in All songs, then use Send to.</div>`
-      : `<div class="ml-empty"><b>No songs yet.</b>Use Add files, or drag songs onto the window.</div>`;
+      : `<div class="ml-empty"><b>No songs yet.</b>Use Add files or Add folder, or drop songs or whole folders onto the window.</div>`;
   } else {
     $("mlRows").innerHTML = ids.map(id => {
       const t = byId(id);
@@ -340,6 +342,7 @@ document.querySelectorAll(".thead [data-sort]").forEach(b => b.addEventListener(
 }));
 $("mlSearch").addEventListener("input", e => { mlSearch = e.target.value; renderMl(); });
 $("mlAdd").addEventListener("click", () => $("fileIn").click());
+$("mlAddFolder").addEventListener("click", () => $("folderIn").click());
 $("treeNew").addEventListener("click", () => { $("newPlForm").hidden = false; $("newPlName").value = ""; $("newPlName").focus(); });
 $("newPlName").addEventListener("keydown", e => { if (e.key === "Escape") $("newPlForm").hidden = true; });
 $("newPlForm").addEventListener("submit", async e => {
@@ -630,59 +633,113 @@ if ("mediaSession" in navigator) {
 }
 
 // ---------- adding songs ----------
-const addQ = []; let adding = false, addDone = 0;
+// Files, or whole folders: a dropped or picked folder is searched all the way down for music files.
+// Duplicates are caught before they're processed; the first one in a batch asks what to do with the rest.
+const addQ = []; let adding = false;
 const AUDIO_EXT = /\.(mp3|flac|wav|ogg|oga|m4a|aac|opus|webm)$/i;
+const isAudio = f => (f.type || "").startsWith("audio/") || AUDIO_EXT.test(f.name);
 const mimeFor = f => f.type && f.type.startsWith("audio/") ? f.type : ({ mp3: "audio/mpeg", flac: "audio/flac", wav: "audio/wav", ogg: "audio/ogg", oga: "audio/ogg", m4a: "audio/mp4", aac: "audio/aac", opus: "audio/ogg", webm: "audio/webm" }[(f.name.split(".").pop() || "").toLowerCase()] || "audio/mpeg");
-function enqueueFiles(files) {
-  const list = [...files].filter(f => (f.type || "").startsWith("audio/") || AUDIO_EXT.test(f.name));
-  if (!list.length) { toast("Those files aren't audio. Try MP3, FLAC, WAV, OGG or M4A.", true); return; }
+const norm = s => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
+// same song: same file size and title, or same title and artist
+const findDup = (size, title, artist) => store.tracks.find(t => (t.size === size && norm(t.title) === norm(title)) || (artist && norm(t.artist) === norm(artist) && norm(t.title) === norm(title)));
+let batch = null; // { total, done, added, replaced, skipped, failed, dupMode }
+function enqueueFiles(files, from = "files") {
+  const list = [...files].filter(isAudio);
+  if (!list.length) { toast(from === "folder" ? "No music files found in that folder." : "Those files aren't audio. Try MP3, FLAC, WAV, OGG or M4A.", true); return; }
   if (!store.canWrite) { toast("This library can't save songs here.", true); return; }
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); // ask the browser not to clear the library
+  if (!batch) batch = { total: 0, done: 0, added: 0, replaced: 0, skipped: 0, failed: 0, dupMode: null, newIds: [] };
+  batch.total += list.length;
   addQ.push(...list); processAdds();
 }
 $("fileIn").addEventListener("change", e => { enqueueFiles(e.target.files); e.target.value = ""; });
+$("folderIn").addEventListener("change", e => { enqueueFiles(e.target.files, "folder"); e.target.value = ""; });
+async function askDup(title) {
+  const v = await choose({ title: "Already in your library", text: `${title} is already in your library. What should happen to this and any other duplicates in this batch?`,
+    options: [{ label: "Skip duplicates", value: "skip" }, { label: "Replace with new", value: "replace" }, { label: "Keep both", value: "both" }] });
+  return v || "skip";
+}
 async function processAdds() {
   if (adding) return;
-  adding = true; addDone = 0;
-  const newIds = [];
+  adding = true;
   while (addQ.length) {
-    const f = addQ.shift();
-    const w = () => addQ.length ? ` (${addQ.length} waiting)` : "";
+    const f = addQ.shift(), B = batch;
+    const n = () => `${Math.min(B.done + 1, B.total)} of ${B.total}`;
     let title = titleFromName(f.name);
     try {
-      setStatus(`Reading ${title}${w()}`, 0.02);
+      setStatus(`Song ${n()} · Reading ${title}`, B.done / B.total);
       const buf = await f.arrayBuffer();
       const tags = readTags(buf); title = tags.title || title;
-      if (library().find(t => !t.builtin && t.size === f.size && t.title === title)) { toast(`${title} is already in your library`); continue; }
-      setStatus(`Decoding ${title}${w()}`, 0.05);
+      const dup = findDup(f.size, title, tags.artist);
+      if (dup) {
+        if (!B.dupMode) B.dupMode = await askDup(title);
+        if (B.dupMode === "skip") { B.skipped++; B.done++; continue; }
+      }
+      const step = (label, v) => setStatus(`Song ${n()} · ${label} ${title}`, (B.done + v) / B.total);
+      step("Decoding", 0.05);
       let dec; try { dec = await decodeToMono(buf); } catch (e) { throw new Error("decode"); }
-      const analysis = await analyseSamples(dec.y, dec.sr, v => setStatus(`Finding the beat in ${title}${w()}`, 0.1 + v * 0.6));
+      const analysis = await analyseSamples(dec.y, dec.sr, v => step("Finding the beat in", 0.1 + v * 0.6));
       const cover = tags.cover ? await shrinkCover(tags.cover.blob) : null;
       const meta = { title, artist: tags.artist || "", album: tags.album || "", duration: Math.round(dec.duration), bpm: analysis.bpm, size: f.size };
-      setStatus(`Saving ${title}${w()}`, 0.72);
-      const t = await store.addTrack({ buf, mime: mimeFor(f), meta, analysis, cover, onProgress: v => setStatus(`Saving ${title}${w()}`, 0.72 + 0.28 * v) });
-      anCache.set(t.id, analysis); byteCache.set(t.id, buf);
-      newIds.push(t.id); addDone++;
-      renderTree(); renderMl();
+      step("Saving", 0.75);
+      const t = await store.addTrack({ buf, mime: mimeFor(f), meta, analysis, cover, onProgress: v => step("Saving", 0.75 + 0.25 * v) });
+      anCache.set(t.id, analysis);
+      if (dup && B.dupMode === "replace") { // the new copy takes the old one's place in every playlist
+        for (const p of store.playlists.filter(p => p.tracks.includes(dup.id))) await store.updatePlaylist(p.id, { tracks: p.tracks.map(id => id === dup.id ? t.id : id) });
+        pl = pl.map(id => id === dup.id ? t.id : id);
+        if (loadedId === dup.id) loadedId = t.id;
+        await store.deleteTrack(dup); B.replaced++;
+      } else { B.added++; B.newIds.push(t.id); }
+      B.done++;
+      renderTree(); renderMl(); renderPl();
     } catch (e) {
+      B.failed++; B.done++;
       const code = e && e.code;
-      toast(e && e.message === "decode" ? `${title} couldn't be read as audio. Try an MP3, WAV or FLAC.`
-        : e && e.message === "too_short" ? `${title} is too short to find a beat.`
-        : code === "quota_or_state" || code === "quota_exceeded" || (e && e.name === "QuotaExceededError") ? "Your library's storage is full. Delete songs you no longer need, then try again."
-        : code === "too_large" ? `${title} is too large to save. Try an MP3 version.`
-        : code === "rate_limited" ? "Too many uploads at once. Wait a moment and add the rest again."
-        : `Couldn't add ${title}. Try again.`, true);
+      if (code === "quota_or_state" || code === "quota_exceeded" || (e && e.name === "QuotaExceededError")) { toast("Your library's storage is full. Delete songs you no longer need, then try again.", true); addQ.length = 0; }
+      else if (B.total < 6) toast(e && e.message === "decode" ? `${title} couldn't be read as audio. Try an MP3, WAV or FLAC.` : e && e.message === "too_short" ? `${title} is too short to find a beat.` : `Couldn't add ${title}. Try again.`, true);
     }
   }
   adding = false;
-  if (newIds.length) { notifyLibraryChange("add"); enqueue(newIds); toast(addDone === 1 ? "Added 1 song to the library and playlist" : `Added ${addDone} songs to the library and playlist`); }
+  const B = batch; batch = null;
+  if (B) {
+    if (B.added || B.replaced) notifyLibraryChange("add");
+    if (B.newIds.length) enqueue(B.newIds);
+    const parts = [B.added && `added ${B.added}`, B.replaced && `replaced ${B.replaced}`, B.skipped && `skipped ${B.skipped} duplicate${B.skipped === 1 ? "" : "s"}`, B.failed && `${B.failed} couldn't be read`].filter(Boolean);
+    if (parts.length) toast(parts.join(", ").replace(/^./, c => c.toUpperCase()) + ".", !B.added && !B.replaced && B.failed > 0);
+  }
   renderMl();
+}
+// a dropped folder is walked all the way down; only music files are kept
+async function filesFromEntries(entries) {
+  const out = [];
+  const walk = async entry => {
+    if (entry.isFile) { if (AUDIO_EXT.test(entry.name)) { try { out.push(await new Promise((res, rej) => entry.file(res, rej))); } catch (e) {} } return; }
+    if (!entry.isDirectory) return;
+    const reader = entry.createReader();
+    for (;;) {
+      const chunk = await new Promise(res => reader.readEntries(res, () => res([])));
+      if (!chunk.length) break;
+      for (const c of chunk) await walk(c);
+      setStatus(`Searching folders… ${out.length} music file${out.length === 1 ? "" : "s"} found`, null);
+    }
+  };
+  for (const e of entries) await walk(e);
+  return out;
 }
 let dragDepth = 0;
 const hasFiles = e => e.dataTransfer && [...(e.dataTransfer.types || [])].includes("Files");
 addEventListener("dragenter", e => { if (!hasFiles(e) || !store.canWrite) return; e.preventDefault(); dragDepth++; $("drop").hidden = false; });
 addEventListener("dragover", e => { if (hasFiles(e) && store.canWrite) e.preventDefault(); });
 addEventListener("dragleave", e => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; $("drop").hidden = true; } });
-addEventListener("drop", e => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; $("drop").hidden = true; if (store.canWrite) enqueueFiles(e.dataTransfer.files); });
+addEventListener("drop", async e => {
+  if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; $("drop").hidden = true;
+  if (!store.canWrite) return;
+  // entries must be read straight away, before anything waits
+  const entries = [...(e.dataTransfer.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  const files = [...e.dataTransfer.files];
+  if (entries.some(en => en.isDirectory)) enqueueFiles(await filesFromEntries(entries), "folder");
+  else enqueueFiles(files);
+});
 
 // requests from Neon OS: the tray's music volume, and songs to play (from Files)
 let pendingPlay = null;

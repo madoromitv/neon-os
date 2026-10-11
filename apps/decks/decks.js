@@ -6,7 +6,7 @@ import "../../core/os-link.js";
 import { applyTheme, onTheme } from "../../core/theme.js";
 import { openDb, all, onLibraryChange } from "../../core/backup.js";
 import { icon } from "../../style-kit/icons.js";
-import { Slider, toast, esc } from "../../style-kit/ui.js";
+import { Slider, toast, esc, dialog } from "../../style-kit/ui.js";
 applyTheme(); onTheme(applyTheme);
 
 const $ = id => document.getElementById(id);
@@ -229,6 +229,12 @@ function frame() {
   if (rec) $("recTime").textContent = fmt((performance.now() - recStart) / 1000);
   requestAnimationFrame(frame);
 }
+$("reset").addEventListener("click", async () => {
+  const ok = await dialog({ title: "Reset Decks", text: rec ? "Stop the recording (it will be saved), empty both decks and put the mixer back to flat?" : "Stop and empty both decks, and put the EQ, faders, crossfader and pitch back to the start?", confirm: "Reset", danger: true });
+  if (!ok) return;
+  if (rec) { rec.addEventListener("stop", () => setTimeout(() => location.reload(), 300)); rec.stop(); }
+  else location.reload();
+});
 buildDeck("A"); buildDeck("B");
 loadLibrary(); requestAnimationFrame(frame);
 addEventListener("resize", () => { for (const k of ["A", "B"]) if (D[k].buf) drawWave(D[k]); });

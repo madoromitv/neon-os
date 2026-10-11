@@ -108,3 +108,21 @@ export function Slider(el, { min = 0, max = 1, step = 0.01, value = 0, orient = 
   render();
   return api;
 }
+
+// A dialog with several choices. options: [{ label, value, danger }]. Resolves to the chosen value, or null if dismissed.
+export function choose({ title, text, options }) {
+  return new Promise(resolve => {
+    const scrim = document.createElement("div"); scrim.className = "scrim";
+    scrim.innerHTML = `<div class="win dialog lit" role="dialog" aria-modal="true" aria-labelledby="chT">
+      <div class="titlebar"><span class="ttl" id="chT">${esc(title)}</span></div>
+      <div class="wbody">${text ? `<p>${esc(text)}</p>` : ""}
+      <div class="acts">${options.map((o, i) => `<button type="button" class="btn" data-i="${i}"${o.danger ? ' style="color:var(--danger)"' : ""}>${esc(o.label)}</button>`).join("")}</div></div></div>`;
+    const prev = document.activeElement;
+    const close = v => { scrim.remove(); document.removeEventListener("keydown", onKey, true); if (prev && prev.focus) prev.focus(); resolve(v); };
+    const onKey = e => { if (e.key === "Escape") { e.stopPropagation(); close(null); } };
+    document.addEventListener("keydown", onKey, true);
+    scrim.addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) close(options[+b.dataset.i].value); });
+    document.body.appendChild(scrim);
+    scrim.querySelector("[data-i]").focus();
+  });
+}

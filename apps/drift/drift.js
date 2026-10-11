@@ -6,7 +6,7 @@ import { applyTheme, onTheme } from "../../core/theme.js";
 import { createSynth, PRESETS, WAVES, DEFAULTS } from "../../core/synth.js";
 import { clock } from "../../core/clock.js";
 import { icon } from "../../style-kit/icons.js";
-import { Slider, openMenu, toast } from "../../style-kit/ui.js";
+import { Slider, openMenu, toast, dialog } from "../../style-kit/ui.js";
 applyTheme(); onTheme(applyTheme);
 
 const $ = id => document.getElementById(id);
@@ -180,4 +180,9 @@ $("link").addEventListener("click", () => {
 // ---------- start ----------
 $("preset").textContent = S.preset.toUpperCase();
 Object.keys(SPEC).forEach(k => SPEC[k].fmt && showVal(k));
+$("reset").addEventListener("click", async () => {
+  const ok = await dialog({ title: "Reset Drift", text: "Put the sound, sequence, octaves, tempo and Link back to how they started?", confirm: "Reset", danger: true });
+  if (!ok) return;
+  stopLocal(); try { localStorage.removeItem(KEY); } catch (e) {} clearTimeout(saveT); location.reload();
+});
 buildKeys(); buildRoll(); renderTransport();

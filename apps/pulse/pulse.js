@@ -6,7 +6,7 @@ import { applyTheme, onTheme } from "../../core/theme.js";
 import { VOICES, play as hit } from "../../core/drums.js";
 import { clock } from "../../core/clock.js";
 import { icon } from "../../style-kit/icons.js";
-import { Slider, toast } from "../../style-kit/ui.js";
+import { Slider, toast, dialog } from "../../style-kit/ui.js";
 applyTheme(); onTheme(applyTheme);
 
 const $ = id => document.getElementById(id);
@@ -190,4 +190,9 @@ function toWav(buf) {
   return new Blob([data], { type: "audio/wav" });
 }
 
+$("reset").addEventListener("click", async () => {
+  const ok = await dialog({ title: "Reset Pulse", text: "Clear all four patterns and put tempo, swing, volumes and Link back to how they started?", confirm: "Reset", danger: true });
+  if (!ok) return;
+  stopLocal(); try { localStorage.removeItem(KEY); } catch (e) {} clearTimeout(saveT); location.reload();
+});
 build(); renderTransport();

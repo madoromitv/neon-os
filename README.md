@@ -92,6 +92,8 @@ Then open http://localhost:8000.
 
 Songs you add are stored in your own browser and never uploaded. The repository holds no music.
 
+To add your whole library at once, drop the folder onto the desktop or use **Add folder** in Amp's library: every folder inside it is searched for music files (MP3, FLAC, WAV, OGG, M4A, AAC, Opus) and anything else is ignored. If a song is already in your library (same title and file size, or same title and artist), Amp asks once per batch whether to **skip**, **replace** (the new copy keeps the old one's place in your playlists) or **keep both**.
+
 To keep them safe or move them, open **Settings → Back up everything**. You get one `.neonos` file with your songs, playlists, notes and settings. **Restore a backup** in any browser or on any computer brings it all back; restoring adds to what's there and never deletes songs.
 
 ## Roadmap
