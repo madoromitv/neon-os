@@ -4,6 +4,7 @@
 import "../../core/os-link.js";
 import { applyTheme, onTheme } from "../../core/theme.js";
 import { VOICES, play as hit } from "../../core/drums.js";
+import { clock } from "../../core/clock.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, toast } from "../../style-kit/ui.js";
 applyTheme(); onTheme(applyTheme);
@@ -42,25 +43,42 @@ function ensureAudio() {
 const setBus = i => { if (buses[i]) buses[i].gain.setTargetAtTime(S.mute[i] ? 0 : S.vol[i], ctx.currentTime, 0.01); };
 
 // lookahead scheduler: every 25 ms, queue any steps due in the next 120 ms
-let playing = false, nextTime = 0, nextStep = 0, timer = null;
+let playing = false, nextTime = 0, nextStep = 0, absStep = 0, timer = null;
 const queue = []; // [{ step, time }] for the playhead
 const stepDur = () => 60 / S.bpm / 4;
 function stepTime(base, step) { return base + (step % 2 ? S.swing * stepDur() * 0.5 : 0); } // swing delays every second 16th
+const following = () => S.link && clock.state.playing;
 function schedule() {
   while (nextTime < ctx.currentTime + 0.12) {
+    if (following()) { const c = clock.state, ms = 60000 / c.bpm / 4; nextTime = clock.toAudio(ctx, c.origin + absStep * ms); } // locked to the shared clock, no drift
     const t = stepTime(nextTime, nextStep), p = pat();
     VOICES.forEach((v, i) => { const s = p[i][nextStep]; if (s) hit(ctx, buses[i], v.id, t, s === 2 ? 1 : 0.62); });
     queue.push({ step: nextStep, time: t });
-    nextTime += stepDur(); nextStep = (nextStep + 1) % STEPS;
+    nextTime += stepDur(); nextStep = (nextStep + 1) % STEPS; absStep++;
   }
 }
-function start() {
+function align() { // join the shared clock at the next 16th, in the right place in the bar
+  const n = clock.nextStep(4);
+  absStep = n.index; nextStep = ((n.index % STEPS) + STEPS) % STEPS; nextTime = clock.toAudio(ctx, n.wall); queue.length = 0;
+}
+function startLocal() {
   ensureAudio(); if (playing) return;
-  playing = true; nextStep = 0; nextTime = ctx.currentTime + 0.06; queue.length = 0;
+  playing = true; queue.length = 0;
+  if (following()) align(); else { absStep = 0; nextStep = 0; nextTime = ctx.currentTime + 0.06; }
   schedule(); timer = setInterval(schedule, 25);
   renderTransport(); requestAnimationFrame(draw);
 }
-function stop() { playing = false; clearInterval(timer); queue.length = 0; showNow(-1); renderTransport(); }
+function stopLocal() { playing = false; clearInterval(timer); queue.length = 0; showNow(-1); renderTransport(); }
+// with Link on, play and stop drive the shared clock, and every linked app follows it
+function start() { if (S.link && !clock.state.playing) { ensureAudio(); clock.start(S.bpm); return; } startLocal(); }
+function stop() { if (S.link && clock.state.playing) { clock.stop(); return; } stopLocal(); }
+clock.subscribe(c => {
+  if (!S.link) return;
+  if (c.bpm !== S.bpm) { S.bpm = c.bpm; tempo.set(c.bpm); $("bpm").textContent = Math.round(c.bpm); save(); }
+  if (c.playing && !playing) startLocal();
+  else if (!c.playing && playing) stopLocal();
+  else if (c.playing && playing) align();
+});
 
 // ---------- grid ----------
 const grid = $("grid");
@@ -117,15 +135,22 @@ function draw() {
 function renderTransport() {
   $("play").innerHTML = icon("play"); $("stop").innerHTML = icon("stop");
   $("play").classList.toggle("down", playing);
+  $("link").setAttribute("aria-pressed", String(!!S.link));
   $("bpm").textContent = Math.round(S.bpm); $("patLcd").textContent = S.cur;
   $("pats").innerHTML = SLOTS.map(k => `<button class="btn" data-pat="${k}" aria-pressed="${k === S.cur}" title="Pattern ${k}">${k}</button>`).join("");
 }
-const tempo = Slider($("tempo"), { min: 60, max: 200, step: 1, value: S.bpm, label: "Tempo", text: v => `${v} BPM`, onInput: v => { S.bpm = v; $("bpm").textContent = v; }, onChange: save });
+const tempo = Slider($("tempo"), { min: 60, max: 200, step: 1, value: S.bpm, label: "Tempo", text: v => `${v} BPM`, onInput: v => { S.bpm = v; $("bpm").textContent = v; if (S.link) clock.setBpm(v); }, onChange: save });
 Slider($("swing"), { min: 0, max: 0.6, step: 0.01, value: S.swing, label: "Swing", text: v => Math.round(v / 0.6 * 100) + "%", onInput: v => { S.swing = v; }, onChange: save });
 $("bpmDown").addEventListener("click", () => { tempo.set(S.bpm - 1, true); save(); });
 $("bpmUp").addEventListener("click", () => { tempo.set(S.bpm + 1, true); save(); });
 $("play").addEventListener("click", () => playing ? stop() : start());
 $("stop").addEventListener("click", stop);
+$("link").addEventListener("click", () => {
+  const was = playing; if (was) stopLocal();
+  S.link = !S.link; save(); renderTransport();
+  if (S.link && clock.state.playing && !was) { S.bpm = clock.state.bpm; tempo.set(S.bpm); $("bpm").textContent = Math.round(S.bpm); }
+  if (was) start();
+});
 $("pats").addEventListener("click", e => { const b = e.target.closest("[data-pat]"); if (!b) return; S.cur = b.dataset.pat; renderSteps(); renderTransport(); save(); });
 $("copy").addEventListener("click", () => {
   const next = SLOTS[(SLOTS.indexOf(S.cur) + 1) % SLOTS.length];

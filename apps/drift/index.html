@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drift · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="drift.css">
+</head>
+<body>
+  <header class="top">
+    <div class="lcd readout">
+      <span class="big" id="preset">NEON LEAD</span>
+      <span class="note" id="note">--</span>
+      <span class="bpm"><span id="bpm">120</span> BPM</span>
+    </div>
+    <div class="bar">
+      <button class="btn" id="presetBtn" aria-haspopup="menu">Presets ▾</button>
+      <span class="sep"></span>
+      <button class="btn icon" id="play" aria-label="Play the sequence (Space)" title="Play the sequence (Space)"></button>
+      <button class="btn icon" id="stop" aria-label="Stop" title="Stop"></button>
+      <button class="btn" id="link" aria-pressed="false" title="Play in time with other linked apps"><i class="led"></i>Link</button>
+      <span class="lbl">Tempo</span><div class="slider h" id="tempo"></div>
+      <button class="btn" id="clearSeq">Clear sequence</button>
+      <span class="midi lbl" id="midi"></span>
+    </div>
+  </header>
+  <section class="panel" aria-label="Sound">
+    <div class="group"><span class="lbl t">Oscillators</span>
+      <div class="row"><span class="lbl">Osc 1</span><span class="waves" data-osc="wave1"></span></div>
+      <div class="row"><span class="lbl">Osc 2</span><span class="waves" data-osc="wave2"></span></div>
+      <div class="row"><span class="lbl">Tune 2</span><div class="slider h" data-p="detune"></div><span class="val" data-v="detune"></span></div>
+      <div class="row"><span class="lbl">Fine</span><div class="slider h" data-p="fine"></div><span class="val" data-v="fine"></span></div>
+      <div class="row"><span class="lbl">Mix</span><div class="slider h center" data-p="mix"></div><span class="val" data-v="mix"></span></div>
+    </div>
+    <div class="group"><span class="lbl t">Filter</span>
+      <div class="row"><span class="lbl">Cutoff</span><div class="slider h" data-p="cutoff"></div><span class="val" data-v="cutoff"></span></div>
+      <div class="row"><span class="lbl">Reso</span><div class="slider h" data-p="res"></div><span class="val" data-v="res"></span></div>
+      <div class="row"><span class="lbl">Env</span><div class="slider h" data-p="envAmt"></div><span class="val" data-v="envAmt"></span></div>
+      <span class="lbl t">LFO</span>
+      <div class="row"><span class="lbl">Rate</span><div class="slider h" data-p="lfoRate"></div><span class="val" data-v="lfoRate"></span></div>
+      <div class="row"><span class="lbl">Depth</span><div class="slider h" data-p="lfoDepth"></div><span class="val" data-v="lfoDepth"></span></div>
+    </div>
+    <div class="group env"><span class="lbl t">Envelope</span>
+      <div class="adsr">
+        <div class="col"><div class="slider v" data-p="attack"></div><span class="lbl">A</span></div>
+        <div class="col"><div class="slider v" data-p="decay"></div><span class="lbl">D</span></div>
+        <div class="col"><div class="slider v" data-p="sustain"></div><span class="lbl">S</span></div>
+        <div class="col"><div class="slider v" data-p="release"></div><span class="lbl">R</span></div>
+        <div class="col"><div class="slider v" data-p="volume"></div><span class="lbl">Vol</span></div>
+      </div>
+    </div>
+  </section>
+  <section class="seq" aria-label="Sequencer">
+    <div class="seqhead"><span class="lbl">Sequence</span><span class="lbl">Octave</span><button class="btn mini" id="sOctDown">−</button><span class="lcd oct" id="sOct">3</span><button class="btn mini" id="sOctUp">+</button><span class="hint">Click a cell to set that step's note; click it again to clear.</span></div>
+    <div class="roll" id="roll" role="grid" aria-label="Sequence notes"></div>
+  </section>
+  <section class="keys-wrap" aria-label="Keyboard">
+    <div class="keyhead"><span class="lbl">Keyboard</span><button class="btn mini" id="octDown" title="Octave down (Z)">−</button><span class="lcd oct" id="oct">4</span><button class="btn mini" id="octUp" title="Octave up (X)">+</button><span class="hint">Play with A W S E D F T G Y H U J K, Z and X change octave. MIDI keyboards work in Chrome and Edge.</span></div>
+    <div class="keys" id="keys"></div>
+  </section>
+  <script type="module" src="drift.js"></script>
+</body>
+</html>

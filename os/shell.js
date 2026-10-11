@@ -157,7 +157,7 @@ function followCollapse(appId) {
 function defaultAmpLayout(appId) {
   const a = area(), L = 108, T = 14, G = 0, CW = 560;
   const id = s => `${appId}:${s}`, hOf = s => (els[id(s)] ? els[id(s)].offsetHeight : 200) || 200;
-  const set = (s, g) => { if (wins[id(s)]) Object.assign(wins[id(s)], g, { snap: null, min: false }); };
+  const set = (s, g) => { if (wins[id(s)]) Object.assign(wins[id(s)], g, { snap: null }); };
   set("winMain", { x: L, y: T, w: CW }); render(id("winMain"));
   const eqY = T + hOf("winMain") + G;
   set("winEq", { x: L, y: eqY, w: CW }); render(id("winEq"));
@@ -472,10 +472,9 @@ function openMenu() {
   menu.innerHTML = `<div class="titlebar"><span class="ttl">Neon OS</span></div><div class="wbody">
     <div class="lcd hero"><i aria-hidden="true"></i><b>NEON OS</b></div>
     ${APPS.map(a => `<button class="sm-item" role="menuitem" data-app="${esc(a.id)}">${svg(a.icon)}<span><b>${esc(a.name)}</b><small>${esc(a.desc)}</small></span></button>`).join("")}
+    ${PLANNED.length ? `<div class="sm-sep"></div>${PLANNED.map(p => `<div class="sm-item soon" aria-disabled="true"><span><b>${esc(p.name)}</b><small>${esc(p.desc)}, coming</small></span></div>`).join("")}` : ""}
     <div class="sm-sep"></div>
-    ${PLANNED.map(p => `<div class="sm-item soon" aria-disabled="true"><span><b>${esc(p.name)}</b><small>${esc(p.desc)}, coming</small></span></div>`).join("")}
-    <div class="sm-sep"></div>
-    <button class="sm-item" role="menuitem" data-act="tidy"><span><b>Tidy windows</b><small>Close framed apps and put Amp back in place</small></span></button>
+    <button class="sm-item" role="menuitem" data-act="tidy"><span><b>Tidy windows</b><small>Put open windows back in neat places</small></span></button>
   </div>`;
   document.body.appendChild(menu);
   $("startBtn").setAttribute("aria-expanded", "true");
@@ -488,9 +487,15 @@ function openMenu() {
   });
 }
 function tidy() {
-  for (const id of [...closed]) { closed.delete(id); appWins(id).forEach(k => els[k].classList.remove("closed")); }
-  for (const k of Object.keys(wins)) if (!appById(wins[k].appId).native) closeFramed(k);
-  for (const id of mounted) { defaultAmpLayout(id); appWins(id).forEach(k => { wins[k].min = false; render(k); }); }
+  // rearranges what's open: Amp back in its docked layout, other windows cascaded; closed and minimised stay as they are
+  for (const id of mounted) if (!closed.has(id)) defaultAmpLayout(id);
+  const a = area(), framed = Object.keys(wins).filter(k => !appById(wins[k].appId).native).sort((x, y) => wins[x].z - wins[y].z);
+  framed.forEach((k, i) => {
+    const st = wins[k], app = appById(st.appId);
+    st.snap = null; st.w = Math.min(app.w, a.w - 40); st.h = Math.min(app.h, a.h - 40);
+    st.x = clamp(a.w - st.w - 40 - (framed.length - 1 - i) * 30, 0, a.w - st.w); st.y = clamp(40 + i * 30, 0, a.h - st.h);
+  });
+  for (const k in wins) render(k);
   renderTasks(); saveLayout();
 }
 $("startBtn").addEventListener("click", e => { e.stopPropagation(); if (menu) closeMenu(); else { sfx.tick(); openMenu(); } });
