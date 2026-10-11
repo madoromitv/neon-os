@@ -202,6 +202,7 @@ function geom(st) {
 function render(wid) {
   const st = wins[wid], el = els[wid]; if (!st || !el) return;
   const g = geom(st);
+  if (st.snap) { g.x += desk.scrollLeft; g.y += desk.scrollTop; } // snapped windows fill what's on screen, wherever it's scrolled to
   Object.assign(el.style, { position: "absolute", left: g.x + "px", top: g.y + "px", width: g.w + "px", height: st.autoH ? "" : g.h + "px", zIndex: st.z });
   el.classList.toggle("min", !!st.min);
   el.classList.toggle("max", !!st.snap);
@@ -232,9 +233,9 @@ function restoreGroup(appId) {
 function toggleMax(wid) { const st = wins[wid]; st.snap = st.snap ? null : "max"; render(wid); saveLayout(); }
 function closeFramed(wid) { sfx.close(); els[wid].remove(); delete els[wid]; delete wins[wid]; const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
 function keepInView(st, el) {
-  const a = area(), h = st.autoH && el ? el.offsetHeight : st.h;
-  st.w = clamp(st.w, 260, a.w); if (!st.autoH) st.h = clamp(st.h, 140, a.h);
-  st.x = clamp(st.x, -st.w + 120, a.w - 120); st.y = clamp(st.y, 0, Math.max(0, a.h - Math.min(h, 30)));
+  // windows keep their size when the browser gets smaller: the desktop scrolls to reach anything past the edge
+  void el; st.w = Math.max(260, st.w); if (!st.autoH) st.h = Math.max(140, st.h);
+  st.x = Math.max(0, st.x); st.y = Math.max(0, st.y);
 }
 
 // ---------- drag, snap, dock, resize ----------
@@ -288,14 +289,15 @@ function startDrag(e, wid) {
   const lead = /:winMain$/.test(wid);
   const group = lead && !st.snap ? dockedGroup(wid) : new Set([wid]);
   const start = {}; for (const k of group) { const r = rectOf(k); start[k] = { x: r.x, y: r.y }; }
-  let g = geom(st), offX = e.clientX - g.x, offY = e.clientY - g.y, zone = null, moved = false;
+  const sx0 = desk.scrollLeft, sy0 = desk.scrollTop;
+  let g = geom(st), offX = e.clientX + (st.snap ? 0 : sx0) - g.x, offY = e.clientY + (st.snap ? 0 : sy0) - g.y, zone = null, moved = false;
   document.body.classList.add("dragging");
   const move = ev => {
     if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
     if (!moved && st.snap) { const fx = offX / g.w; st.snap = null; offX = fx * st.w; offY = Math.min(offY, 18); start[wid] = { x: st.x, y: st.y }; }
     moved = true;
     const a = area(), r = rectOf(wid);
-    let x = ev.clientX - offX, y = clamp(ev.clientY - offY, 0, a.h - 30);
+    let x = ev.clientX + desk.scrollLeft - offX, y = Math.max(0, ev.clientY + desk.scrollTop - offY);
     zone = null;
     if (!st.autoH && group.size === 1) {
       const cx = ev.clientX, cy = ev.clientY, L = cx <= SNAP_EDGE, R = cx >= innerWidth - SNAP_EDGE, T = cy <= SNAP_EDGE, B = cy >= a.h - SNAP_EDGE;
@@ -415,6 +417,7 @@ addEventListener("blur", () => setTimeout(() => {
   const f = document.activeElement;
   if (f && f.tagName === "IFRAME") { const w = f.closest(".owin"); if (w) focus(w.dataset.wid); }
 }, 0));
+desk.addEventListener("scroll", () => { for (const k in wins) if (wins[k].snap) render(k); }, { passive: true });
 addEventListener("resize", () => { for (const k in wins) { keepInView(wins[k], els[k]); render(k); } sizeWall(); });
 
 // ---------- taskbar: one button per app ----------

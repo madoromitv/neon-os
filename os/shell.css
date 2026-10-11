@@ -110,3 +110,10 @@ body > .toasts, body > .drop { z-index: 9900; }
 .boot-skip { color: var(--ink-faint); font-size: 11px; letter-spacing: .1em; }
 .boot.still .boot-orb { width: 34px; height: 34px; opacity: 1; } .boot.still .boot-name { opacity: 1; }
 @keyframes boot-static { 0% { opacity: .9; } 50% { opacity: .3; } 100% { opacity: 0; } }
+
+/* the desktop scrolls in both directions when windows sit past the edge of a small browser window */
+.desktop { overflow: auto; overscroll-behavior: contain; scrollbar-color: var(--metal-hi) var(--metal-lo); }
+.desktop::-webkit-scrollbar { width: 12px; height: 12px; }
+.desktop::-webkit-scrollbar-track { background: #0a0810; }
+.desktop::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #423c57, #26222f); border: 1px solid var(--edge); border-radius: 3px; }
+.desktop::-webkit-scrollbar-corner { background: #0a0810; }

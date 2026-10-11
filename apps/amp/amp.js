@@ -5,6 +5,7 @@ import { Eng } from "../../core/engine.js";
 import { analyseSamples, decodeToMono } from "../../core/analysis.js";
 import { readTags, titleFromName, shrinkCover } from "../../core/tags.js";
 import { makeLocalStore } from "../../core/storage.js";
+import { createAnalyser } from "../../core/analyser.js";
 import { getTheme, setTheme, onTheme } from "../../core/theme.js";
 import { onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
 void closePop;
@@ -259,7 +260,7 @@ function renderMl() {
     }).join("");
   }
   const n = mlIds().length, tot = mlIds().reduce((s, id) => s + (byId(id).duration || 0), 0);
-  if (!adding) setStatus(`${n} ${n === 1 ? "song" : "songs"}, ${Math.round(tot / 60)} min. ${storeNote()}`);
+  if (!adding) setStatus(`${n} ${n === 1 ? "song" : "songs"}, ${Math.round(tot / 60)} min. ${analyser && analyser.pending ? `Finding beats: ${analyser.pending} to go. ` : ""}${storeNote()}`);
 }
 function storeNote() {
   if (!storeReady) return "Loading…";
@@ -411,7 +412,8 @@ async function trackBytes(t) {
 async function getAnalysis(t) {
   if (anCache.has(t.id)) return anCache.get(t.id);
   const a = t.builtin ? JSON.parse(embedded("an-" + t.key)) : await store.analysis(t);
-  anCache.set(t.id, a); return a;
+  if (a) anCache.set(t.id, a);
+  return a || null;
 }
 function normalise(raw) {
   const d = JSON.parse(JSON.stringify(raw));
@@ -438,7 +440,8 @@ async function playIndex(i, { autoplay = true, at = 0, fromHistory = false } = {
     try { buf = await Eng.decode(ab); } catch (e) { throw new Error("decode"); }
     if (seq !== loadSeq) return;
     Eng.setBuffer(buf); loadedId = t.id;
-    data = normalise(an); beatPtr = 0; resetViz();
+    data = an ? normalise(an) : null; beatPtr = 0; resetViz();
+    if (!an && analyser) analyser.prioritise(t.id); // not analysed yet: jump the queue; the visualiser idles until it's ready
     t.kbps = Math.round(ab.byteLength * 8 / buf.duration / 1000);
     loading = false;
     setNowPlaying();
@@ -640,8 +643,10 @@ const AUDIO_EXT = /\.(mp3|flac|wav|ogg|oga|m4a|aac|opus|webm)$/i;
 const isAudio = f => (f.type || "").startsWith("audio/") || AUDIO_EXT.test(f.name);
 const mimeFor = f => f.type && f.type.startsWith("audio/") ? f.type : ({ mp3: "audio/mpeg", flac: "audio/flac", wav: "audio/wav", ogg: "audio/ogg", oga: "audio/ogg", m4a: "audio/mp4", aac: "audio/aac", opus: "audio/ogg", webm: "audio/webm" }[(f.name.split(".").pop() || "").toLowerCase()] || "audio/mpeg");
 const norm = s => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
-// same song: same file size and title, or same title and artist
-const findDup = (size, title, artist) => store.tracks.find(t => (t.size === size && norm(t.title) === norm(title)) || (artist && norm(t.artist) === norm(artist) && norm(t.title) === norm(title)));
+// same song: the same title plus any one of the same file size, the same artist or the same album
+// (artist and album alone aren't enough: every song on an album shares them)
+const findDup = (size, title, artist, album) => store.tracks.find(t => norm(t.title) === norm(title) && (
+  t.size === size || (artist && norm(t.artist) === norm(artist)) || (album && norm(t.album) === norm(album))));
 let batch = null; // { total, done, added, replaced, skipped, failed, dupMode }
 function enqueueFiles(files, from = "files") {
   const list = [...files].filter(isAudio);
@@ -659,56 +664,106 @@ async function askDup(title) {
     options: [{ label: "Skip duplicates", value: "skip" }, { label: "Replace with new", value: "replace" }, { label: "Keep both", value: "both" }] });
   return v || "skip";
 }
+// only the start of a file is read for its tags (ID3 at the front of MP3s, metadata blocks at the front of FLACs)
+async function readHead(f) {
+  const h = new Uint8Array(await f.slice(0, 10).arrayBuffer());
+  let n = 4 * 1024 * 1024;
+  if (h[0] === 0x49 && h[1] === 0x44 && h[2] === 0x33) n = Math.min(((h[6] & 127) << 21 | (h[7] & 127) << 14 | (h[8] & 127) << 7 | (h[9] & 127)) + 10, 24 * 1024 * 1024);
+  return f.slice(0, n).arrayBuffer();
+}
+// the browser reads a song's length from its header, without decoding it; analysis corrects it later
+function durationOf(blob) {
+  return new Promise(res => {
+    const a = document.createElement("audio"), u = URL.createObjectURL(blob);
+    const done = d => { a.onloadedmetadata = a.onerror = null; a.removeAttribute("src"); a.load(); URL.revokeObjectURL(u); res(isFinite(d) ? d : 0); };
+    a.preload = "metadata"; a.onloadedmetadata = () => done(a.duration); a.onerror = () => done(0); a.src = u;
+  });
+}
 async function processAdds() {
   if (adding) return;
   adding = true;
-  while (addQ.length) {
-    const f = addQ.shift(), B = batch;
-    const n = () => `${Math.min(B.done + 1, B.total)} of ${B.total}`;
-    let title = titleFromName(f.name);
-    try {
-      setStatus(`Song ${n()} · Reading ${title}`, B.done / B.total);
-      const buf = await f.arrayBuffer();
-      const tags = readTags(buf); title = tags.title || title;
-      const dup = findDup(f.size, title, tags.artist);
-      if (dup) {
-        if (!B.dupMode) B.dupMode = await askDup(title);
-        if (B.dupMode === "skip") { B.skipped++; B.done++; continue; }
-      }
-      const step = (label, v) => setStatus(`Song ${n()} · ${label} ${title}`, (B.done + v) / B.total);
-      step("Decoding", 0.05);
-      let dec; try { dec = await decodeToMono(buf); } catch (e) { throw new Error("decode"); }
-      const analysis = await analyseSamples(dec.y, dec.sr, v => step("Finding the beat in", 0.1 + v * 0.6));
-      const cover = tags.cover ? await shrinkCover(tags.cover.blob) : null;
-      const meta = { title, artist: tags.artist || "", album: tags.album || "", duration: Math.round(dec.duration), bpm: analysis.bpm, size: f.size };
-      step("Saving", 0.75);
-      const t = await store.addTrack({ buf, mime: mimeFor(f), meta, analysis, cover, onProgress: v => step("Saving", 0.75 + 0.25 * v) });
-      anCache.set(t.id, analysis);
-      if (dup && B.dupMode === "replace") { // the new copy takes the old one's place in every playlist
-        for (const p of store.playlists.filter(p => p.tracks.includes(dup.id))) await store.updatePlaylist(p.id, { tracks: p.tracks.map(id => id === dup.id ? t.id : id) });
-        pl = pl.map(id => id === dup.id ? t.id : id);
-        if (loadedId === dup.id) loadedId = t.id;
-        await store.deleteTrack(dup); B.replaced++;
-      } else { B.added++; B.newIds.push(t.id); }
-      B.done++;
-      renderTree(); renderMl(); renderPl();
-    } catch (e) {
-      B.failed++; B.done++;
-      const code = e && e.code;
-      if (code === "quota_or_state" || code === "quota_exceeded" || (e && e.name === "QuotaExceededError")) { toast("Your library's storage is full. Delete songs you no longer need, then try again.", true); addQ.length = 0; }
-      else if (B.total < 6) toast(e && e.message === "decode" ? `${title} couldn't be read as audio. Try an MP3, WAV or FLAC.` : e && e.message === "too_short" ? `${title} is too short to find a beat.` : `Couldn't add ${title}. Try again.`, true);
-    }
-  }
+  // four files at a time: each one is mostly waiting on the disk, so several overlap well
+  const lane = async () => { while (addQ.length) await addOne(addQ.shift(), batch); };
+  await Promise.all([lane(), lane(), lane(), lane()]);
   adding = false;
   const B = batch; batch = null;
   if (B) {
     if (B.added || B.replaced) notifyLibraryChange("add");
-    if (B.newIds.length) enqueue(B.newIds);
+    if (B.newIds.length && B.newIds.length <= 100) enqueue(B.newIds); // big imports don't flood the playlist
     const parts = [B.added && `added ${B.added}`, B.replaced && `replaced ${B.replaced}`, B.skipped && `skipped ${B.skipped} duplicate${B.skipped === 1 ? "" : "s"}`, B.failed && `${B.failed} couldn't be read`].filter(Boolean);
-    if (parts.length) toast(parts.join(", ").replace(/^./, c => c.toUpperCase()) + ".", !B.added && !B.replaced && B.failed > 0);
+    if (parts.length) toast(parts.join(", ").replace(/^./, c => c.toUpperCase()) + "." + (B.added + B.replaced ? " Beats and tempo are worked out in the background." : ""), !B.added && !B.replaced && B.failed > 0);
   }
-  renderMl();
+  scheduleRender();
 }
+async function addOne(f, B) {
+  let title = titleFromName(f.name);
+  try {
+    setStatus(`Adding song ${Math.min(B.done + 1, B.total)} of ${B.total} · ${title}`, B.done / B.total);
+    const tags = readTags(await readHead(f)); title = tags.title || title;
+    let dup = findDup(f.size, title, tags.artist, tags.album);
+    // a copy of a song another lane is adding right now counts as a duplicate too
+    const same = x => norm(x.title) === norm(title) && (x.size === f.size || (tags.artist && norm(x.artist) === norm(tags.artist)) || (tags.album && norm(x.album) === norm(tags.album)));
+    const twin = !dup && (B.inflight || (B.inflight = [])).some(same);
+    if (twin) {
+      if (!B.dupMode) B.dupMode = await (B.dupAsk || (B.dupAsk = askDup(title)));
+      if (B.dupMode !== "both") { B.skipped++; B.done++; return; } // the other copy is already on its way in
+    }
+    const mine = { title, size: f.size, artist: tags.artist, album: tags.album }; B.inflight.push(mine);
+    if (dup) {
+      if (!B.dupMode) B.dupMode = await (B.dupAsk || (B.dupAsk = askDup(title))); // only one question, even with four lanes
+      if (B.dupMode === "skip") { B.skipped++; B.done++; return; }
+    }
+    const [duration, cover] = await Promise.all([durationOf(f), tags.cover ? shrinkCover(tags.cover.blob) : null]);
+    const meta = { title, artist: tags.artist || "", album: tags.album || "", duration: Math.round(duration), bpm: null, size: f.size };
+    const t = await store.addTrack({ blob: f, mime: mimeFor(f), meta, analysis: null, cover });
+    if (dup && B.dupMode === "replace") { // the new copy takes the old one's place in every playlist
+      for (const p of store.playlists.filter(p => p.tracks.includes(dup.id))) await store.updatePlaylist(p.id, { tracks: p.tracks.map(id => id === dup.id ? t.id : id) });
+      pl = pl.map(id => id === dup.id ? t.id : id);
+      if (loadedId === dup.id) loadedId = t.id;
+      await store.deleteTrack(dup); B.replaced++;
+    } else { B.added++; B.newIds.push(t.id); }
+    B.done++; B.inflight.splice(B.inflight.indexOf(mine), 1);
+    analyser.enqueue([t.id]);
+    scheduleRender();
+  } catch (e) {
+    B.failed++; B.done++;
+    const code = e && e.code;
+    if (code === "quota_or_state" || code === "quota_exceeded" || (e && e.name === "QuotaExceededError")) { toast("Your library's storage is full. Delete songs you no longer need, then try again.", true); addQ.length = 0; }
+    else if (B.total < 6) toast(`Couldn't add ${title}. Try again.`, true);
+  }
+}
+// redraws are batched to at most one per frame, so a big import doesn't redraw the library for every song
+let renderQueued = false, lastRender = 0;
+function scheduleRender() {
+  if (renderQueued) return; renderQueued = true;
+  const go = () => requestAnimationFrame(() => { renderQueued = false; lastRender = performance.now(); renderTree(); renderMl(); renderPl(); });
+  const wait = 500 - (performance.now() - lastRender); // at most twice a second
+  if (wait > 0) setTimeout(go, wait); else go();
+}
+
+// ---------- background analysis ----------
+let analyser = null, analysedSinceNotice = 0;
+function startAnalyser() {
+  analyser = createAnalyser({
+    getBlob: id => { const t = store.tracks.find(x => x.id === id); return t && t.blob; },
+    onDone: async (id, a, dur) => {
+      const t = store.tracks.find(x => x.id === id); if (!t) return;
+      await store.updateTrack(id, { analysis: a, bpm: a.bpm, duration: Math.round(dur) || t.duration });
+      anCache.set(id, a);
+      if (loadedId === id && !data) { data = normalise(a); beatPtr = 0; resetViz(); setNowPlaying(); }
+      if (++analysedSinceNotice >= 25) { analysedSinceNotice = 0; notifyLibraryChange("edit"); }
+      scheduleRender();
+    },
+    onError: async (id, e) => { // can't be analysed (too short, unreadable): keep the song, stop retrying
+      const t = store.tracks.find(x => x.id === id);
+      if (t) await store.updateTrack(id, { analysis: null, analysisFailed: (e && e.message) || "failed" });
+      scheduleRender();
+    },
+    onIdle: () => { analysedSinceNotice = 0; notifyLibraryChange("edit"); scheduleRender(); },
+  });
+  analyser.enqueue(store.tracks.filter(t => !t.analysis && !t.analysisFailed).map(t => t.id)); // carries on after a reload
+}
+
 // a dropped folder is walked all the way down; only music files are kept
 async function filesFromEntries(entries) {
   const out = [];
@@ -923,7 +978,7 @@ function frame(now) {
 
   if (!OBS && now - lastUi > 33) {
     lastUi = now;
-    drawMini(envs, playing);
+    drawMini(envs, Eng.state === "playing");
     const beatIdx = playing ? ((Math.floor(bp) % 4) + 4) % 4 : -1;
     for (let k = 0; k < 4; k++) $("beat" + k).classList.toggle("on", k === beatIdx && bp - Math.floor(bp) < 0.5);
     const bt = $("bigTime");
@@ -949,6 +1004,7 @@ async function start() {
   store = st;
   try { await store.init(() => { if (storeReady) { renderTree(); renderMl(); renderPl(); } }); } catch (e) {}
   storeReady = true;
+  startAnalyser();
   renderAll();
   if (pendingPlay) { const ids = pendingPlay.filter(id => byId(id)); pendingPlay = null; if (ids.length) { Eng.ensure(); setPl(ids); playIndex(0); } }
   onLibraryChange(async reason => {

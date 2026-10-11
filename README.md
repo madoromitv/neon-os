@@ -12,6 +12,7 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Close:** the X on Amp's player closes all of Amp and stops the music; the X on any other Amp panel closes just that panel
 - **Amp's player** carries every Amp window docked to it, like the classic player; drag any other Amp window to pull it free
 - **Link:** turn on Link in Pulse and Drift and they share one tempo and start/stop, playing in time in separate windows
+- **Small windows:** windows keep their size and the desktop scrolls up, down, left and right to reach them; the taskbar stays put
 - **Right-click:** the desktop (open apps, tidy, change colour, restart), desktop icons, taskbar buttons and window title bars all have menus
 - **Sounds:** soft system sounds for opening, closing, minimising and snapping; the tray's speaker sets music and system volume and turns sounds off
 - **Collapse:** the arrow on an Amp panel collapses it to its title bar, and docked panels below slide up to close the gap
@@ -55,6 +56,7 @@ core/        shared engine, used by every app
   drums.js     drum sounds, made on the fly; shared by Pulse and future apps
   synth.js     the synth engine Drift plays
   clock.js     the shared clock: Link keeps apps in time across windows
+  analyser.js  background analysis queue, with analysis-worker.js doing the work on spare cores
 apps/
   registry.js  the list of apps the desktop shows
   amp/         the player
@@ -92,7 +94,7 @@ Then open http://localhost:8000.
 
 Songs you add are stored in your own browser and never uploaded. The repository holds no music.
 
-To add your whole library at once, drop the folder onto the desktop or use **Add folder** in Amp's library: every folder inside it is searched for music files (MP3, FLAC, WAV, OGG, M4A, AAC, Opus) and anything else is ignored. If a song is already in your library (same title and file size, or same title and artist), Amp asks once per batch whether to **skip**, **replace** (the new copy keeps the old one's place in your playlists) or **keep both**.
+To add your whole library at once, drop the folder onto the desktop or use **Add folder** in Amp's library: every folder inside it is searched for music files (MP3, FLAC, WAV, OGG, M4A, AAC, Opus) and anything else is ignored. Songs are added straight away, four at a time, and are playable immediately; beats, tempo and visualiser data are worked out afterwards in background workers on spare processor cores (playing a song moves it to the front). If a song is already in your library (the same title plus the same file size, artist or album), Amp asks once per batch whether to **skip**, **replace** (the new copy keeps the old one's place in your playlists) or **keep both**.
 
 To keep them safe or move them, open **Settings → Back up everything**. You get one `.neonos` file with your songs, playlists, notes and settings. **Restore a backup** in any browser or on any computer brings it all back; restoring adds to what's there and never deletes songs.
 

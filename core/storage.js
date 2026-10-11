@@ -25,8 +25,9 @@ export function makeLocalStore() {
         st.playlists = (await tx("playlists", "readonly", s => s.getAll())) || [];
       } catch (e) {}
     },
-    async addTrack({ buf, mime, meta, analysis, cover }) {
-      const rec = { id: id("t"), ...meta, mime, blob: new Blob([buf], { type: mime }), analysis, coverBlob: cover || null, addedAt: new Date().toISOString() };
+    async addTrack({ buf, blob, mime, meta, analysis, cover }) {
+      // blob: the original file as-is (fast, nothing read into memory); buf: bytes already read
+      const rec = { id: id("t"), ...meta, mime, blob: blob || new Blob([buf], { type: mime }), analysis: analysis || null, coverBlob: cover || null, addedAt: new Date().toISOString() };
       await tx("tracks", "readwrite", s => s.put(rec));
       const t = { ...rec, coverUrl: cover ? URL.createObjectURL(cover) : null };
       st.tracks.push(t);
