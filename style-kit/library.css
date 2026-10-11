@@ -1,0 +1,33 @@
+/* Neon OS style kit: library browser parts, shared by Files and Decks (Amp keeps its own classic look)
+   .ltree: the sidebar of sections; .lrow: a song or group row; .lhead: the sticky column header. */
+.ltree { display: flex; flex-direction: column; gap: 2px; padding: 6px 4px; overflow-y: auto; background: #0a0810; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; min-height: 0; }
+.ltree .head { padding: 8px 8px 4px; }
+.fold { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border-radius: 2px; text-align: left; color: var(--ink-dim); font-weight: 600; font-size: 12.5px; }
+.fold:hover { color: var(--ink); background: #ffffff0a; }
+.fold[aria-current="true"] { background: var(--sel); color: var(--ink); }
+.fold svg { width: 15px; height: 15px; fill: var(--ball); flex: none; }
+.fold .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fold .n { margin-left: auto; font-family: var(--font-lcd); font-size: 15px; color: var(--ink-faint); }
+.fold.none { cursor: default; }
+.fold.none:hover { background: none; color: var(--ink-dim); }
+.lwell { overflow: auto; background: #0a0810; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; min-height: 0; }
+.lhead, .lrow { display: grid; gap: 10px; padding: 0 10px; align-items: center; }
+.lhead { position: sticky; top: 0; z-index: 1; height: 24px; background: linear-gradient(180deg, #3a3550, #24202f); border-bottom: 1px solid #000; }
+.lhead span { font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-dim); white-space: nowrap; overflow: hidden; }
+.lwell.groups .lhead { display: none; }
+.lrow { height: 26px; font-size: 12.5px; cursor: default; user-select: none; }
+.lrow:nth-child(even) { background: #ffffff04; }
+.lrow:hover { background: #ffffff08; }
+.lrow.sel { background: var(--sel); }
+.lrow > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lrow .d { color: var(--ink-dim); }
+.lrow .num { font-family: var(--font-lcd); font-size: 16px; color: var(--ink-dim); text-align: right; }
+.lrow svg { width: 15px; height: 15px; fill: var(--ball); }
+.lrow .thumb { width: 20px; height: 20px; border-radius: 2px; object-fit: cover; display: block; background: linear-gradient(135deg, #2a1050, #3d0b3a); }
+.lrow .btn { min-height: 22px; padding: 0 8px; font-size: 9.5px; }
+.lrow.group { grid-template-columns: 22px minmax(0, 2fr) minmax(0, 1.4fr) 60px 50px; min-width: 420px; }
+.star { cursor: pointer; color: var(--ink-faint); font-size: 13px; text-align: center; }
+.star.on { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+.star:hover { color: var(--ink); }
+.lempty { padding: 18px 14px; color: var(--ink-dim); line-height: 1.5; }
+.lempty b { color: var(--ink); display: block; }

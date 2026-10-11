@@ -6,6 +6,7 @@ import { analyseSamples, decodeToMono } from "../../core/analysis.js";
 import { readTags, titleFromName, shrinkCover } from "../../core/tags.js";
 import { makeLocalStore } from "../../core/storage.js";
 import { createAnalyser } from "../../core/analyser.js";
+import { SMART, smartById, buildGroups, albumOrder, viewSongs, viewGroups, viewTitle as libTitle, searchGroups, groupNote, nkey } from "../../core/library.js";
 import { getTheme, setTheme, onTheme } from "../../core/theme.js";
 import { onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
 void closePop;
@@ -205,50 +206,15 @@ async function savePlAs() {
 // Views: all songs, a playlist, a smart playlist, the artist or album lists, or one artist or album.
 // The song list only draws the rows on screen, so it stays quick with thousands of songs.
 let mlView = { type: "all" }, mlSort = { key: null, dir: 1 }, mlSearch = "", mlSel = new Set(), mlAnchor = null;
-const nkey = s => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
-const DAY = 864e5;
-const SMART = [
-  { id: "recent", name: "Recently added", ids: () => library().filter(t => t.addedAt).sort((a, b) => String(b.addedAt).localeCompare(String(a.addedAt))).slice(0, 250) },
-  { id: "fav", name: "Favourites", ids: () => library().filter(t => t.fav) },
-  { id: "most", name: "Most played", ids: () => library().filter(t => t.plays).sort((a, b) => b.plays - a.plays).slice(0, 100) },
-  { id: "lately", name: "Played lately", ids: () => library().filter(t => t.lastPlayed && Date.now() - Date.parse(t.lastPlayed) < 30 * DAY).sort((a, b) => String(b.lastPlayed).localeCompare(String(a.lastPlayed))) },
-  { id: "never", name: "Never played", ids: () => library().filter(t => !t.plays) },
-  { id: "b0", name: "Tempo under 100", ids: () => library().filter(t => t.bpm && t.bpm < 100) },
-  { id: "b1", name: "Tempo 100–120", ids: () => library().filter(t => t.bpm >= 100 && t.bpm < 120) },
-  { id: "b2", name: "Tempo 120–130", ids: () => library().filter(t => t.bpm >= 120 && t.bpm < 130) },
-  { id: "b3", name: "Tempo 130–150", ids: () => library().filter(t => t.bpm >= 130 && t.bpm < 150) },
-  { id: "b4", name: "Tempo 150 and up", ids: () => library().filter(t => t.bpm >= 150) },
-];
-const smartById = id => SMART.find(x => x.id === id);
-// artists and albums, worked out from the songs' tags
+// artists, albums and genres come from core/library.js, shared with Files and Decks
 let groupsCache = null, groupsFor = -1;
 function groups() {
   const lib = library(), sig = lib.length + ":" + lib.reduce((n, t) => n + (t.title || "").length + (t.album || "").length + (t.genre || "").length + (t.artist || "").length, 0);
-  if (groupsCache && groupsFor === sig) return groupsCache;
-  const artists = new Map(), albums = new Map(), genres = new Map();
-  for (const t of lib) {
-    if (t.genre) { const gk = nkey(t.genre), g = genres.get(gk) || { key: gk, name: t.genre, songs: [], artists: new Set() }; g.songs.push(t.id); g.artists.add(nkey(t.artist)); genres.set(gk, g); }
-    const ak = nkey(t.artist) || "~", a = artists.get(ak) || { key: ak, name: t.artist || "Unknown artist", songs: [], albums: new Set() };
-    a.songs.push(t.id); if (t.album) a.albums.add(nkey(t.album)); artists.set(ak, a);
-    if (t.album) {
-      const bk = ak + "|" + nkey(t.album), b = albums.get(bk) || { key: bk, name: t.album, artist: t.artist || "Unknown artist", songs: [], cover: null };
-      b.songs.push(t.id); if (!b.cover && t.coverUrl) b.cover = t.coverUrl; albums.set(bk, b);
-    }
-  }
-  const byName = (x, y) => x.name.localeCompare(y.name, undefined, { sensitivity: "base" });
-  groupsCache = { artists: [...artists.values()].sort(byName), albums: [...albums.values()].sort(byName), genres: [...genres.values()].sort(byName) }; groupsFor = sig;
+  if (!groupsCache || groupsFor !== sig) { groupsCache = buildGroups(lib); groupsFor = sig; }
   return groupsCache;
 }
-const inOrder = ids => ids.slice().sort((a, b) => { const A = byId(a), B = byId(b); return (A.album || "").localeCompare(B.album || "", undefined, { sensitivity: "base" }) || (A.title || "").localeCompare(B.title || "", undefined, { sensitivity: "base" }); });
 const isGroupList = () => mlView.type === "artists" || mlView.type === "albums" || mlView.type === "genres";
-function mlIds() {
-  if (mlView.type === "pl") { const p = plById(mlView.id); return p ? p.tracks.filter(id => byId(id)) : []; }
-  if (mlView.type === "smart") { const sm = smartById(mlView.id); return sm ? sm.ids().map(t => t.id) : []; }
-  if (mlView.type === "artist") { const a = groups().artists.find(x => x.key === mlView.key); return a ? inOrder(a.songs) : []; }
-  if (mlView.type === "album") { const b = groups().albums.find(x => x.key === mlView.key); return b ? inOrder(b.songs) : []; }
-  if (mlView.type === "genre") { const g = groups().genres.find(x => x.key === mlView.key); return g ? g.songs.slice().sort((a, b) => (byId(a).artist || "").localeCompare(byId(b).artist || "", undefined, { sensitivity: "base" }) || (byId(a).album || "").localeCompare(byId(b).album || "") || (byId(a).title || "").localeCompare(byId(b).title || "")) : []; }
-  return library().map(t => t.id);
-}
+function mlIds() { return viewSongs(mlView, library(), store.playlists, groups()).map(t => t.id); }
 function mlVisible() {
   let ids = mlIds();
   const q = mlSearch.trim().toLowerCase();
@@ -264,10 +230,7 @@ function mlVisible() {
   }
   return ids;
 }
-function groupsVisible() {
-  const g = groups(), list = mlView.type === "artists" ? g.artists : mlView.type === "genres" ? g.genres : g.albums, q = mlSearch.trim().toLowerCase();
-  return q ? list.filter(x => x.name.toLowerCase().includes(q) || (x.artist || "").toLowerCase().includes(q)) : list;
-}
+function groupsVisible() { return searchGroups(viewGroups(mlView, groups()), mlSearch); }
 function renderTree() {
   $("allCount").textContent = library().length;
   $("treeAll").setAttribute("aria-current", String(mlView.type === "all"));
@@ -275,7 +238,7 @@ function renderTree() {
   $("treeBrowse").innerHTML = `<button class="tree-item" data-browse="artists" aria-current="${on("artists")}">${icon("library")}<span class="name">Artists</span><span class="n">${g.artists.length}</span></button>
     <button class="tree-item" data-browse="albums" aria-current="${on("albums")}">${icon("note")}<span class="name">Albums</span><span class="n">${g.albums.length}</span></button>
     <button class="tree-item" data-browse="genres" aria-current="${on("genres")}">${icon("tune")}<span class="name">Genres</span><span class="n">${g.genres.length}</span></button>`;
-  $("treeSmart").innerHTML = SMART.map(sm => { const n = sm.ids().length; return `<button class="tree-item" data-smart="${sm.id}" aria-current="${mlView.type === "smart" && mlView.id === sm.id}">${icon("tune")}<span class="name">${esc(sm.name)}</span><span class="n">${n}</span></button>`; }).join("");
+  $("treeSmart").innerHTML = SMART.map(sm => { const n = sm.pick(library()).length; return `<button class="tree-item" data-smart="${sm.id}" aria-current="${mlView.type === "smart" && mlView.id === sm.id}">${icon("tune")}<span class="name">${esc(sm.name)}</span><span class="n">${n}</span></button>`; }).join("");
   $("treePls").innerHTML = playlistsSorted().map(p => `<button class="tree-item" data-pl="${esc(p.id)}" aria-current="${mlView.type === "pl" && mlView.id === p.id}">${icon("playlist")}<span class="name">${esc(p.name)}</span><span class="n">${p.tracks.filter(id => byId(id)).length}</span></button>`).join("");
   $("treeNew").hidden = !store.canWrite;
   $("mlAdd").hidden = !store.canWrite;
@@ -285,7 +248,7 @@ $("treePls").addEventListener("click", e => { const b = e.target.closest("[data-
 $("treePls").addEventListener("dblclick", e => { const b = e.target.closest("[data-pl]"); if (!b) return; const p = plById(b.dataset.pl); if (p) { Eng.ensure(); setPl(p.tracks.filter(id => byId(id))); playIndex(S.shuffle ? Math.floor(Math.random() * pl.length) : 0); } });
 $("treeBrowse").addEventListener("click", e => { const b = e.target.closest("[data-browse]"); if (b) setMlView({ type: b.dataset.browse }); });
 $("treeSmart").addEventListener("click", e => { const b = e.target.closest("[data-smart]"); if (b) setMlView({ type: "smart", id: b.dataset.smart }); });
-$("treeSmart").addEventListener("dblclick", e => { const b = e.target.closest("[data-smart]"); if (!b) return; const ids = smartById(b.dataset.smart).ids().map(t => t.id); if (ids.length) { Eng.ensure(); setPl(ids); playIndex(S.shuffle ? Math.floor(Math.random() * ids.length) : 0); } });
+$("treeSmart").addEventListener("dblclick", e => { const b = e.target.closest("[data-smart]"); if (!b) return; const ids = smartById(b.dataset.smart).pick(library()).map(t => t.id); if (ids.length) { Eng.ensure(); setPl(ids); playIndex(S.shuffle ? Math.floor(Math.random() * ids.length) : 0); } });
 $("treeAll").addEventListener("click", () => setMlView({ type: "all" }));
 $("mlBack").addEventListener("click", () => setMlView({ type: mlView.type + "s" }));
 function setMlView(v) { mlView = v; mlSel.clear(); mlSearch = ""; $("mlSearch").value = ""; mlSort = { key: null, dir: 1 }; renderTree(); $("mlTable").scrollTop = 0; renderMl(); }
@@ -293,18 +256,7 @@ function setMlView(v) { mlView = v; mlSel.clear(); mlSearch = ""; $("mlSearch").
 // ---------- the list: only the rows in view are drawn ----------
 const ROW = 26;
 let vRows = [], vKind = "song";
-function viewTitle() {
-  const p = mlView.type === "pl" ? plById(mlView.id) : null;
-  if (p) return p.name;
-  if (mlView.type === "smart") return (smartById(mlView.id) || {}).name || "Smart playlist";
-  if (mlView.type === "artists") return "Artists";
-  if (mlView.type === "albums") return "Albums";
-  if (mlView.type === "artist") { const a = groups().artists.find(x => x.key === mlView.key); return a ? a.name : "Artist"; }
-  if (mlView.type === "album") { const b = groups().albums.find(x => x.key === mlView.key); return b ? `${b.name} · ${b.artist}` : "Album"; }
-  if (mlView.type === "genres") return "Genres";
-  if (mlView.type === "genre") { const g = groups().genres.find(x => x.key === mlView.key); return g ? g.name : "Genre"; }
-  return "All songs";
-}
+function viewTitle() { return libTitle(mlView, store.playlists, groups()); }
 function renderMl() {
   const p = mlView.type === "pl" ? plById(mlView.id) : null;
   if (mlView.type === "pl" && !p) mlView = { type: "all" };
@@ -338,7 +290,7 @@ function groupRow(g) {
   const art = mlView.type === "albums";
   return `<div class="grow" role="row" data-g="${esc(g.key)}" title="Open · double-click to play">
     ${art ? (g.cover ? `<img class="thumb" src="${esc(g.cover)}" alt="">` : `<span class="thumb"></span>`) : icon(mlView.type === "genres" ? "tune" : "library")}
-    <span>${esc(g.name)}</span><span class="d">${art ? esc(g.artist) : g.albums ? `${g.albums.size} album${g.albums.size === 1 ? "" : "s"}` : `${g.artists.size} artist${g.artists.size === 1 ? "" : "s"}`}</span>
+    <span>${esc(g.name)}</span><span class="d">${esc(groupNote(g))}</span>
     <span class="num">${g.songs.length}</span><span class="d">song${g.songs.length === 1 ? "" : "s"}</span></div>`;
 }
 function drawRows() {
@@ -397,7 +349,7 @@ $("mlRows").addEventListener("click", e => {
 function syncMlSel() { document.querySelectorAll("#mlRows .trow").forEach(r => { const on = mlSel.has(r.dataset.id); r.classList.toggle("sel", on); r.setAttribute("aria-selected", String(on)); }); }
 $("mlRows").addEventListener("dblclick", e => {
   const g = e.target.closest(".grow");
-  if (g) { const grp = vRows.find(x => x.key === g.dataset.g); if (grp) { Eng.ensure(); const ids = mlView.type === "genres" ? grp.songs.slice() : inOrder(grp.songs); setPl(ids); playIndex(S.shuffle ? Math.floor(Math.random() * ids.length) : 0); } return; }
+  if (g) { const grp = vRows.find(x => x.key === g.dataset.g); if (grp) { Eng.ensure(); const ids = mlView.type === "genres" ? grp.songs.slice() : albumOrder(grp.songs.map(byId)).map(t => t.id); setPl(ids); playIndex(S.shuffle ? Math.floor(Math.random() * ids.length) : 0); } return; }
   if (e.target.closest("[data-star]")) return;
   const row = e.target.closest(".trow"); if (!row) return;
   Eng.ensure();

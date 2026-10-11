@@ -9,135 +9,161 @@
 <link rel="stylesheet" href="../../style-kit/tokens.css">
 <link rel="stylesheet" href="../../style-kit/base.css">
 <link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/library.css">
 <style>
-  body { height: 100%; min-height: 320px; padding: 8px; display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px; overflow: auto; }
-  .well { background: #0a0810; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; min-height: 0; }
-  nav { display: flex; flex-direction: column; gap: 2px; padding: 6px 4px; overflow-y: auto; }
-  .head { padding: 8px 8px 4px; }
-  .fold { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border-radius: 2px; text-align: left; color: var(--ink-dim); font-weight: 600; font-size: 12.5px; }
-  .fold:hover { color: var(--ink); background: #ffffff0a; }
-  .fold[aria-current="true"] { background: var(--sel); color: var(--ink); }
-  .fold svg { width: 15px; height: 15px; fill: var(--ball); flex: none; }
-  .fold .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .fold .n { margin-left: auto; font-family: var(--font-lcd); font-size: 15px; color: var(--ink-faint); }
+  body { height: 100%; min-height: 320px; padding: 8px; display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 8px; overflow: auto; }
   main { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
   .tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .path { flex: 1; min-width: 120px; font-size: 18px; line-height: 24px; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .list { flex: 1; overflow: auto; }
-  .row, .thead { display: grid; grid-template-columns: 22px minmax(0, 2fr) minmax(0, 1.2fr) 64px 72px 90px; gap: 10px; padding: 0 10px; align-items: center; min-width: 560px; }
-  .thead { position: sticky; top: 0; height: 24px; background: linear-gradient(180deg, #3a3550, #24202f); border-bottom: 1px solid #000; }
-  .thead span { font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-dim); white-space: nowrap; }
-  .row { height: 28px; font-size: 12.5px; cursor: default; user-select: none; }
-  .row:nth-child(even) { background: #ffffff04; }
-  .row.sel { background: var(--sel); }
-  .row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .d { color: var(--ink-dim); }
-  .row .num { font-family: var(--font-lcd); font-size: 16px; color: var(--ink-dim); text-align: right; }
-  .row svg { width: 15px; height: 15px; fill: var(--ball); }
-  .r { text-align: right; }
-  .empty { padding: 20px 14px; color: var(--ink-dim); line-height: 1.5; }
-  .empty b { color: var(--ink); display: block; }
+  .search { display: flex; align-items: center; height: 24px; padding: 0 8px; background: #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; }
+  .search input { background: none; border: 0; outline: none; width: 130px; font-size: 12.5px; }
+  .search:focus-within { box-shadow: 0 0 0 1px var(--ball); }
+  .lwell { flex: 1; }
+  .lhead, .lrow.song { grid-template-columns: 18px minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 0.9fr) 52px 64px 84px; min-width: 760px; }
   .status { font-size: 11.5px; color: var(--ink-dim); min-height: 16px; }
   .btn:disabled { opacity: .45; cursor: default; }
   .note { padding: 10px 12px; font-family: var(--font-lcd); font-size: 19px; line-height: 1.25; color: var(--ball); white-space: pre-wrap; overflow: auto; flex: 1; }
-  @media (max-width: 560px) { body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); } nav { max-height: 130px; } }
+  @media (max-width: 560px) { body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); } .ltree { max-height: 140px; } }
 </style>
 </head>
 <body>
-  <nav class="well" id="tree" aria-label="Folders"></nav>
+  <nav class="ltree" id="tree" aria-label="Folders"></nav>
   <main>
     <div class="tools">
+      <button class="btn" id="back" hidden>‹ Back</button>
       <span class="lcd path" id="path">/</span>
+      <label class="search"><input id="q" type="search" placeholder="Search" aria-label="Search"></label>
       <button class="btn" id="play" disabled>Play</button>
       <button class="btn" id="save" disabled>Download</button>
       <button class="btn" id="rename" disabled>Rename</button>
       <button class="btn" id="del" disabled>Delete</button>
     </div>
-    <div class="well list" id="list" role="grid" aria-label="Files" tabindex="0"></div>
+    <div class="lwell" id="list" role="grid" aria-label="Files" tabindex="0">
+      <div class="lhead" role="row"><span>★</span><span>Name</span><span>Artist</span><span>Album</span><span>Genre</span><span>Type</span><span style="text-align:right">Size</span><span style="text-align:right">Added</span></div>
+      <div id="rows"></div>
+    </div>
     <div class="status" id="status"></div>
   </main>
   <script type="module">
     import "../../core/os-link.js";
     import { applyTheme, onTheme } from "../../core/theme.js";
     import { openDb, all, put, del, notifyLibraryChange, onLibraryChange } from "../../core/backup.js";
+    import { buildGroups, viewSongs, viewGroups, viewTitle, isGroupView, openGroup, parentView, searchSongs, searchGroups, groupNote } from "../../core/library.js";
+    import { treeHTML, treeClick, treeIcon } from "../../core/library-tree.js";
+    import { vlist } from "../../style-kit/vlist.js";
     import { esc, toast, dialog } from "../../style-kit/ui.js";
     applyTheme(); onTheme(applyTheme);
 
     const $ = id => document.getElementById(id);
-    const P = { folder: "M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z", song: "M12 3v10.55A4 4 0 1 0 14 17V7h4V3z", list: "M3 6h12v2H3zm0 5h12v2H3zm0 5h8v2H3zm13-1 6 3.5-6 3.5z", note: "M5 3h10l4 4v14H5zm9 1.5V8h3.5zM8 11h8v1.6H8zm0 3.5h8v1.6H8zm0 3.5h5v1.6H8z" };
-    const ico = d => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
     const mb = n => n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : (n / 1e6).toFixed(1) + " MB";
     const ext = t => ({ "audio/mpeg": "MP3", "audio/flac": "FLAC", "audio/wav": "WAV", "audio/x-wav": "WAV", "audio/ogg": "OGG", "audio/mp4": "M4A", "audio/aac": "AAC", "audio/webm": "WEBM" }[(t || "").split(";")[0]] || "AUDIO");
     const day = s => s ? new Date(s).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+    const pathOf = v => v.type === "notes" ? "/DOCUMENTS/NOTES" : "/" + ({ all: "LIBRARY/SONGS", artists: "LIBRARY/ARTISTS", albums: "LIBRARY/ALBUMS", genres: "LIBRARY/GENRES", artist: "LIBRARY/ARTISTS/", album: "LIBRARY/ALBUMS/", genre: "LIBRARY/GENRES/", smart: "SMART/", pl: "PLAYLISTS/" }[v.type] || "") +
+      (["artist", "album", "genre", "smart", "pl"].includes(v.type) ? viewTitle(v, playlists, groups) : "").toUpperCase();
 
-    let tracks = [], playlists = [], view = { type: "all" }, sel = new Set(), anchor = null;
+    let tracks = [], playlists = [], groups = buildGroups([]), view = { type: "all" }, sel = new Set(), anchor = null, shown = [];
+    const list = vlist($("list"), $("rows"), { rowHeight: 26, head: 24, empty: emptyText });
+    function emptyText() {
+      if ($("q").value.trim()) return `<div class="lempty"><b>Nothing matches.</b>Try a title, artist, album or genre.</div>`;
+      if (view.type === "pl") return `<div class="lempty"><b>This playlist is empty.</b>Add songs to it from Amp's library.</div>`;
+      if (view.type === "smart") return `<div class="lempty"><b>Nothing here yet.</b>${view.id === "fav" ? "Click the star beside a song to add it." : view.id.startsWith("b") ? "Songs appear once their tempo has been worked out." : "Songs appear here as you play them in Amp."}</div>`;
+      return `<div class="lempty"><b>No songs yet.</b>Add songs in Amp, or restore a backup in Settings.</div>`;
+    }
     async function load() {
       try { const db = await openDb(); tracks = await all(db, "tracks"); playlists = await all(db, "playlists"); db.close(); }
       catch (e) { tracks = []; playlists = []; $("status").textContent = "This browser can't open the library."; }
+      tracks.forEach(t => { if (t.coverBlob && !t.coverUrl) t.coverUrl = URL.createObjectURL(t.coverBlob); });
       playlists.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+      groups = buildGroups(tracks);
       if (view.type === "pl" && !playlists.some(p => p.id === view.id)) view = { type: "all" };
       const live = new Set(tracks.map(t => t.id)); sel = new Set([...sel].filter(id => live.has(id)));
-      render();
+      render(true);
     }
     const byId = id => tracks.find(t => t.id === id);
-    function shown() {
-      if (view.type === "pl") { const p = playlists.find(x => x.id === view.id); return p ? p.tracks.map(byId).filter(Boolean) : []; }
-      return tracks.slice().sort((a, b) => String(b.addedAt).localeCompare(String(a.addedAt)));
-    }
 
-    function render() {
-      $("tree").innerHTML = `<span class="head lbl">Library</span>
-        <button class="fold" data-v="all" aria-current="${view.type === "all"}">${ico(P.folder)}<span class="name">Songs</span><span class="n">${tracks.length}</span></button>
-        <span class="head lbl">Playlists</span>
-        ${playlists.map(p => `<button class="fold" data-pl="${esc(p.id)}" aria-current="${view.type === "pl" && view.id === p.id}">${ico(P.list)}<span class="name">${esc(p.name)}</span><span class="n">${p.tracks.filter(byId).length}</span></button>`).join("") || `<span class="fold" style="cursor:default">None yet</span>`}
-        <span class="head lbl">Documents</span>
-        <button class="fold" data-v="notes" aria-current="${view.type === "notes"}">${ico(P.note)}<span class="name">Notes</span></button>`;
-      const pl = view.type === "pl" ? playlists.find(p => p.id === view.id) : null;
-      $("path").textContent = view.type === "notes" ? "/DOCUMENTS/NOTES" : pl ? `/PLAYLISTS/${pl.name.toUpperCase()}` : "/LIBRARY/SONGS";
+    function render(keepScroll) {
+      $("tree").innerHTML = treeHTML(view, tracks, playlists, groups, `<span class="head lbl">Documents</span><button class="fold" data-notes aria-current="${view.type === "notes"}">${treeIcon("songs")}<span class="name">Notes</span></button>`);
+      $("path").textContent = pathOf(view);
+      $("back").hidden = !["artist", "album", "genre"].includes(view.type);
       if (view.type === "notes") {
         let txt = ""; try { txt = localStorage.getItem("neon-os:notes") || ""; } catch (e) {}
-        $("list").innerHTML = `<div class="note">${esc(txt) || "Notes is empty."}</div>`;
+        $("list").classList.add("groups");
+        $("rows").innerHTML = `<div class="note">${esc(txt) || "Notes is empty."}</div>`;
         $("status").textContent = `${txt.length} characters · open Notes to edit`;
         ["play", "rename", "del"].forEach(id => $(id).disabled = true); $("save").disabled = !txt;
         return;
       }
-      const list = shown();
-      $("list").innerHTML = `<div class="thead" role="row"><span></span><span>Name</span><span>Artist</span><span>Type</span><span class="r">Size</span><span class="r">Added</span></div>` +
-        (list.length ? list.map(t => `<div class="row${sel.has(t.id) ? " sel" : ""}" role="row" data-id="${esc(t.id)}" aria-selected="${sel.has(t.id)}">${ico(P.song)}<span>${esc(t.title)}</span><span class="d">${esc(t.artist || "")}</span><span class="d">${ext(t.mime)}</span><span class="num">${t.blob ? mb(t.blob.size) : ""}</span><span class="num">${esc(day(t.addedAt))}</span></div>`).join("")
-          : `<div class="empty"><b>${pl ? "This playlist is empty." : "No songs yet."}</b>${pl ? "Add songs to it from Amp's library." : "Add songs in Amp, or restore a backup in Settings."}</div>`);
-      $("del").textContent = pl ? "Remove" : "Delete";
+      const grp = isGroupView(view);
+      $("list").classList.toggle("groups", grp);
+      if (grp) {
+        shown = searchGroups(viewGroups(view, groups), $("q").value);
+        list.set(shown, g => `<div class="lrow group" role="row" data-g="${esc(g.key)}" title="Open · double-click to play">
+          ${view.type === "albums" ? (g.cover ? `<img class="thumb" src="${esc(g.cover)}" alt="">` : `<span class="thumb"></span>`) : treeIcon(view.type)}
+          <span>${esc(g.name)}</span><span class="d">${esc(groupNote(g))}</span><span class="num">${g.songs.length}</span><span class="d">song${g.songs.length === 1 ? "" : "s"}</span></div>`, { keepScroll });
+        $("status").textContent = `${shown.length} ${view.type.slice(0, -1)}${shown.length === 1 ? "" : "s"}`;
+        ["play", "save", "rename", "del"].forEach(id => $(id).disabled = true);
+        return;
+      }
+      shown = searchSongs(viewSongs(view, tracks, playlists, groups), $("q").value);
+      if (view.type === "all") shown.sort((a, b) => String(b.addedAt).localeCompare(String(a.addedAt)));
+      list.set(shown, t => `<div class="lrow song${sel.has(t.id) ? " sel" : ""}" role="row" data-id="${esc(t.id)}" aria-selected="${sel.has(t.id)}">
+        <span class="star${t.fav ? " on" : ""}" data-star title="${t.fav ? "Remove from favourites" : "Add to favourites"}">${t.fav ? "★" : "☆"}</span>
+        <span>${esc(t.title)}</span><span class="d">${esc(t.artist || "")}</span><span class="d">${esc(t.album || "")}</span><span class="d">${esc(t.genre || "")}</span>
+        <span class="d">${ext(t.mime)}</span><span class="num">${t.blob ? mb(t.blob.size) : ""}</span><span class="num">${esc(day(t.addedAt))}</span></div>`, { keepScroll });
+      $("del").textContent = view.type === "pl" ? "Remove" : "Delete";
       syncSel();
     }
-    // selection changes update the rows in place, so a double-click lands on the same row twice
+    // selection updates the rows in place, so a double-click lands on the same row twice
     function syncSel() {
-      document.querySelectorAll("#list .row").forEach(r => { const on = sel.has(r.dataset.id); r.classList.toggle("sel", on); r.setAttribute("aria-selected", String(on)); });
-      const list = shown(), bytes = list.reduce((n, t) => n + (t.blob ? t.blob.size : 0), 0);
-      $("status").textContent = sel.size ? `${sel.size} selected` : `${list.length} ${list.length === 1 ? "song" : "songs"} · ${mb(bytes)}`;
+      document.querySelectorAll("#rows .lrow.song").forEach(r => { const on = sel.has(r.dataset.id); r.classList.toggle("sel", on); r.setAttribute("aria-selected", String(on)); });
+      const bytes = shown.reduce((n, t) => n + (t.blob ? t.blob.size : 0), 0);
+      $("status").textContent = sel.size ? `${sel.size} selected` : `${shown.length} ${shown.length === 1 ? "song" : "songs"} · ${mb(bytes)}`;
       const n = sel.size; $("play").disabled = !n; $("save").disabled = n !== 1; $("rename").disabled = n !== 1; $("del").disabled = !n;
     }
+    const setView = v => { view = v; sel.clear(); anchor = null; $("q").value = ""; render(false); };
 
     $("tree").addEventListener("click", e => {
-      const b = e.target.closest(".fold[data-v], .fold[data-pl]"); if (!b) return;
-      view = b.dataset.pl ? { type: "pl", id: b.dataset.pl } : { type: b.dataset.v }; sel.clear(); render();
+      if (e.target.closest("[data-notes]")) { setView({ type: "notes" }); return; }
+      const v = treeClick(e); if (v) setView(v);
     });
-    $("list").addEventListener("click", e => {
-      const r = e.target.closest(".row"); if (!r) return;
-      const id = r.dataset.id, ids = shown().map(t => t.id);
+    $("back").addEventListener("click", () => setView(parentView(view)));
+    $("q").addEventListener("input", () => { sel.clear(); render(false); });
+    $("list").addEventListener("click", async e => {
+      const g = e.target.closest(".lrow.group"); if (g) { setView(openGroup(view, g.dataset.g)); return; }
+      const r = e.target.closest(".lrow.song"); if (!r) return;
+      if (e.target.closest("[data-star]")) { await toggleFav(r.dataset.id); return; }
+      const id = r.dataset.id, ids = shown.map(t => t.id);
       if (e.shiftKey && anchor) { const a = ids.indexOf(anchor), b = ids.indexOf(id); sel = new Set(ids.slice(Math.min(a, b), Math.max(a, b) + 1)); }
       else if (e.ctrlKey || e.metaKey) { sel.has(id) ? sel.delete(id) : sel.add(id); anchor = id; }
       else { sel = new Set([id]); anchor = id; }
       syncSel();
     });
-    $("list").addEventListener("dblclick", e => { const r = e.target.closest(".row"); if (r) playIds([r.dataset.id]); });
+    $("list").addEventListener("dblclick", e => {
+      if (e.target.closest("[data-star]")) return;
+      const g = e.target.closest(".lrow.group");
+      if (g) { const grp = shown.find(x => x.key === g.dataset.g); if (grp) playIds(viewSongs(openGroup(view, grp.key), tracks, playlists, groups).map(t => t.id), true); return; }
+      const r = e.target.closest(".lrow.song"); if (r) playIds([r.dataset.id]);
+    });
     $("list").addEventListener("keydown", e => {
+      if (isGroupView(view) || view.type === "notes") return;
+      const ids = shown.map(t => t.id); if (!ids.length) return;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        const i = Math.max(0, Math.min(ids.length - 1, ids.indexOf(anchor) + (e.key === "ArrowDown" ? 1 : -1)));
+        sel = new Set([ids[i]]); anchor = ids[i]; list.ensureVisible(i); syncSel(); e.preventDefault();
+      }
       if (e.key === "Enter" && sel.size) playIds([...sel]);
       if (e.key === "Delete" && sel.size) remove();
-      if ((e.key === "a" || e.key === "A") && (e.ctrlKey || e.metaKey)) { sel = new Set(shown().map(t => t.id)); render(); e.preventDefault(); }
+      if ((e.key === "a" || e.key === "A") && (e.ctrlKey || e.metaKey)) { sel = new Set(ids); syncSel(); list.draw(); e.preventDefault(); }
     });
+    async function toggleFav(id) {
+      const t = byId(id); if (!t) return;
+      try { const db = await openDb(); const { coverUrl, ...rec } = t; void coverUrl; await put(db, "tracks", { ...rec, fav: !t.fav }); db.close(); t.fav = !t.fav; notifyLibraryChange("edit"); render(true); }
+      catch (e) { toast("Couldn't change that favourite. Try again.", true); }
+    }
 
     // Play goes to Amp through the desktop; opened on its own, Files says so instead.
-    function playIds(ids) {
-      const order = shown().map(t => t.id).filter(id => ids.includes(id));
+    function playIds(ids, inOrder) {
+      const order = inOrder ? ids : shown.map(t => t.id).filter(id => ids.includes(id));
       if (window.parent !== window) parent.postMessage({ neonOs: "play", ids: order }, location.origin);
       else toast("Open Files from the Neon OS desktop to play songs in Amp.");
     }
@@ -150,10 +176,10 @@
     });
     $("rename").addEventListener("click", async () => {
       const t = byId([...sel][0]); if (!t) return;
-      const r = await dialog({ title: "Rename", fields: [{ label: "Title", value: t.title }, { label: "Artist", value: t.artist || "" }, { label: "Album", value: t.album || "" }], confirm: "Save" });
+      const r = await dialog({ title: "Edit details", fields: [{ label: "Title", value: t.title }, { label: "Artist", value: t.artist || "" }, { label: "Album", value: t.album || "" }, { label: "Genre", value: t.genre || "" }], confirm: "Save" });
       if (!r) return;
-      try { const db = await openDb(); await put(db, "tracks", { ...t, title: r[0] || t.title, artist: r[1], album: r[2] }); db.close(); notifyLibraryChange("edit"); await load(); }
-      catch (e) { toast("Couldn't rename that song. Try again.", true); }
+      try { const db = await openDb(); const { coverUrl, ...rec } = t; void coverUrl; await put(db, "tracks", { ...rec, title: r[0] || t.title, artist: r[1], album: r[2], genre: r[3] }); db.close(); notifyLibraryChange("edit"); await load(); }
+      catch (e) { toast("Couldn't save those details. Try again.", true); }
     });
     async function remove() {
       const pl = view.type === "pl" ? playlists.find(p => p.id === view.id) : null, ids = [...sel];
@@ -173,9 +199,11 @@
     }
     $("del").addEventListener("click", remove);
 
-    onLibraryChange(load);
-    addEventListener("focus", load);
-    addEventListener("storage", e => { if (e.key === "neon-os:notes" && view.type === "notes") render(); });
+    let reloadT = null;
+    const soon = () => { clearTimeout(reloadT); reloadT = setTimeout(load, 400); }; // a burst of changes reloads once
+    onLibraryChange(soon);
+    addEventListener("focus", soon);
+    addEventListener("storage", e => { if (e.key === "neon-os:notes" && view.type === "notes") render(true); });
     load();
   </script>
 </body>

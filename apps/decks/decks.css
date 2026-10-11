@@ -33,19 +33,13 @@ body { padding: 10px; display: flex; flex-direction: column; gap: 10px; min-heig
 .led.rec { background: #3a1020 !important; }
 #rec[aria-pressed="true"] .led.rec { background: var(--danger) !important; box-shadow: 0 0 8px var(--danger) !important; }
 #rec[aria-pressed="true"] { color: var(--danger); }
-.crate { flex: 1; min-height: 120px; display: flex; flex-direction: column; gap: 6px; }
+.crate { flex: 1; min-height: 160px; display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 8px; }
+.crate-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
 .crate-top { display: flex; align-items: center; gap: 8px; }
-.search { display: flex; align-items: center; height: 24px; padding: 0 8px; background: #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; }
+.crate-top #crateTitle { color: var(--ink); max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.search { display: flex; align-items: center; height: 24px; padding: 0 8px; background: #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; margin-left: auto; }
 .search input { background: none; border: 0; outline: none; width: 160px; font-size: 12.5px; }
 .search:focus-within { box-shadow: 0 0 0 1px var(--ball); }
-.hint { color: var(--ink-faint); font-size: 11.5px; }
-.list { flex: 1; overflow: auto; background: #0a0810; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; }
-.row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) 52px 54px 64px 64px; gap: 10px; align-items: center; padding: 0 10px; height: 30px; font-size: 12.5px; min-width: 560px; }
-.row:nth-child(even) { background: #ffffff04; }
-.row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row .d { color: var(--ink-dim); }
-.row .num { font-family: var(--font-lcd); font-size: 16px; color: var(--ink-dim); text-align: right; }
-.row .btn { min-height: 22px; padding: 0 8px; font-size: 9.5px; }
-.empty { padding: 18px 14px; color: var(--ink-dim); line-height: 1.5; }
-.empty b { color: var(--ink); display: block; }
+.lwell { flex: 1; }
+.lhead, .lrow.song { grid-template-columns: 18px minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 0.9fr) 46px 50px 60px 60px; min-width: 620px; }
 @media (max-width: 900px) { .console { grid-template-columns: 1fr; } body { overflow: auto; height: auto; } }

@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="../../style-kit/tokens.css">
 <link rel="stylesheet" href="../../style-kit/base.css">
 <link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/library.css">
 <link rel="stylesheet" href="decks.css">
 </head>
 <body>
@@ -41,8 +42,14 @@
     <section class="deck" data-deck="B" aria-label="Deck B"></section>
   </div>
   <section class="crate" aria-label="Library">
-    <div class="crate-top"><span class="lbl">Library</span><label class="search"><input id="q" type="search" placeholder="Search" aria-label="Search the library"></label><span class="hint" id="crateHint"></span></div>
-    <div class="list" id="list" role="grid" aria-label="Songs"></div>
+    <nav class="ltree" id="tree" aria-label="Library sections"></nav>
+    <div class="crate-main">
+      <div class="crate-top"><button class="btn" id="back" hidden>‹ Back</button><span class="lbl" id="crateTitle">All songs</span><label class="search"><input id="q" type="search" placeholder="Search" aria-label="Search the library"></label><span class="hint" id="crateHint"></span></div>
+      <div class="lwell" id="list" role="grid" aria-label="Songs">
+        <div class="lhead" role="row"><span>★</span><span>Title</span><span>Artist</span><span>Genre</span><span style="text-align:right">BPM</span><span style="text-align:right">Time</span><span></span><span></span></div>
+        <div id="rows"></div>
+      </div>
+    </div>
   </section>
   <script type="module" src="decks.js"></script>
 </body>

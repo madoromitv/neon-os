@@ -4,7 +4,10 @@
 // The mixer has three-band EQ and a fader per deck, an equal-power crossfader, master volume and mix recording.
 import "../../core/os-link.js";
 import { applyTheme, onTheme } from "../../core/theme.js";
-import { openDb, all, onLibraryChange } from "../../core/backup.js";
+import { openDb, all, put, onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
+import { buildGroups, viewSongs, viewGroups, viewTitle, isGroupView, openGroup, parentView, searchSongs, searchGroups, groupNote } from "../../core/library.js";
+import { treeHTML, treeClick, treeIcon } from "../../core/library-tree.js";
+import { vlist } from "../../style-kit/vlist.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, esc, dialog } from "../../style-kit/ui.js";
 applyTheme(); onTheme(applyTheme);
@@ -200,22 +203,56 @@ $("rec").addEventListener("click", () => {
   rec.start(1000); recStart = performance.now(); $("rec").setAttribute("aria-pressed", "true");
 });
 
-// ---------- library ----------
-let tracks = [];
+// ---------- library: the same sections as Amp and Files ----------
+let tracks = [], playlists = [], groups = buildGroups([]), view = { type: "all" }, shown = [];
+const list = vlist($("list"), $("rows"), { rowHeight: 26, head: 24, empty: () => `<div class="lempty"><b>${$("q").value.trim() ? "Nothing matches." : tracks.length ? "Nothing here yet." : "No songs yet."}</b>${$("q").value.trim() ? "Try a title, artist, album or genre." : tracks.length ? (view.type === "smart" && view.id.startsWith("b") ? "Songs appear once their tempo has been worked out." : "") : "Add songs in Amp; they appear here straight away."}</div>` });
 async function loadLibrary() {
-  try { const db = await openDb(); tracks = (await all(db, "tracks")).filter(t => t.blob); db.close(); } catch (e) { tracks = []; }
-  renderList();
+  try { const db = await openDb(); tracks = (await all(db, "tracks")).filter(t => t.blob); playlists = await all(db, "playlists"); db.close(); } catch (e) { tracks = []; playlists = []; }
+  tracks.forEach(t => { if (t.coverBlob && !t.coverUrl) t.coverUrl = URL.createObjectURL(t.coverBlob); });
+  playlists.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  groups = buildGroups(tracks);
+  if (view.type === "pl" && !playlists.some(p => p.id === view.id)) view = { type: "all" };
+  renderList(true);
 }
-function renderList() {
-  const q = $("q").value.trim().toLowerCase();
-  const list = tracks.filter(t => !q || [t.title, t.artist, t.album].some(v => (v || "").toLowerCase().includes(q))).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+function renderList(keepScroll) {
+  $("tree").innerHTML = treeHTML(view, tracks, playlists, groups);
+  $("crateTitle").textContent = viewTitle(view, playlists, groups);
+  $("back").hidden = !["artist", "album", "genre"].includes(view.type);
+  const grp = isGroupView(view);
+  $("list").classList.toggle("groups", grp);
   $("crateHint").textContent = tracks.length ? `${tracks.length} song${tracks.length === 1 ? "" : "s"}` : "";
-  $("list").innerHTML = list.length ? list.map(t => `<div class="row" role="row"><span>${esc(t.title)}</span><span class="d">${esc(t.artist || "")}</span><span class="num">${t.bpm ? Math.round(t.bpm) : ""}</span><span class="num">${fmt(t.duration)}</span><button class="btn" data-load="A" data-id="${esc(t.id)}">Load A</button><button class="btn" data-load="B" data-id="${esc(t.id)}">Load B</button></div>`).join("")
-    : `<div class="empty"><b>${tracks.length ? "No songs match." : "No songs yet."}</b>${tracks.length ? "Try a title or artist." : "Add songs in Amp; they appear here straight away."}</div>`;
+  if (grp) {
+    shown = searchGroups(viewGroups(view, groups), $("q").value);
+    list.set(shown, g => `<div class="lrow group" role="row" data-g="${esc(g.key)}" title="Open">
+      ${view.type === "albums" ? (g.cover ? `<img class="thumb" src="${esc(g.cover)}" alt="">` : `<span class="thumb"></span>`) : treeIcon(view.type)}
+      <span>${esc(g.name)}</span><span class="d">${esc(groupNote(g))}</span><span class="num">${g.songs.length}</span><span class="d">song${g.songs.length === 1 ? "" : "s"}</span></div>`, { keepScroll });
+    return;
+  }
+  shown = searchSongs(viewSongs(view, tracks, playlists, groups), $("q").value);
+  if (view.type === "all") shown.sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }));
+  list.set(shown, t => `<div class="lrow song" role="row" data-id="${esc(t.id)}">
+    <span class="star${t.fav ? " on" : ""}" data-star title="${t.fav ? "Remove from favourites" : "Add to favourites"}">${t.fav ? "★" : "☆"}</span>
+    <span>${esc(t.title)}</span><span class="d">${esc(t.artist || "")}</span><span class="d">${esc(t.genre || "")}</span>
+    <span class="num">${t.bpm ? Math.round(t.bpm) : ""}</span><span class="num">${fmt(t.duration)}</span>
+    <button class="btn" data-load="A" data-id="${esc(t.id)}">Load A</button><button class="btn" data-load="B" data-id="${esc(t.id)}">Load B</button></div>`, { keepScroll });
 }
-$("list").addEventListener("click", e => { const b = e.target.closest("[data-load]"); if (!b) return; const t = tracks.find(x => x.id === b.dataset.id); if (t) load(b.dataset.load, t); });
-$("q").addEventListener("input", renderList);
-onLibraryChange(loadLibrary); addEventListener("focus", loadLibrary);
+const setView = v => { view = v; $("q").value = ""; renderList(false); };
+$("tree").addEventListener("click", e => { const v = treeClick(e); if (v) setView(v); });
+$("back").addEventListener("click", () => setView(parentView(view)));
+$("list").addEventListener("click", async e => {
+  const g = e.target.closest(".lrow.group"); if (g) { setView(openGroup(view, g.dataset.g)); return; }
+  const st = e.target.closest("[data-star]");
+  if (st) {
+    const t = tracks.find(x => x.id === st.closest(".lrow").dataset.id); if (!t) return;
+    try { const db = await openDb(); const { coverUrl, ...rec } = t; void coverUrl; await put(db, "tracks", { ...rec, fav: !t.fav }); db.close(); t.fav = !t.fav; notifyLibraryChange("edit"); renderList(true); } catch (err) { toast("Couldn't change that favourite.", true); }
+    return;
+  }
+  const b = e.target.closest("[data-load]"); if (!b) return; const t = tracks.find(x => x.id === b.dataset.id); if (t) load(b.dataset.load, t);
+});
+$("q").addEventListener("input", () => renderList(false));
+let reloadT = null;
+const soon = () => { clearTimeout(reloadT); reloadT = setTimeout(loadLibrary, 400); }; // a burst of changes reloads once
+onLibraryChange(soon); addEventListener("focus", soon);
 
 // ---------- frame loop: positions, waveforms, meters ----------
 function frame() {

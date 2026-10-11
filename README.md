@@ -24,12 +24,12 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 | App | What it is | Status |
 | --- | --- | --- |
 | Amp | Music player with library, playlists, equalizer and the Neon Orbit visualiser; browse by artist, album and genre, smart playlists, favourites and play counts; stays quick with thousands of songs | Working |
-| Files | Browse songs, playlists and notes; play in Amp, download, rename, delete | Working |
+| Files | The same library sections as Amp (songs, artists, albums, genres, smart playlists, playlists) plus notes; play in Amp, favourite, download, edit details, delete | Working |
 | Notes | Quick notes, saved in this browser | Working |
 | Settings | Orb colour for every app at once, backup and restore, layout reset | Working |
 | Pulse | 16-step drum machine: 8 synthesised drums, 4 patterns, tempo, swing, accents, WAV export | Working |
 | Drift | Synth: 2 oscillators, filter, envelope, LFO, presets; on-screen, computer or MIDI keyboard; 16-step note sequencer | Working |
-| Decks | Two-deck DJ mixer: waveforms, cue, 4-beat loop, pitch, beat sync, 3-band EQ, crossfader, mix recording | Working |
+| Decks | Two-deck DJ mixer: waveforms, cue, 4-beat loop, pitch, beat sync, 3-band EQ, crossfader, mix recording; loads from the same library sections as Amp | Working |
 
 ## How it's built
 
@@ -44,6 +44,8 @@ style-kit/   the look, shared by every app
   chrome.css   windows, buttons, LEDs, LCD panels, sliders, menus, dialogs
   icons.js     icon paths
   ui.js        toasts, dialogs, menus, sliders
+  vlist.js     lists that only draw the rows on screen
+  library.css  library sidebar and rows
 core/        shared engine, used by every app
   engine.js    audio playback, equalizer, analyser
   analysis.js  beat, tempo and band detection
@@ -57,6 +59,8 @@ core/        shared engine, used by every app
   synth.js     the synth engine Drift plays
   clock.js     the shared clock: Link keeps apps in time across windows
   analyser.js  background analysis queue, with analysis-worker.js doing the work on spare cores
+  library.js   what Artists, Albums, Genres and the smart playlists contain, shared by Amp, Files and Decks
+  library-tree.js  the library sidebar Files and Decks share
 apps/
   registry.js  the list of apps the desktop shows
   amp/         the player
