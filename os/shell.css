@@ -66,3 +66,16 @@ body { overflow: hidden; user-select: none; }
 body > .pop { z-index: 9700; }
 body > .scrim { z-index: 9800; }
 body > .toasts, body > .drop { z-index: 9900; }
+
+/* resize handles on every edge and corner */
+.rz { position: absolute; z-index: 2; }
+.rz-n, .rz-s { left: 10px; right: 10px; height: 6px; cursor: ns-resize; }
+.rz-n { top: -3px; } .rz-s { bottom: -3px; }
+.rz-e, .rz-w { top: 10px; bottom: 10px; width: 6px; cursor: ew-resize; }
+.rz-e { right: -3px; } .rz-w { left: -3px; }
+.rz-ne, .rz-nw, .rz-se, .rz-sw { width: 12px; height: 12px; }
+.rz-ne { top: -3px; right: -3px; cursor: nesw-resize; } .rz-sw { bottom: -3px; left: -3px; cursor: nesw-resize; }
+.rz-nw { top: -3px; left: -3px; cursor: nwse-resize; } .rz-se { bottom: -3px; right: -3px; cursor: nwse-resize; }
+.owin[data-snap="max"] .rz { display: none; }
+.owin.shaded .rz-n, .owin.shaded .rz-s, .owin.shaded .rz-ne, .owin.shaded .rz-nw, .owin.shaded .rz-se, .owin.shaded .rz-sw { display: none; }
+.grip { z-index: 3; }

@@ -2,7 +2,12 @@
 
 A browser desktop and suite of apps in the Neon Orbit style: bevelled gunmetal chrome, LCD panels and glow in the colour of the orb.
 
-Open it and you get a desktop: drag windows by their title bars, snap them to the left, right or top edge, minimise them to the taskbar, and open apps from the Neon button or the desktop icons. The layout is remembered.
+Open it and you get a desktop. Open apps from the Neon button or the desktop icons; the layout is remembered.
+
+- **Snap:** drag a window to the left or right edge for half the screen, a corner for a quarter, the top for full screen
+- **Dock:** windows pull towards the screen edges and each other when close; hold Alt to place freely
+- **Resize:** from any edge or corner
+- **Amp's player** carries every Amp window docked to it, like the classic player; drag any other Amp window to pull it free
 
 **Live:** https://madoromitv.github.io/neon-os/
 

@@ -50,8 +50,7 @@ function buildFramed(app) {
       <button class="tbtn" data-act="min" aria-label="Minimise ${esc(app.name)}" title="Minimise">${svg(ICON.min)}</button>
       <button class="tbtn" data-act="max" aria-label="Maximise ${esc(app.name)}" title="Maximise">${svg(ICON.max)}</button>
       <button class="tbtn" data-act="close" aria-label="Close ${esc(app.name)}" title="Close">${svg(ICON.close)}</button></span></div>
-    <div class="wbody frame"><iframe src="${esc(app.url)}" title="${esc(app.name)}" allow="autoplay; fullscreen"></iframe></div>
-    <span class="grip" aria-hidden="true"></span>`;
+    <div class="wbody frame"><iframe src="${esc(app.url)}" title="${esc(app.name)}" allow="autoplay; fullscreen"></iframe></div>`;
   desk.appendChild(el); els[wid] = el;
   el.querySelector('[data-act="min"]').addEventListener("click", () => minimiseGroup(app.id));
   el.querySelector('[data-act="max"]').addEventListener("click", () => toggleMax(wid));
@@ -82,7 +81,6 @@ async function mountNative(app, savedWins) {
     const wid = `${app.id}:${sec.id}`, el = desk.querySelector(`[data-wid="${CSS.escape(wid)}"]`);
     els[wid] = el;
     const resizable = /Pl|Vis|Ml/.test(sec.id);
-    if (resizable) { const g = document.createElement("span"); g.className = "grip"; g.setAttribute("aria-hidden", "true"); el.appendChild(g); }
     wins[wid] = savedWins && savedWins[wid] ? { ...savedWins[wid], z: ++zTop } : { wid, appId: app.id, x: 0, y: 0, w: 560, h: 300, z: ++zTop, min: false, snap: null, autoH: !resizable };
     wireWindow(wid, resizable);
   }
@@ -95,7 +93,7 @@ async function mountNative(app, savedWins) {
 
 // Amp's classic layout: player, equalizer and playlist stacked on the left; visualiser over the library on the right.
 function defaultAmpLayout(appId) {
-  const a = area(), L = 108, T = 14, G = 10, CW = 560;
+  const a = area(), L = 108, T = 14, G = 0, CW = 560;
   const id = s => `${appId}:${s}`, hOf = s => (els[id(s)] ? els[id(s)].offsetHeight : 200) || 200;
   const set = (s, g) => { if (wins[id(s)]) Object.assign(wins[id(s)], g, { snap: null, min: false }); };
   set("winMain", { x: L, y: T, w: CW }); render(id("winMain"));
@@ -109,18 +107,35 @@ function defaultAmpLayout(appId) {
 }
 
 // ---------- window behaviour shared by both kinds ----------
+// Every window gets eight resize handles (edges and corners). Windows whose height follows their content
+// (Amp's player and equalizer) only resize sideways.
+const DIRS = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
 function wireWindow(wid, resizable) {
-  const el = els[wid];
+  const el = els[wid], st = wins[wid];
   el.addEventListener("pointerdown", () => focus(wid), true);
   el.querySelector(".titlebar").addEventListener("pointerdown", e => startDrag(e, wid));
-  if (resizable) el.querySelector(".grip").addEventListener("pointerdown", e => startResize(e, wid));
+  const old = el.querySelector(".grip"); if (old) old.remove();
+  for (const d of DIRS) {
+    if (st.autoH && d !== "e" && d !== "w") continue;
+    const h = document.createElement("span"); h.className = "rz rz-" + d; h.setAttribute("aria-hidden", "true");
+    h.addEventListener("pointerdown", e => startResize(e, wid, d));
+    el.appendChild(h);
+  }
+  if (!st.autoH) { const g = document.createElement("span"); g.className = "grip"; g.setAttribute("aria-hidden", "true"); el.appendChild(g); g.addEventListener("pointerdown", e => startResize(e, wid, "se")); }
+  void resizable;
 }
 function geom(st) {
-  const a = area();
-  if (st.snap === "max") return { x: 0, y: 0, w: a.w, h: a.h };
-  if (st.snap === "left") return { x: 0, y: 0, w: Math.floor(a.w / 2), h: a.h };
-  if (st.snap === "right") return { x: Math.ceil(a.w / 2), y: 0, w: Math.floor(a.w / 2), h: a.h };
-  return { x: st.x, y: st.y, w: st.w, h: st.h };
+  const a = area(), hw = Math.floor(a.w / 2), hh = Math.floor(a.h / 2);
+  switch (st.snap) {
+    case "max": return { x: 0, y: 0, w: a.w, h: a.h };
+    case "left": return { x: 0, y: 0, w: hw, h: a.h };
+    case "right": return { x: a.w - hw, y: 0, w: hw, h: a.h };
+    case "tl": return { x: 0, y: 0, w: hw, h: hh };
+    case "tr": return { x: a.w - hw, y: 0, w: hw, h: hh };
+    case "bl": return { x: 0, y: a.h - hh, w: hw, h: hh };
+    case "br": return { x: a.w - hw, y: a.h - hh, w: hw, h: hh };
+    default: return { x: st.x, y: st.y, w: st.w, h: st.h };
+  }
 }
 function render(wid) {
   const st = wins[wid], el = els[wid]; if (!st || !el) return;
@@ -128,6 +143,7 @@ function render(wid) {
   Object.assign(el.style, { position: "absolute", left: g.x + "px", top: g.y + "px", width: g.w + "px", height: st.autoH ? "" : g.h + "px", zIndex: st.z });
   el.classList.toggle("min", !!st.min);
   el.classList.toggle("max", !!st.snap);
+  if (st.snap) el.dataset.snap = st.snap; else delete el.dataset.snap;
   const mb = el.querySelector('[data-act="max"]');
   if (mb) { mb.innerHTML = svg(st.snap ? ICON.restore : ICON.max); mb.title = st.snap ? "Restore" : "Maximise"; }
 }
@@ -159,7 +175,11 @@ function keepInView(st, el) {
   st.x = clamp(st.x, -st.w + 120, a.w - 120); st.y = clamp(st.y, 0, Math.max(0, a.h - Math.min(h, 30)));
 }
 
-// ---------- drag, snap, resize ----------
+// ---------- drag, snap, dock, resize ----------
+// Snap: drag to an edge for half the screen, a corner for a quarter, the top for full screen.
+// Dock: window edges pull towards the screen edges and towards other windows' edges when close.
+// Amp's player window carries every Amp window docked to it, like the classic player.
+const MAG = 12, CORNER = 28;
 let snapEl = null;
 function showSnap(zone) {
   if (!zone) { if (snapEl) { snapEl.remove(); snapEl = null; } return; }
@@ -167,37 +187,99 @@ function showSnap(zone) {
   const g = geom({ snap: zone });
   Object.assign(snapEl.style, { left: g.x + 6 + "px", top: g.y + 6 + "px", width: g.w - 12 + "px", height: g.h - 12 + "px" });
 }
+const visible = k => wins[k] && !wins[k].min && els[k] && !els[k].hidden;
+function rectOf(k) { const g = geom(wins[k]); if (wins[k].autoH || wins[k].snap) { g.h = els[k].offsetHeight; g.w = els[k].offsetWidth; } return g; }
+// the edges a moving window may dock to
+function targets(skip) {
+  const a = area(), xs = [{ v: 0 }, { v: a.w }], ys = [{ v: 0 }, { v: a.h }];
+  for (const k in wins) if (!skip.has(k) && visible(k)) {
+    const r = rectOf(k);
+    xs.push({ v: r.x, lo: r.y, hi: r.y + r.h }, { v: r.x + r.w, lo: r.y, hi: r.y + r.h });
+    ys.push({ v: r.y, lo: r.x, hi: r.x + r.w }, { v: r.y + r.h, lo: r.x, hi: r.x + r.w });
+  }
+  return { xs, ys };
+}
+// nearest target within MAG for any of the given edges; lo/hi limit window targets to ones beside us
+function pull(edges, list, lo, hi) {
+  let best = null;
+  for (const e of edges) for (const t of list) {
+    if (t.lo != null && (hi < t.lo - MAG || lo > t.hi + MAG)) continue;
+    const d = t.v - e; if (Math.abs(d) <= MAG && (!best || Math.abs(d) < Math.abs(best))) best = d;
+  }
+  return best || 0;
+}
+// windows of the same app touching the given one, and everything touching those
+function dockedGroup(wid) {
+  const app = wins[wid].appId, group = new Set([wid]), todo = [wid];
+  const touch = (a, b) => {
+    const A = rectOf(a), B = rectOf(b), near = (p, q) => Math.abs(p - q) <= 2;
+    const vOver = A.y < B.y + B.h && B.y < A.y + A.h, hOver = A.x < B.x + B.w && B.x < A.x + A.w;
+    return (vOver && (near(A.x + A.w, B.x) || near(B.x + B.w, A.x))) || (hOver && (near(A.y + A.h, B.y) || near(B.y + B.h, A.y)));
+  };
+  while (todo.length) { const c = todo.pop(); for (const k of appWins(app)) if (!group.has(k) && visible(k) && !wins[k].snap && touch(c, k)) { group.add(k); todo.push(k); } }
+  return group;
+}
 function startDrag(e, wid) {
   if (e.button !== 0 || e.target.closest("button")) return;
   const st = wins[wid], el = els[wid];
   e.preventDefault(); el.setPointerCapture(e.pointerId);
+  const lead = /:winMain$/.test(wid);
+  const group = lead && !st.snap ? dockedGroup(wid) : new Set([wid]);
+  const start = {}; for (const k of group) { const r = rectOf(k); start[k] = { x: r.x, y: r.y }; }
   let g = geom(st), offX = e.clientX - g.x, offY = e.clientY - g.y, zone = null, moved = false;
   document.body.classList.add("dragging");
   const move = ev => {
     if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
-    if (!moved && st.snap) { const fx = offX / g.w; st.snap = null; offX = fx * st.w; offY = Math.min(offY, 18); }
+    if (!moved && st.snap) { const fx = offX / g.w; st.snap = null; offX = fx * st.w; offY = Math.min(offY, 18); start[wid] = { x: st.x, y: st.y }; }
     moved = true;
-    st.x = ev.clientX - offX; st.y = clamp(ev.clientY - offY, 0, area().h - 30);
-    render(wid);
-    zone = st.autoH ? null : ev.clientY <= SNAP_EDGE ? "max" : ev.clientX <= SNAP_EDGE ? "left" : ev.clientX >= innerWidth - SNAP_EDGE ? "right" : null;
+    const a = area(), r = rectOf(wid);
+    let x = ev.clientX - offX, y = clamp(ev.clientY - offY, 0, a.h - 30);
+    zone = null;
+    if (!st.autoH && group.size === 1) {
+      const cx = ev.clientX, cy = ev.clientY, L = cx <= SNAP_EDGE, R = cx >= innerWidth - SNAP_EDGE, T = cy <= SNAP_EDGE, B = cy >= a.h - SNAP_EDGE;
+      if ((L || cx <= CORNER) && (T || cy <= CORNER) && (L || T)) zone = "tl";
+      else if ((R || cx >= innerWidth - CORNER) && (T || cy <= CORNER) && (R || T)) zone = "tr";
+      else if ((L || cx <= CORNER) && (B || cy >= a.h - CORNER) && (L || B)) zone = "bl";
+      else if ((R || cx >= innerWidth - CORNER) && (B || cy >= a.h - CORNER) && (R || B)) zone = "br";
+      else zone = T ? "max" : L ? "left" : R ? "right" : null;
+    }
+    if (!zone && !ev.altKey) { // dock; hold Alt to place freely
+      const t = targets(group);
+      x += pull([x, x + r.w], t.xs, y, y + r.h);
+      y += pull([y, y + r.h], t.ys, x, x + r.w);
+    }
+    const dx = x - start[wid].x, dy = y - start[wid].y;
+    for (const k of group) { wins[k].x = start[k].x + dx; wins[k].y = start[k].y + dy; render(k); }
     showSnap(zone);
   };
   const up = () => {
     el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
     document.body.classList.remove("dragging"); showSnap(null);
     if (zone) st.snap = zone;
-    keepInView(st, el); render(wid); saveLayout();
+    for (const k of group) { keepInView(wins[k], els[k]); render(k); }
+    saveLayout();
   };
   el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
 }
-function startResize(e, wid) {
-  const st = wins[wid], el = els[wid]; if (st.snap) return;
+function startResize(e, wid, dir) {
+  if (e.button !== 0) return;
+  const st = wins[wid], el = els[wid];
   e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId);
-  const sx = e.clientX, sy = e.clientY, w0 = st.w, h0 = st.h;
+  if (st.snap) { const g = rectOf(wid); Object.assign(st, g, { snap: null }); if (st.autoH) delete st.h; render(wid); }
+  const s = rectOf(wid), sx = e.clientX, sy = e.clientY, MINW = 260, MINH = 140;
+  const t = targets(new Set([wid]));
   document.body.classList.add("dragging");
-  const move = ev => { st.w = Math.max(260, w0 + ev.clientX - sx); st.h = Math.max(140, h0 + ev.clientY - sy); render(wid); };
-  const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); document.body.classList.remove("dragging"); keepInView(st, el); render(wid); saveLayout(); };
-  el.addEventListener("pointermove", move); el.addEventListener("pointerup", up);
+  const move = ev => {
+    let { x, y, w, h } = s; const dx = ev.clientX - sx, dy = ev.clientY - sy, free = ev.altKey;
+    if (dir.includes("e")) { let r = s.x + s.w + dx; if (!free) r += pull([r], t.xs, y, y + h); w = Math.max(MINW, r - s.x); }
+    if (dir.includes("w")) { let l = s.x + dx; if (!free) l += pull([l], t.xs, y, y + h); l = Math.min(l, s.x + s.w - MINW); x = l; w = s.x + s.w - l; }
+    if (dir.includes("s")) { let b = s.y + s.h + dy; if (!free) b += pull([b], t.ys, x, x + w); h = Math.max(MINH, b - s.y); }
+    if (dir.includes("n")) { let tp = Math.max(0, s.y + dy); if (!free) tp += pull([tp], t.ys, x, x + w); tp = Math.min(tp, s.y + s.h - MINH); y = tp; h = s.y + s.h - tp; }
+    st.x = x; st.y = y; st.w = w; if (!st.autoH) st.h = h;
+    render(wid);
+  };
+  const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); document.body.classList.remove("dragging"); keepInView(st, el); render(wid); saveLayout(); };
+  el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
 }
 // clicks inside a framed app don't reach the shell, so watch where focus goes instead
 addEventListener("blur", () => setTimeout(() => {
