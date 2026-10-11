@@ -101,5 +101,4 @@ To keep them safe or move them, open **Settings → Back up everything**. You ge
 1. Foundations: split Amp into the style kit, core and app (done)
 2. Neon OS shell: desktop, window manager, launcher, settings (done)
 3. The Rack: Pulse, Drift and Decks, with Pulse and Drift on a shared clock (done)
-4. Ship systems: the OS as a ship's console
-5. The game
+4. The game: set aboard a ship whose orb is a sleeping mind; story notes in [LORE.md](LORE.md). Neon OS stays a clean tool with no lore in it.
