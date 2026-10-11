@@ -19,19 +19,22 @@ const area = () => ({ w: innerWidth, h: innerHeight - TASKBAR });
 // A framed app has one window whose id is the app id. A native app has one window per section, e.g. "amp:winVis".
 const LKEY = "neon-os:layout";
 let wins = {}, zTop = 10;
+let split = { x: 0.5, y: 0.5 };   // where halves and quarters meet; drag a shared border to move it
+const closed = new Set();          // native apps that are closed (kept so their layout returns when reopened)
+let parked = {};                   // saved windows of apps not open yet
 const els = {};
 const mounted = new Set();
 function loadLayout() { try { const s = JSON.parse(localStorage.getItem(LKEY) || "{}"); return s && s.wins ? s : null; } catch (e) { return null; } }
 let saveT = null;
-function saveLayout() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(LKEY, JSON.stringify({ wins })); } catch (e) {} }, 200); }
+function saveLayout() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(LKEY, JSON.stringify({ wins, split, closed: [...closed] })); } catch (e) {} }, 200); }
 const appWins = appId => Object.keys(wins).filter(k => wins[k].appId === appId);
 
 // ---------- opening apps ----------
 async function openApp(appId, savedWins) {
   const app = appById(appId); if (!app) return;
   if (app.native) {
-    if (!mounted.has(appId)) await mountNative(app, savedWins);
-    else restoreGroup(appId);
+    if (!mounted.has(appId)) { closed.delete(appId); await mountNative(app, savedWins || parked); }
+    else { closed.delete(appId); appWins(appId).forEach(k => els[k].classList.remove("closed")); restoreGroup(appId); renderTasks(); saveLayout(); }
     return;
   }
   if (wins[appId]) { focus(appId); return; }
@@ -83,12 +86,38 @@ async function mountNative(app, savedWins) {
     const resizable = /Pl|Vis|Ml/.test(sec.id);
     wins[wid] = savedWins && savedWins[wid] ? { ...savedWins[wid], z: ++zTop } : { wid, appId: app.id, x: 0, y: 0, w: 560, h: 300, z: ++zTop, min: false, snap: null, autoH: !resizable };
     wireWindow(wid, resizable);
+    addNativeButtons(app, sec.id, el);
   }
   if (!sections.some(s => savedWins && savedWins[`${app.id}:${s.id}`])) defaultAmpLayout(app.id);
   appWins(app.id).forEach(render);
   await import(new URL(app.url + app.native.js, location.href).href);
   const top = appWins(app.id).sort((a, b) => wins[b].z - wins[a].z)[0];
   focus(top); renderTasks(); saveLayout();
+}
+
+// Native windows get the shell's buttons beside their own: the main window can minimise or close the whole app,
+// every other window can be closed on its own (using the app's own toggle, so the app stays in step).
+function addNativeButtons(app, secId, el) {
+  const tb = el.querySelector(".titlebar"), box = document.createElement("span");
+  box.className = "tbtns";
+  const isMain = secId === app.native.main, toggle = (app.native.panels || {})[secId];
+  if (isMain) box.innerHTML = `<button class="tbtn" data-act="min" aria-label="Minimise ${esc(app.name)}" title="Minimise">${svg(ICON.min)}</button><button class="tbtn" data-act="close" aria-label="Close ${esc(app.name)}" title="Close ${esc(app.name)}">${svg(ICON.close)}</button>`;
+  else if (toggle) box.innerHTML = `<button class="tbtn" data-act="close" aria-label="Close this panel" title="Close panel">${svg(ICON.close)}</button>`;
+  else return;
+  tb.querySelectorAll(":scope > .tbtn").forEach(b => box.prepend(b)); // keep the app's own buttons (shade) in the same row
+  tb.appendChild(box);
+  if (isMain) {
+    box.querySelector('[data-act="min"]').addEventListener("click", () => minimiseGroup(app.id));
+    box.querySelector('[data-act="close"]').addEventListener("click", () => closeNative(app.id));
+  } else box.querySelector('[data-act="close"]').addEventListener("click", () => { const t = document.getElementById(toggle); if (t && t.getAttribute("aria-pressed") === "true") t.click(); });
+}
+function closeNative(appId) {
+  const app = appById(appId), stop = app.native.stop && document.getElementById(app.native.stop);
+  if (stop) stop.click();
+  closed.add(appId);
+  appWins(appId).forEach(k => els[k].classList.add("closed"));
+  const f = front(); if (f) focus(f);
+  renderTasks(); saveLayout();
 }
 
 // Amp's classic layout: player, equalizer and playlist stacked on the left; visualiser over the library on the right.
@@ -125,15 +154,15 @@ function wireWindow(wid, resizable) {
   void resizable;
 }
 function geom(st) {
-  const a = area(), hw = Math.floor(a.w / 2), hh = Math.floor(a.h / 2);
+  const a = area(), lw = Math.round(a.w * split.x), rw = a.w - lw, th = Math.round(a.h * split.y), bh = a.h - th, hw = 0, hh = 0; void hw; void hh;
   switch (st.snap) {
     case "max": return { x: 0, y: 0, w: a.w, h: a.h };
-    case "left": return { x: 0, y: 0, w: hw, h: a.h };
-    case "right": return { x: a.w - hw, y: 0, w: hw, h: a.h };
-    case "tl": return { x: 0, y: 0, w: hw, h: hh };
-    case "tr": return { x: a.w - hw, y: 0, w: hw, h: hh };
-    case "bl": return { x: 0, y: a.h - hh, w: hw, h: hh };
-    case "br": return { x: a.w - hw, y: a.h - hh, w: hw, h: hh };
+    case "left": return { x: 0, y: 0, w: lw, h: a.h };
+    case "right": return { x: lw, y: 0, w: rw, h: a.h };
+    case "tl": return { x: 0, y: 0, w: lw, h: th };
+    case "tr": return { x: lw, y: 0, w: rw, h: th };
+    case "bl": return { x: 0, y: th, w: lw, h: bh };
+    case "br": return { x: lw, y: th, w: rw, h: bh };
     default: return { x: st.x, y: st.y, w: st.w, h: st.h };
   }
 }
@@ -147,7 +176,7 @@ function render(wid) {
   const mb = el.querySelector('[data-act="max"]');
   if (mb) { mb.innerHTML = svg(st.snap ? ICON.restore : ICON.max); mb.title = st.snap ? "Restore" : "Maximise"; }
 }
-function front() { let best = null; for (const k in wins) if (!wins[k].min && !(els[k] && els[k].hidden) && (!best || wins[k].z > wins[best].z)) best = k; return best; }
+function front() { let best = null; for (const k in wins) if (!wins[k].min && !closed.has(wins[k].appId) && !(els[k] && els[k].hidden) && (!best || wins[k].z > wins[best].z)) best = k; return best; }
 function raise(wid) {
   wins[wid].z = ++zTop;
   if (zTop > 5000) { // keep stacking numbers small so menus and dialogs always sit above windows
@@ -187,7 +216,7 @@ function showSnap(zone) {
   const g = geom({ snap: zone });
   Object.assign(snapEl.style, { left: g.x + 6 + "px", top: g.y + 6 + "px", width: g.w - 12 + "px", height: g.h - 12 + "px" });
 }
-const visible = k => wins[k] && !wins[k].min && els[k] && !els[k].hidden;
+const visible = k => wins[k] && !wins[k].min && !closed.has(wins[k].appId) && els[k] && !els[k].hidden;
 function rectOf(k) { const g = geom(wins[k]); if (wins[k].autoH || wins[k].snap) { g.h = els[k].offsetHeight; g.w = els[k].offsetWidth; } return g; }
 // the edges a moving window may dock to
 function targets(skip) {
@@ -261,10 +290,16 @@ function startDrag(e, wid) {
   };
   el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
 }
+let lastRz = {};
 function startResize(e, wid, dir) {
   if (e.button !== 0) return;
+  const now = performance.now(); // a second press on the same edge straight after the first is a double-click
+  if (lastRz.wid === wid && lastRz.dir === dir && now - lastRz.t < 400) { lastRz = {}; e.preventDefault(); e.stopPropagation(); if (dir.length === 1) stretch(wid, dir); return; }
+  lastRz = { wid, dir, t: now };
   const st = wins[wid], el = els[wid];
   e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId);
+  const inX = { left: "e", tl: "e", bl: "e", right: "w", tr: "w", br: "w" }[st.snap], inY = { tl: "s", tr: "s", bl: "n", br: "n" }[st.snap];
+  if (st.snap && st.snap !== "max" && [...dir].every(c => c === inX || c === inY)) return splitDrag(e, wid, dir.includes(inX || "-"), dir.includes(inY || "-"));
   if (st.snap) { const g = rectOf(wid); Object.assign(st, g, { snap: null }); if (st.autoH) delete st.h; render(wid); }
   const s = rectOf(wid), sx = e.clientX, sy = e.clientY, MINW = 260, MINH = 140;
   const t = targets(new Set([wid]));
@@ -281,6 +316,60 @@ function startResize(e, wid, dir) {
   const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); document.body.classList.remove("dragging"); keepInView(st, el); render(wid); saveLayout(); };
   el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
 }
+// dragging the border between snapped windows resizes all of them together
+function splitDrag(e, wid, doX, doY) {
+  const el = els[wid]; el.setPointerCapture(e.pointerId);
+  document.body.classList.add("dragging");
+  const move = ev => {
+    const a = area();
+    if (doX) split.x = clamp(ev.clientX / a.w, 0.15, 0.85);
+    if (doY) split.y = clamp(ev.clientY / a.h, 0.15, 0.85);
+    for (const k in wins) if (wins[k].snap) render(k);
+  };
+  const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); document.body.classList.remove("dragging"); saveLayout(); };
+  el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+}
+// double-click an edge: top or bottom stretches the window to full height, left or right to full width
+function stretch(wid, dir) {
+  const st = wins[wid], a = area();
+  if (st.snap) { Object.assign(st, rectOf(wid), { snap: null }); if (st.autoH) delete st.h; }
+  if (/[ns]/.test(dir) && !st.autoH) { st.y = 0; st.h = a.h; }
+  if (/[ew]/.test(dir)) { st.x = 0; st.w = a.w; }
+  render(wid); saveLayout();
+}
+
+// ---------- keyboard: Ctrl+Alt+arrows ----------
+// Left/Right: snap to a half (then a quarter with Up/Down). Up: full screen. Down: restore, then minimise.
+// Windows whose height follows their content slide to that screen edge instead.
+const NEXT = {
+  ArrowLeft: { null: "left", max: "left", left: "left", right: null, tl: "tl", bl: "bl", tr: "tl", br: "bl" },
+  ArrowRight: { null: "right", max: "right", right: "right", left: null, tr: "tr", br: "br", tl: "tr", bl: "br" },
+  ArrowUp: { null: "max", max: "max", left: "tl", right: "tr", tl: "tl", tr: "tr", bl: "left", br: "right" },
+  ArrowDown: { null: "min", max: null, left: "bl", right: "br", tl: "left", tr: "right", bl: "bl", br: "br" },
+};
+function snapKey(wid, key) {
+  const st = wins[wid]; if (!st || !NEXT[key]) return;
+  if (st.autoH) {
+    const a = area(), r = rectOf(wid);
+    if (key === "ArrowLeft") st.x = 0; if (key === "ArrowRight") st.x = a.w - r.w;
+    if (key === "ArrowUp") st.y = 0; if (key === "ArrowDown") st.y = a.h - r.h;
+    render(wid); saveLayout(); return;
+  }
+  const next = NEXT[key][String(st.snap)];
+  if (next === "min") { minimiseGroup(st.appId); return; }
+  st.snap = next; render(wid); saveLayout();
+}
+addEventListener("keydown", e => {
+  if (!(e.ctrlKey && e.altKey) || !e.key.startsWith("Arrow")) return;
+  const f = front(); if (!f) return;
+  e.preventDefault(); e.stopPropagation(); snapKey(f, e.key);
+}, true);
+addEventListener("message", e => {
+  if (e.origin !== location.origin || !e.data || e.data.neonOs !== "key") return;
+  const fr = [...document.querySelectorAll(".owin iframe")].find(f => f.contentWindow === e.source);
+  if (fr) snapKey(fr.closest(".owin").dataset.wid, e.data.key);
+});
+
 // clicks inside a framed app don't reach the shell, so watch where focus goes instead
 addEventListener("blur", () => setTimeout(() => {
   const f = document.activeElement;
@@ -291,7 +380,7 @@ addEventListener("resize", () => { for (const k in wins) { keepInView(wins[k], e
 // ---------- taskbar: one button per app ----------
 function renderTasks() {
   const f = front(), fApp = f ? wins[f].appId : null;
-  const apps = [...new Set(Object.values(wins).map(w => w.appId))];
+  const apps = [...new Set(Object.values(wins).map(w => w.appId))].filter(k => !closed.has(k));
   $("tasks").innerHTML = apps.map(k => {
     const a = appById(k);
     return `<button class="btn task${k === fApp ? " front" : ""}" data-app="${esc(k)}" title="${esc(a.name)}">${svg(a.icon)}<span>${esc(a.name)}</span></button>`;
@@ -330,6 +419,7 @@ function openMenu() {
   });
 }
 function tidy() {
+  for (const id of [...closed]) { closed.delete(id); appWins(id).forEach(k => els[k].classList.remove("closed")); }
   for (const k of Object.keys(wins)) if (!appById(wins[k].appId).native) closeFramed(k);
   for (const id of mounted) { defaultAmpLayout(id); appWins(id).forEach(k => { wins[k].min = false; render(k); }); }
   renderTasks(); saveLayout();
@@ -396,14 +486,18 @@ buildSprite(); sizeWall(); requestAnimationFrame(drawWall);
   const saved = loadLayout();
   if (!saved) { await openApp("amp"); return; }
   const sw = saved.wins;
+  if (saved.split) split = { x: clamp(+saved.split.x || 0.5, 0.15, 0.85), y: clamp(+saved.split.y || 0.5, 0.15, 0.85) };
+  const wasClosed = new Set(saved.closed || []);
+  parked = sw;
   const apps = [...new Set(Object.values(sw).map(w => w.appId).filter(appById))];
   apps.sort((a, b) => Math.max(...Object.values(sw).filter(w => w.appId === a).map(w => w.z)) - Math.max(...Object.values(sw).filter(w => w.appId === b).map(w => w.z)));
   for (const id of apps) {
+    if (wasClosed.has(id)) { closed.add(id); continue; } // reopens later in the same place
     const app = appById(id);
     await openApp(id, sw);
     appWins(id).forEach(k => { if (sw[k]) { wins[k].min = sw[k].min; keepInView(wins[k], els[k]); render(k); } });
   }
-  if (!Object.keys(wins).length) await openApp("amp");
+  if (!Object.keys(wins).length && !closed.size) await openApp("amp");
   const f = front(); if (f) focus(f);
   renderTasks(); saveLayout();
 })();

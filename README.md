@@ -6,7 +6,10 @@ Open it and you get a desktop. Open apps from the Neon button or the desktop ico
 
 - **Snap:** drag a window to the left or right edge for half the screen, a corner for a quarter, the top for full screen
 - **Dock:** windows pull towards the screen edges and each other when close; hold Alt to place freely
-- **Resize:** from any edge or corner
+- **Resize:** from any edge or corner; double-click a top or bottom edge for full height, a side edge for full width
+- **Shared borders:** drag the border between snapped windows to resize them together
+- **Keyboard:** Ctrl+Alt+arrows snap the front window (Left/Right for halves, then Up/Down for quarters, Up for full screen, Down to restore or minimise)
+- **Close:** the X on Amp's player closes all of Amp and stops the music; the X on any other Amp panel closes just that panel
 - **Amp's player** carries every Amp window docked to it, like the classic player; drag any other Amp window to pull it free
 
 **Live:** https://madoromitv.github.io/neon-os/

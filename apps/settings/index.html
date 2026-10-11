@@ -45,6 +45,7 @@
     <p>Puts every window back to its default size the next time Neon OS opens.</p>
   </section>
   <script type="module">
+    import "../../core/os-link.js";
     import { getTheme, setTheme, applyTheme, onTheme, isHex } from "../../core/theme.js";
     const sync = t => {
       applyTheme(t);

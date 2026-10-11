@@ -79,3 +79,5 @@ body > .toasts, body > .drop { z-index: 9900; }
 .owin[data-snap="max"] .rz { display: none; }
 .owin.shaded .rz-n, .owin.shaded .rz-s, .owin.shaded .rz-ne, .owin.shaded .rz-nw, .owin.shaded .rz-se, .owin.shaded .rz-sw { display: none; }
 .grip { z-index: 3; }
+.owin.closed { display: none !important; }
+.owin .titlebar .tbtns { z-index: 1; }

@@ -28,6 +28,7 @@
   </div>
   <textarea id="pad" aria-label="Notes" placeholder="Type anything. It saves as you go." spellcheck="true"></textarea>
   <script type="module">
+    import "../../core/os-link.js";
     import { applyTheme, onTheme } from "../../core/theme.js";
     applyTheme(); onTheme(applyTheme);
     const KEY = "neon-os:notes", pad = document.getElementById("pad"), state = document.getElementById("state");
