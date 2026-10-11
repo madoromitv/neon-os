@@ -17,8 +17,9 @@ body { padding: 10px; display: flex; flex-direction: column; gap: 10px; min-heig
 .waves { grid-column: 2 / -1; display: flex; gap: 3px; }
 .waves .btn { flex: 1; padding: 0 4px; min-height: 22px; font-size: 9.5px; }
 .waves .btn[aria-pressed="true"] { color: var(--ball); background: linear-gradient(180deg, #1c1926, #2b2736); box-shadow: inset 1px 1px 0 #0b0910, inset -1px -1px 0 #4b4462; }
-.adsr { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; height: 150px; }
-.adsr .col { display: grid; grid-template-rows: 1fr 14px; justify-items: center; gap: 4px; }
+.adsr { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; height: 170px; }
+.adsr .col { display: grid; grid-template-rows: 1fr 14px 16px; justify-items: center; gap: 4px; }
+.adsr .val { font-family: var(--font-lcd); font-size: 15px; color: var(--ball); white-space: nowrap; }
 .btn.mini { min-height: 22px; padding: 0 8px; font-size: 13px; }
 .oct { font-size: 18px; line-height: 22px; padding: 0 8px; min-width: 28px; text-align: center; }
 .hint { color: var(--ink-faint); font-size: 11px; margin-left: 6px; }

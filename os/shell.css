@@ -84,9 +84,9 @@ body > .toasts, body > .drop { z-index: 9900; }
 
 /* tray volume */
 .tray .btn.icon { min-height: 28px; width: 32px; }
-.traypop { position: fixed; right: 8px; bottom: 46px; z-index: 9600; width: 260px; }
+.traypop { position: fixed; right: 8px; bottom: 46px; z-index: 9600; width: 290px; }
 .traypop .wbody { padding: 10px 12px 12px; gap: 10px; }
-.traypop .vrow { display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: 8px; }
+.traypop .vrow { display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 8px; }
 .traypop .btn { justify-self: start; }
 
 /* boot screen */

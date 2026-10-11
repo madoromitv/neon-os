@@ -22,6 +22,7 @@
           <div class="eq"><span class="lbl">Mid</span><div class="slider h center" data-eq="A-mid"></div></div>
           <div class="eq"><span class="lbl">Low</span><div class="slider h center" data-eq="A-low"></div></div>
           <div class="fader"><div class="meter"><i data-meter="A"></i></div><div class="slider v" data-fader="A"></div></div>
+          <span class="lcd pct fpct" data-fpct="A">85%</span>
         </div>
         <div class="chan" data-ch="B">
           <span class="lbl">B</span>
@@ -29,10 +30,11 @@
           <div class="eq"><span class="lbl">Mid</span><div class="slider h center" data-eq="B-mid"></div></div>
           <div class="eq"><span class="lbl">Low</span><div class="slider h center" data-eq="B-low"></div></div>
           <div class="fader"><div class="meter"><i data-meter="B"></i></div><div class="slider v" data-fader="B"></div></div>
+          <span class="lcd pct fpct" data-fpct="B">85%</span>
         </div>
       </div>
       <div class="xrow"><span class="lbl">A</span><div class="slider h center" id="xfade"></div><span class="lbl">B</span></div>
-      <div class="mrow"><span class="lbl">Master</span><div class="slider h" id="master"></div></div>
+      <div class="mrow m3"><span class="lbl">Master</span><div class="slider h" id="master"></div><span class="lcd pct" id="masterPct">85%</span></div>
       <div class="mrow"><button class="btn" id="reset" title="Stop and empty both decks, flatten the mixer">Reset decks</button><span></span></div>
       <div class="mrow"><button class="btn" id="rec" aria-pressed="false"><i class="led rec"></i>Record mix</button><span class="lcd rectime" id="recTime">0:00</span></div>
     </section>

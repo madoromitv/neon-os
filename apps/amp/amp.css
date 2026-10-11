@@ -25,7 +25,7 @@ body { overflow: hidden; }
 .beat { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; }
 .beat i { width: 9px; height: 9px; border-radius: 50%; background: #1a1622; box-shadow: inset 0 0 0 1px #000; }
 .beat i.on { background: var(--ball); box-shadow: 0 0 8px var(--ball), inset 0 0 2px #fff; }
-.slider-row { display: grid; grid-template-columns: auto minmax(60px, 1.5fr) auto minmax(50px, 1fr); align-items: center; gap: 6px 8px; }
+.slider-row { display: grid; grid-template-columns: auto minmax(60px, 1.5fr) auto auto minmax(50px, 1fr); align-items: center; gap: 6px 8px; }
 .toggles { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .toggles .btn { padding: 0 7px; min-height: 20px; font-size: 9.5px; gap: 5px; }
 .seek { width: 100%; }
@@ -137,7 +137,7 @@ body.obs .stage { background: transparent; box-shadow: none; }
   .main-top { flex-direction: column; }
   .lcd-left { width: 100%; }
   .bigtime { text-align: left; }
-  .slider-row { grid-template-columns: auto minmax(0, 1fr); }
+  .slider-row { grid-template-columns: auto minmax(0, 1fr) auto; }
   .eq-body { grid-template-columns: 30px repeat(10, minmax(0, 1fr)); height: 120px; }
   .eq-body .db { display: none; }
   .ml { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }

@@ -223,10 +223,11 @@ const smartById = id => SMART.find(x => x.id === id);
 // artists and albums, worked out from the songs' tags
 let groupsCache = null, groupsFor = -1;
 function groups() {
-  const lib = library(), sig = lib.length + ":" + lib.reduce((n, t) => n + (t.title || "").length + (t.album || "").length, 0);
+  const lib = library(), sig = lib.length + ":" + lib.reduce((n, t) => n + (t.title || "").length + (t.album || "").length + (t.genre || "").length + (t.artist || "").length, 0);
   if (groupsCache && groupsFor === sig) return groupsCache;
-  const artists = new Map(), albums = new Map();
+  const artists = new Map(), albums = new Map(), genres = new Map();
   for (const t of lib) {
+    if (t.genre) { const gk = nkey(t.genre), g = genres.get(gk) || { key: gk, name: t.genre, songs: [], artists: new Set() }; g.songs.push(t.id); g.artists.add(nkey(t.artist)); genres.set(gk, g); }
     const ak = nkey(t.artist) || "~", a = artists.get(ak) || { key: ak, name: t.artist || "Unknown artist", songs: [], albums: new Set() };
     a.songs.push(t.id); if (t.album) a.albums.add(nkey(t.album)); artists.set(ak, a);
     if (t.album) {
@@ -235,22 +236,23 @@ function groups() {
     }
   }
   const byName = (x, y) => x.name.localeCompare(y.name, undefined, { sensitivity: "base" });
-  groupsCache = { artists: [...artists.values()].sort(byName), albums: [...albums.values()].sort(byName) }; groupsFor = sig;
+  groupsCache = { artists: [...artists.values()].sort(byName), albums: [...albums.values()].sort(byName), genres: [...genres.values()].sort(byName) }; groupsFor = sig;
   return groupsCache;
 }
 const inOrder = ids => ids.slice().sort((a, b) => { const A = byId(a), B = byId(b); return (A.album || "").localeCompare(B.album || "", undefined, { sensitivity: "base" }) || (A.title || "").localeCompare(B.title || "", undefined, { sensitivity: "base" }); });
-const isGroupList = () => mlView.type === "artists" || mlView.type === "albums";
+const isGroupList = () => mlView.type === "artists" || mlView.type === "albums" || mlView.type === "genres";
 function mlIds() {
   if (mlView.type === "pl") { const p = plById(mlView.id); return p ? p.tracks.filter(id => byId(id)) : []; }
   if (mlView.type === "smart") { const sm = smartById(mlView.id); return sm ? sm.ids().map(t => t.id) : []; }
   if (mlView.type === "artist") { const a = groups().artists.find(x => x.key === mlView.key); return a ? inOrder(a.songs) : []; }
   if (mlView.type === "album") { const b = groups().albums.find(x => x.key === mlView.key); return b ? inOrder(b.songs) : []; }
+  if (mlView.type === "genre") { const g = groups().genres.find(x => x.key === mlView.key); return g ? g.songs.slice().sort((a, b) => (byId(a).artist || "").localeCompare(byId(b).artist || "", undefined, { sensitivity: "base" }) || (byId(a).album || "").localeCompare(byId(b).album || "") || (byId(a).title || "").localeCompare(byId(b).title || "")) : []; }
   return library().map(t => t.id);
 }
 function mlVisible() {
   let ids = mlIds();
   const q = mlSearch.trim().toLowerCase();
-  if (q) ids = ids.filter(id => { const t = byId(id); return [t.title, t.artist, t.album].some(v => (v || "").toLowerCase().includes(q)); });
+  if (q) ids = ids.filter(id => { const t = byId(id); return [t.title, t.artist, t.album, t.genre].some(v => (v || "").toLowerCase().includes(q)); });
   if (mlSort.key) {
     const k = mlSort.key, d = mlSort.dir;
     ids = ids.slice().sort((a, b) => {
@@ -263,15 +265,16 @@ function mlVisible() {
   return ids;
 }
 function groupsVisible() {
-  const g = groups(), list = mlView.type === "artists" ? g.artists : g.albums, q = mlSearch.trim().toLowerCase();
+  const g = groups(), list = mlView.type === "artists" ? g.artists : mlView.type === "genres" ? g.genres : g.albums, q = mlSearch.trim().toLowerCase();
   return q ? list.filter(x => x.name.toLowerCase().includes(q) || (x.artist || "").toLowerCase().includes(q)) : list;
 }
 function renderTree() {
   $("allCount").textContent = library().length;
   $("treeAll").setAttribute("aria-current", String(mlView.type === "all"));
-  const g = groups(), on = t => mlView.type === t || (t === "artists" && mlView.type === "artist") || (t === "albums" && mlView.type === "album");
+  const g = groups(), on = t => mlView.type === t || mlView.type + "s" === t;
   $("treeBrowse").innerHTML = `<button class="tree-item" data-browse="artists" aria-current="${on("artists")}">${icon("library")}<span class="name">Artists</span><span class="n">${g.artists.length}</span></button>
-    <button class="tree-item" data-browse="albums" aria-current="${on("albums")}">${icon("note")}<span class="name">Albums</span><span class="n">${g.albums.length}</span></button>`;
+    <button class="tree-item" data-browse="albums" aria-current="${on("albums")}">${icon("note")}<span class="name">Albums</span><span class="n">${g.albums.length}</span></button>
+    <button class="tree-item" data-browse="genres" aria-current="${on("genres")}">${icon("tune")}<span class="name">Genres</span><span class="n">${g.genres.length}</span></button>`;
   $("treeSmart").innerHTML = SMART.map(sm => { const n = sm.ids().length; return `<button class="tree-item" data-smart="${sm.id}" aria-current="${mlView.type === "smart" && mlView.id === sm.id}">${icon("tune")}<span class="name">${esc(sm.name)}</span><span class="n">${n}</span></button>`; }).join("");
   $("treePls").innerHTML = playlistsSorted().map(p => `<button class="tree-item" data-pl="${esc(p.id)}" aria-current="${mlView.type === "pl" && mlView.id === p.id}">${icon("playlist")}<span class="name">${esc(p.name)}</span><span class="n">${p.tracks.filter(id => byId(id)).length}</span></button>`).join("");
   $("treeNew").hidden = !store.canWrite;
@@ -284,7 +287,7 @@ $("treeBrowse").addEventListener("click", e => { const b = e.target.closest("[da
 $("treeSmart").addEventListener("click", e => { const b = e.target.closest("[data-smart]"); if (b) setMlView({ type: "smart", id: b.dataset.smart }); });
 $("treeSmart").addEventListener("dblclick", e => { const b = e.target.closest("[data-smart]"); if (!b) return; const ids = smartById(b.dataset.smart).ids().map(t => t.id); if (ids.length) { Eng.ensure(); setPl(ids); playIndex(S.shuffle ? Math.floor(Math.random() * ids.length) : 0); } });
 $("treeAll").addEventListener("click", () => setMlView({ type: "all" }));
-$("mlBack").addEventListener("click", () => setMlView({ type: mlView.type === "artist" ? "artists" : "albums" }));
+$("mlBack").addEventListener("click", () => setMlView({ type: mlView.type + "s" }));
 function setMlView(v) { mlView = v; mlSel.clear(); mlSearch = ""; $("mlSearch").value = ""; mlSort = { key: null, dir: 1 }; renderTree(); $("mlTable").scrollTop = 0; renderMl(); }
 
 // ---------- the list: only the rows in view are drawn ----------
@@ -298,6 +301,8 @@ function viewTitle() {
   if (mlView.type === "albums") return "Albums";
   if (mlView.type === "artist") { const a = groups().artists.find(x => x.key === mlView.key); return a ? a.name : "Artist"; }
   if (mlView.type === "album") { const b = groups().albums.find(x => x.key === mlView.key); return b ? `${b.name} · ${b.artist}` : "Album"; }
+  if (mlView.type === "genres") return "Genres";
+  if (mlView.type === "genre") { const g = groups().genres.find(x => x.key === mlView.key); return g ? g.name : "Genre"; }
   return "All songs";
 }
 function renderMl() {
@@ -305,7 +310,7 @@ function renderMl() {
   if (mlView.type === "pl" && !p) mlView = { type: "all" };
   const grp = isGroupList();
   $("mlTitle").textContent = viewTitle();
-  $("mlBack").hidden = !(mlView.type === "artist" || mlView.type === "album");
+  $("mlBack").hidden = !["artist", "album", "genre"].includes(mlView.type);
   $("mlRename").hidden = $("mlDelete").hidden = !(p && store.canWrite);
   ["mlPlay", "mlEnq", "mlSend"].forEach(id => { $(id).hidden = grp; });
   $("mlTable").classList.toggle("groups", grp);
@@ -319,7 +324,7 @@ function renderMl() {
   vRows = grp ? groupsVisible() : mlVisible();
   drawRows();
   const n = mlIds().length, tot = mlIds().reduce((s, id) => s + (byId(id).duration || 0), 0);
-  const what = grp ? `${vRows.length} ${mlView.type === "artists" ? (vRows.length === 1 ? "artist" : "artists") : (vRows.length === 1 ? "album" : "albums")}` : `${n} ${n === 1 ? "song" : "songs"}, ${Math.round(tot / 60)} min.`;
+  const what = grp ? `${vRows.length} ${mlView.type.slice(0, -1)}${vRows.length === 1 ? "" : "s"}` : `${n} ${n === 1 ? "song" : "songs"}, ${Math.round(tot / 60)} min.`;
   if (!adding) setStatus(`${what} ${analyser && analyser.pending ? `Finding beats: ${analyser.pending} to go. ` : ""}${storeNote()}`);
 }
 function songRow(id, curId) {
@@ -332,8 +337,8 @@ function songRow(id, curId) {
 function groupRow(g) {
   const art = mlView.type === "albums";
   return `<div class="grow" role="row" data-g="${esc(g.key)}" title="Open · double-click to play">
-    ${art ? (g.cover ? `<img class="thumb" src="${esc(g.cover)}" alt="">` : `<span class="thumb"></span>`) : icon("library")}
-    <span>${esc(g.name)}</span><span class="d">${art ? esc(g.artist) : `${g.albums.size} album${g.albums.size === 1 ? "" : "s"}`}</span>
+    ${art ? (g.cover ? `<img class="thumb" src="${esc(g.cover)}" alt="">` : `<span class="thumb"></span>`) : icon(mlView.type === "genres" ? "tune" : "library")}
+    <span>${esc(g.name)}</span><span class="d">${art ? esc(g.artist) : g.albums ? `${g.albums.size} album${g.albums.size === 1 ? "" : "s"}` : `${g.artists.size} artist${g.artists.size === 1 ? "" : "s"}`}</span>
     <span class="num">${g.songs.length}</span><span class="d">song${g.songs.length === 1 ? "" : "s"}</span></div>`;
 }
 function drawRows() {
@@ -380,7 +385,7 @@ function setStatus(msg, prog) {
 }
 $("mlRows").addEventListener("click", e => {
   const g = e.target.closest(".grow");
-  if (g) { setMlView({ type: mlView.type === "artists" ? "artist" : "album", key: g.dataset.g }); return; }
+  if (g) { setMlView({ type: mlView.type.slice(0, -1), key: g.dataset.g }); return; }
   if (e.target.closest("[data-star]")) { const r = e.target.closest(".trow"); if (r) toggleFav([r.dataset.id]); return; }
   const row = e.target.closest(".trow"); if (!row) return;
   const id = row.dataset.id, ids = mlVisible();
@@ -392,7 +397,7 @@ $("mlRows").addEventListener("click", e => {
 function syncMlSel() { document.querySelectorAll("#mlRows .trow").forEach(r => { const on = mlSel.has(r.dataset.id); r.classList.toggle("sel", on); r.setAttribute("aria-selected", String(on)); }); }
 $("mlRows").addEventListener("dblclick", e => {
   const g = e.target.closest(".grow");
-  if (g) { const grp = vRows.find(x => x.key === g.dataset.g); if (grp) { Eng.ensure(); const ids = inOrder(grp.songs); setPl(ids); playIndex(0); } return; }
+  if (g) { const grp = vRows.find(x => x.key === g.dataset.g); if (grp) { Eng.ensure(); const ids = mlView.type === "genres" ? grp.songs.slice() : inOrder(grp.songs); setPl(ids); playIndex(S.shuffle ? Math.floor(Math.random() * ids.length) : 0); } return; }
   if (e.target.closest("[data-star]")) return;
   const row = e.target.closest(".trow"); if (!row) return;
   Eng.ensure();
@@ -489,9 +494,9 @@ async function removeFromPlaylist(pid, ids) {
   catch (e) { toast("Couldn't update the playlist. Try again.", true); }
 }
 async function editTrack(t) {
-  const r = await dialog({ title: "Edit details", fields: [{ label: "Title", value: t.title }, { label: "Artist", value: t.artist }, { label: "Album", value: t.album }], confirm: "Save" });
+  const r = await dialog({ title: "Edit details", fields: [{ label: "Title", value: t.title }, { label: "Artist", value: t.artist }, { label: "Album", value: t.album }, { label: "Genre", value: t.genre || "" }], confirm: "Save" });
   if (!r) return;
-  try { await store.updateTrack(t.id, { title: r[0] || t.title, artist: r[1], album: r[2] }); notifyLibraryChange("edit"); renderAll(); if (curTrack() === t) setNowPlaying(); }
+  try { await store.updateTrack(t.id, { title: r[0] || t.title, artist: r[1], album: r[2], genre: r[3] }); notifyLibraryChange("edit"); renderAll(); if (curTrack() === t) setNowPlaying(); }
   catch (e) { toast("Couldn't save those details. Try again.", true); }
 }
 async function deleteTracks(ts) {
@@ -652,7 +657,9 @@ function renderModes() {
 $("bShuf").addEventListener("click", () => { S.shuffle = !S.shuffle; history = []; renderModes(); save(); });
 $("bRep").addEventListener("click", () => { S.repeat = S.repeat === "off" ? "all" : S.repeat === "all" ? "one" : "off"; renderModes(); save(); });
 
-const volS = Slider($("vol"), { min: 0, max: 1, step: 0.01, value: S.vol, label: "Volume", text: v => Math.round(v * 100) + "%", onInput: v => { S.vol = v; Eng.setVolume(v); dispatchEvent(new CustomEvent("neonos:volume-changed", { detail: v })); }, onChange: save });
+const volS = Slider($("vol"), { min: 0, max: 1, step: 0.01, value: S.vol, label: "Volume", text: v => Math.round(v * 100) + "%", onInput: v => { S.vol = v; Eng.setVolume(v); showVol(); dispatchEvent(new CustomEvent("neonos:volume-changed", { detail: v })); }, onChange: save });
+function showVol() { $("volPct").textContent = Math.round(S.vol * 100) + "%"; }
+showVol();
 const balS = Slider($("bal"), { min: -1, max: 1, step: 0.02, value: S.bal, label: "Balance", text: v => Math.abs(v) < 0.01 ? "Centre" : `${Math.round(Math.abs(v) * 100)}% ${v < 0 ? "left" : "right"}`, onInput: v => { if (Math.abs(v) < 0.06) v = 0; S.bal = v; Eng.setBalance(v); }, onChange: save });
 const seekS = Slider($("seek"), { min: 0, max: 1, step: 0.0005, value: 0, label: "Position", text: v => fmt(v * Eng.duration), onInput: () => {}, onChange: v => { if (Eng.buf) { Eng.seek(v * Eng.duration); resetViz(); save(); } } });
 const chaosS = Slider($("chaos"), { min: 0, max: 1, step: 0.01, value: S.chaos, label: "Chaos", text: v => Math.round(v * 100) + "%", onInput: v => { S.chaos = v; }, onChange: save });
@@ -743,7 +750,7 @@ addEventListener("keydown", e => {
   else if (k === "j") { $("mlSearch").focus(); e.preventDefault(); }
   else if (k === " " && !(e.target.tagName === "BUTTON") && !e.target.closest(".slider")) { e.preventDefault(); if (Eng.state === "playing") pause(); else play(); }
   else if (!inList && (e.key === "ArrowRight" || e.key === "ArrowLeft") && Eng.buf) { Eng.seek(Eng.time() + (e.key === "ArrowRight" ? 5 : -5)); resetViz(); e.preventDefault(); }
-  else if (!inList && (e.key === "ArrowUp" || e.key === "ArrowDown")) { volS.set(S.vol + (e.key === "ArrowUp" ? 0.05 : -0.05), true); save(); e.preventDefault(); }
+  else if (!inList && (e.key === "ArrowUp" || e.key === "ArrowDown")) { volS.set(S.vol + (e.key === "ArrowUp" ? 0.05 : -0.05), true); showVol(); save(); e.preventDefault(); }
 });
 if ("mediaSession" in navigator) {
   const h = (a, f) => { try { navigator.mediaSession.setActionHandler(a, f); } catch (e) {} };
@@ -829,7 +836,7 @@ async function addOne(f, B) {
       if (B.dupMode === "skip") { B.skipped++; B.done++; return; }
     }
     const [duration, cover] = await Promise.all([durationOf(f), tags.cover ? shrinkCover(tags.cover.blob) : null]);
-    const meta = { title, artist: tags.artist || "", album: tags.album || "", duration: Math.round(duration), bpm: null, size: f.size };
+    const meta = { title, artist: tags.artist || "", album: tags.album || "", genre: tags.genre || "", year: tags.year || "", duration: Math.round(duration), bpm: null, size: f.size };
     const t = await store.addTrack({ blob: f, mime: mimeFor(f), meta, analysis: null, cover });
     if (dup && B.dupMode === "replace") { // the new copy takes the old one's place in every playlist
       for (const p of store.playlists.filter(p => p.tracks.includes(dup.id))) await store.updatePlaylist(p.id, { tracks: p.tracks.map(id => id === dup.id ? t.id : id) });
@@ -854,6 +861,22 @@ function scheduleRender() {
   const go = () => requestAnimationFrame(() => { renderQueued = false; lastRender = performance.now(); renderTree(); renderMl(); renderPl(); });
   const wait = 500 - (performance.now() - lastRender); // at most twice a second
   if (wait > 0) setTimeout(go, wait); else go();
+}
+
+// ---------- genre and year for songs added before they were read ----------
+// Only the front of each file is read again (where MP3 and FLAC keep their tags); nothing is re-imported.
+async function refreshTags() {
+  const todo = store.tracks.filter(t => t.genre === undefined && t.blob);
+  let n = 0;
+  for (const t of todo) {
+    try {
+      const type = (t.mime || "") + " " + (t.blob.name || "");
+      const tags = /mpeg|mp3|flac/i.test(type) ? readTags(await readHead(t.blob)) : {};
+      await store.updateTrack(t.id, { genre: tags.genre || "", year: tags.year || t.year || "" });
+    } catch (e) { try { await store.updateTrack(t.id, { genre: "" }); } catch (e2) {} }
+    if (++n % 50 === 0) scheduleRender();
+  }
+  if (n) { scheduleRender(); notifyLibraryChange("edit"); }
 }
 
 // ---------- background analysis ----------
@@ -913,7 +936,7 @@ addEventListener("drop", async e => {
 
 // requests from Neon OS: the tray's music volume, and songs to play (from Files)
 let pendingPlay = null;
-addEventListener("neonos:volume", e => { volS.set(e.detail, true); save(); });
+addEventListener("neonos:volume", e => { volS.set(e.detail, true); showVol(); save(); });
 addEventListener("neonos:play", e => {
   const ids = e.detail.ids || [];
   if (!storeReady) { pendingPlay = ids; return; }
@@ -1124,6 +1147,7 @@ async function start() {
   try { await store.init(() => { if (storeReady) { renderTree(); renderMl(); renderPl(); } }); } catch (e) {}
   storeReady = true;
   startAnalyser();
+  refreshTags();
   renderAll();
   if (pendingPlay) { const ids = pendingPlay.filter(id => byId(id)); pendingPlay = null; if (ids.length) { Eng.ensure(); setPl(ids); playIndex(0); } }
   onLibraryChange(async reason => {

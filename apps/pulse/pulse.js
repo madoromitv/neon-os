@@ -83,14 +83,14 @@ clock.subscribe(c => {
 // ---------- grid ----------
 const grid = $("grid");
 function build() {
-  grid.innerHTML = `<div class="trk heads" aria-hidden="true"><span></span><span></span><span></span>${Array.from({ length: STEPS }, (_, s) => `<span class="${s % 4 ? "" : "b"}" data-h="${s}">${s % 4 ? "·" : s / 4 + 1}</span>`).join("")}</div>` +
+  grid.innerHTML = `<div class="trk heads" aria-hidden="true"><span></span><span></span><span></span><span></span>${Array.from({ length: STEPS }, (_, s) => `<span class="${s % 4 ? "" : "b"}" data-h="${s}">${s % 4 ? "·" : s / 4 + 1}</span>`).join("")}</div>` +
     VOICES.map((v, i) => `<div class="trk${S.mute[i] ? " muted" : ""}" data-v="${i}" role="row">
       <span class="name" title="Play ${v.name}" data-audition="${i}">${v.name}</span>
       <button class="btn mute" data-mute="${i}" aria-pressed="${!S.mute[i]}" aria-label="${v.name} on" title="Mute"><i class="led"></i></button>
-      <div class="slider h" data-vol="${i}"></div>
+      <div class="slider h" data-vol="${i}"></div><span class="pct" data-pct="${i}">${Math.round(S.vol[i] * 100)}%</span>
       ${Array.from({ length: STEPS }, (_, s) => `<button class="step${s % 4 ? "" : " beat"}" data-s="${s}" role="gridcell" aria-label="${v.name} step ${s + 1}"></button>`).join("")}
     </div>`).join("");
-  grid.querySelectorAll("[data-vol]").forEach(el => { const i = +el.dataset.vol; Slider(el, { min: 0, max: 1, step: 0.01, value: S.vol[i], label: `${VOICES[i].name} volume`, text: v => Math.round(v * 100) + "%", onInput: v => { S.vol[i] = v; setBus(i); }, onChange: save }); });
+  grid.querySelectorAll("[data-vol]").forEach(el => { const i = +el.dataset.vol; Slider(el, { min: 0, max: 1, step: 0.01, value: S.vol[i], label: `${VOICES[i].name} volume`, text: v => Math.round(v * 100) + "%", onInput: v => { S.vol[i] = v; setBus(i); grid.querySelector(`[data-pct="${i}"]`).textContent = Math.round(v * 100) + "%"; }, onChange: save }); });
   renderSteps();
 }
 function renderSteps() {

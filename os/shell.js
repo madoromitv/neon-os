@@ -441,22 +441,22 @@ tickClock(); setInterval(tickClock, 10000);
 // System sounds on/off and their volume, plus Amp's music volume (Amp listens for neonos:volume).
 let trayPop = null, musicVol = 0.8;
 try { const a = JSON.parse(localStorage.getItem("neon-orbit-amp") || "{}"); if (typeof a.vol === "number") musicVol = a.vol; } catch (e) {}
-addEventListener("neonos:volume-changed", e => { musicVol = e.detail; if (trayPop) trayPop.music.set(musicVol); renderVolIcon(); });
+addEventListener("neonos:volume-changed", e => { musicVol = e.detail; if (trayPop) { trayPop.music.set(musicVol); trayPop.el.querySelector("#trMusicPct").textContent = Math.round(musicVol * 100) + "%"; } renderVolIcon(); });
 const VOL = { on: "M4 9v6h4l5 5V4L8 9zm12.5 3A4.5 4.5 0 0 0 14 8v8a4.47 4.47 0 0 0 2.5-4zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06a9 9 0 0 0 0-17.54z", off: "M4 9v6h4l5 5V4L8 9zm12.6 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4z" };
-function renderVolIcon() { $("volBtn").innerHTML = svg(musicVol < 0.01 && getTheme().sounds === false ? VOL.off : VOL.on); }
+function renderVolIcon() { $("volBtn").innerHTML = svg(musicVol < 0.01 && getTheme().sounds === false ? VOL.off : VOL.on); $("volBtn").title = `Volume: music ${Math.round(musicVol * 100)}%`; }
 function closeTray() { if (!trayPop) return; trayPop.el.remove(); trayPop = null; $("volBtn").setAttribute("aria-expanded", "false"); }
 function openTray() {
   const t = getTheme(), el = document.createElement("div");
   el.className = "win lit traypop"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Volume");
   el.innerHTML = `<div class="titlebar"><span class="ttl">Volume</span></div><div class="wbody">
-    <div class="vrow"><span class="lbl">Music</span><div class="slider h" id="trMusic"></div></div>
-    <div class="vrow"><span class="lbl">System</span><div class="slider h" id="trSys"></div></div>
+    <div class="vrow"><span class="lbl">Music</span><div class="slider h" id="trMusic"></div><span class="lcd pct" id="trMusicPct">${Math.round(musicVol * 100)}%</span></div>
+    <div class="vrow"><span class="lbl">System</span><div class="slider h" id="trSys"></div><span class="lcd pct" id="trSysPct">${Math.round((t.sysVol == null ? 0.6 : t.sysVol) * 100)}%</span></div>
     <button class="btn" id="trSnd" aria-pressed="${t.sounds !== false}"><i class="led"></i>System sounds</button></div>`;
   document.body.appendChild(el);
   const music = Slider(el.querySelector("#trMusic"), { min: 0, max: 1, step: 0.01, value: musicVol, label: "Music volume", text: v => Math.round(v * 100) + "%",
-    onInput: v => { musicVol = v; dispatchEvent(new CustomEvent("neonos:volume", { detail: v })); renderVolIcon(); } });
+    onInput: v => { musicVol = v; el.querySelector("#trMusicPct").textContent = Math.round(v * 100) + "%"; dispatchEvent(new CustomEvent("neonos:volume", { detail: v })); renderVolIcon(); } });
   Slider(el.querySelector("#trSys"), { min: 0, max: 1, step: 0.01, value: t.sysVol == null ? 0.6 : t.sysVol, label: "System sounds volume", text: v => Math.round(v * 100) + "%",
-    onInput: v => setTheme({ sysVol: v }), onChange: () => sfx.tick() });
+    onInput: v => { setTheme({ sysVol: v }); el.querySelector("#trSysPct").textContent = Math.round(v * 100) + "%"; }, onChange: () => sfx.tick() });
   el.querySelector("#trSnd").addEventListener("click", e => { const on = getTheme().sounds === false; setTheme({ sounds: on }); e.currentTarget.setAttribute("aria-pressed", String(on)); if (on) sfx.chime(); renderVolIcon(); });
   trayPop = { el, music };
   $("volBtn").setAttribute("aria-expanded", "true");

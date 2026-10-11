@@ -14,7 +14,7 @@ body { padding: 10px; display: flex; flex-direction: column; gap: 10px; min-heig
 .pats .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); background: linear-gradient(180deg, #1c1926, #2b2736); box-shadow: inset 1px 1px 0 #0b0910, inset -1px -1px 0 #4b4462; }
 
 .grid { display: grid; gap: 5px; overflow-x: auto; padding-bottom: 2px; }
-.trk { display: grid; grid-template-columns: 96px 22px 70px repeat(16, minmax(24px, 1fr)); gap: 4px; align-items: center; min-width: 640px; }
+.trk { display: grid; grid-template-columns: 96px 22px 70px 38px repeat(16, minmax(24px, 1fr)); gap: 4px; align-items: center; min-width: 640px; }
 .trk .name { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .trk .name:hover { color: var(--ink); }
 .trk .mute { width: 22px; min-height: 22px; padding: 0; }
@@ -29,6 +29,7 @@ body { padding: 10px; display: flex; flex-direction: column; gap: 10px; min-heig
 .step.now { outline: 1px solid var(--ball); outline-offset: -1px; }
 .step.now.on::after, .step.now.acc::after { box-shadow: 0 0 16px 3px var(--ball), inset 0 0 3px #fff; }
 .heads { min-width: 640px; }
+.trk .pct { font-size: 15px; padding: 0 3px; min-width: 0; color: var(--ball); background: none; box-shadow: none; border: 0; }
 .heads span { font-family: var(--font-lcd); font-size: 15px; color: var(--ink-faint); text-align: center; }
 .heads span.b { color: var(--ink-dim); }
 .heads span.now { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }

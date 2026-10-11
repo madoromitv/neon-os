@@ -34,6 +34,7 @@ function down(m, vel = 1) { ensure().noteOn(m, ctx.currentTime, vel); held.add(m
 function up(m) { if (!synth) return; synth.noteOff(m); held.delete(m); keyLit(m, false); }
 
 // ---------- sound controls ----------
+const secs = v => v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s";
 const SPEC = {
   detune: { min: -12, max: 24, step: 1, fmt: v => `${v > 0 ? "+" : ""}${v} st` },
   fine: { min: 0, max: 40, step: 1, fmt: v => `${v} ct` },
@@ -43,8 +44,8 @@ const SPEC = {
   envAmt: { min: 0, max: 1, step: 0.01, fmt: v => Math.round(v * 100) + "%" },
   lfoRate: { min: 0.05, max: 12, step: 0.05, fmt: v => v.toFixed(2) + "Hz" },
   lfoDepth: { min: 0, max: 1, step: 0.01, fmt: v => Math.round(v * 100) + "%" },
-  attack: { min: 0.001, max: 2, step: 0.001 }, decay: { min: 0.01, max: 2.5, step: 0.01 }, sustain: { min: 0, max: 1, step: 0.01 },
-  release: { min: 0.01, max: 3, step: 0.01 }, volume: { min: 0, max: 1, step: 0.01 },
+  attack: { min: 0.001, max: 2, step: 0.001, fmt: v => secs(v) }, decay: { min: 0.01, max: 2.5, step: 0.01, fmt: v => secs(v) }, sustain: { min: 0, max: 1, step: 0.01, fmt: v => Math.round(v * 100) + "%" },
+  release: { min: 0.01, max: 3, step: 0.01, fmt: v => secs(v) }, volume: { min: 0, max: 1, step: 0.01, fmt: v => Math.round(v * 100) + "%" },
 };
 const toSlider = (k, v) => SPEC[k].log ? Math.log(v / SPEC[k].log[0]) / Math.log(SPEC[k].log[1] / SPEC[k].log[0]) : v;
 const fromSlider = (k, v) => SPEC[k].log ? SPEC[k].log[0] * Math.pow(SPEC[k].log[1] / SPEC[k].log[0], v) : v;

@@ -27,6 +27,8 @@ body { padding: 10px; display: flex; flex-direction: column; gap: 10px; min-heig
 .meter i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: linear-gradient(0deg, var(--ball-dim), var(--ball)); box-shadow: 0 0 6px var(--ball); }
 .xrow, .mrow { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; }
 .mrow { grid-template-columns: auto 1fr; }
+.mrow.m3 { grid-template-columns: auto 1fr auto; }
+.fpct { justify-self: center; }
 .rectime { font-size: 18px; line-height: 22px; padding: 0 8px; text-align: center; }
 .led.rec { background: #3a1020 !important; }
 #rec[aria-pressed="true"] .led.rec { background: var(--danger) !important; box-shadow: 0 0 8px var(--danger) !important; }

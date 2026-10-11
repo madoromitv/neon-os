@@ -23,7 +23,7 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 
 | App | What it is | Status |
 | --- | --- | --- |
-| Amp | Music player with library, playlists, equalizer and the Neon Orbit visualiser; browse by artist and album, smart playlists, favourites and play counts; stays quick with thousands of songs | Working |
+| Amp | Music player with library, playlists, equalizer and the Neon Orbit visualiser; browse by artist, album and genre, smart playlists, favourites and play counts; stays quick with thousands of songs | Working |
 | Files | Browse songs, playlists and notes; play in Amp, download, rename, delete | Working |
 | Notes | Quick notes, saved in this browser | Working |
 | Settings | Orb colour for every app at once, backup and restore, layout reset | Working |

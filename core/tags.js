@@ -1,11 +1,25 @@
 // Neon OS core: song tags (ID3v2 for MP3, Vorbis comments for FLAC) and cover art
+// ID3 genres can be stored as numbers from the original list: "(17)", "17" or "(17)Rock" all mean Rock
+const ID3_GENRES = ["Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz", "Metal", "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial",
+  "Alternative", "Ska", "Death Metal", "Pranks", "Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop", "Vocal", "Jazz+Funk", "Fusion", "Trance", "Classical", "Instrumental", "Acid", "House", "Game", "Sound Clip", "Gospel", "Noise",
+  "Alternative Rock", "Bass", "Soul", "Punk", "Space", "Meditative", "Instrumental Pop", "Instrumental Rock", "Ethnic", "Gothic", "Darkwave", "Techno-Industrial", "Electronic", "Pop-Folk", "Eurodance", "Dream", "Southern Rock", "Comedy", "Cult", "Gangsta",
+  "Top 40", "Christian Rap", "Pop/Funk", "Jungle", "Native American", "Cabaret", "New Wave", "Psychedelic", "Rave", "Showtunes", "Trailer", "Lo-Fi", "Tribal", "Acid Punk", "Acid Jazz", "Polka", "Retro", "Musical", "Rock & Roll", "Hard Rock"];
+export function cleanGenre(g) {
+  g = (g || "").split(/\u0000/)[0].trim();
+  const m = /^\((\d+)\)(.*)$/.exec(g) || /^(\d+)()$/.exec(g);
+  if (m) g = m[2].trim() || ID3_GENRES[+m[1]] || "";
+  if (g === "RX") g = "Remix"; else if (g === "CR") g = "Cover";
+  return g;
+}
 export function readTags(buf) {
   const u8 = new Uint8Array(buf);
-  const out = { title: "", artist: "", album: "", cover: null };
+  const out = { title: "", artist: "", album: "", genre: "", year: "", cover: null };
   try {
     if (u8[0] === 0x49 && u8[1] === 0x44 && u8[2] === 0x33) readId3(u8, out);
     else if (u8[0] === 0x66 && u8[1] === 0x4c && u8[2] === 0x61 && u8[3] === 0x43) readFlac(u8, out);
   } catch (e) { /* unreadable tags: fall back to the file name */ }
+  out.genre = cleanGenre(out.genre);
+  out.year = (/\d{4}/.exec(out.year || "") || [""])[0];
   return out;
 }
 const latin1 = (u8, a, b) => { let s = ""; for (let i = a; i < b; i++) s += String.fromCharCode(u8[i]); return s; };
@@ -42,7 +56,7 @@ function readId3(u8, out) {
     p += ext;
   }
   const v2 = ver === 2, idLen = v2 ? 3 : 4, hdr = v2 ? 6 : 10;
-  const map = v2 ? { TT2: "title", TP1: "artist", TAL: "album" } : { TIT2: "title", TPE1: "artist", TALB: "album" };
+  const map = v2 ? { TT2: "title", TP1: "artist", TAL: "album", TCO: "genre", TYE: "year" } : { TIT2: "title", TPE1: "artist", TALB: "album", TCON: "genre", TYER: "year", TDRC: "year" };
   while (p + hdr < end) {
     const id = latin1(u8, p, p + idLen);
     if (!/^[A-Z0-9]+$/.test(id)) break;
@@ -86,6 +100,8 @@ function readFlac(u8, out) {
         if (k === "TITLE" && !out.title) out.title = v;
         else if (k === "ARTIST" && !out.artist) out.artist = v;
         else if (k === "ALBUM" && !out.album) out.album = v;
+        else if (k === "GENRE" && !out.genre) out.genre = v;
+        else if ((k === "DATE" || k === "YEAR") && !out.year) out.year = v;
       }
     } else if (type === 6 && !out.cover) {
       let q = a + 4;
