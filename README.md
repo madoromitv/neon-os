@@ -2,7 +2,7 @@
 
 A browser desktop and suite of apps in the Neon Orbit style: bevelled gunmetal chrome, LCD panels and glow in the colour of the orb.
 
-Open it and you get a desktop. Open apps from the Neon button or the desktop icons; the layout is remembered.
+It starts with a short boot screen (click to skip, or turn it off in Settings), then the desktop. Open apps from the Neon button, the desktop icons or a right-click on the desktop; the layout is remembered.
 
 - **Snap:** drag a window to the left or right edge for half the screen, a corner for a quarter, the top for full screen
 - **Dock:** windows pull towards the screen edges and each other when close; hold Alt to place freely
@@ -11,6 +11,7 @@ Open it and you get a desktop. Open apps from the Neon button or the desktop ico
 - **Keyboard:** Ctrl+Alt+arrows snap the front window (Left/Right for halves, then Up/Down for quarters, Up for full screen, Down to restore or minimise)
 - **Close:** the X on Amp's player closes all of Amp and stops the music; the X on any other Amp panel closes just that panel
 - **Amp's player** carries every Amp window docked to it, like the classic player; drag any other Amp window to pull it free
+- **Right-click:** the desktop (open apps, tidy, change colour, restart), desktop icons, taskbar buttons and window title bars all have menus
 - **Sounds:** soft system sounds for opening, closing, minimising and snapping; the tray's speaker sets music and system volume and turns sounds off
 - **Collapse:** the arrow on an Amp panel collapses it to its title bar, and docked panels below slide up to close the gap
 
@@ -24,7 +25,7 @@ Open it and you get a desktop. Open apps from the Neon button or the desktop ico
 | Files | Browse songs, playlists and notes; play in Amp, download, rename, delete | Working |
 | Notes | Quick notes, saved in this browser | Working |
 | Settings | Orb colour for every app at once, backup and restore, layout reset | Working |
-| Pulse | Drum machine and step sequencer | Planned |
+| Pulse | 16-step drum machine: 8 synthesised drums, 4 patterns, tempo, swing, accents, WAV export | Working |
 | Decks | Two-deck DJ mixer | Planned |
 | Drift | Synth | Planned |
 
@@ -50,10 +51,12 @@ core/        shared engine, used by every app
   backup.js    one-file backup and restore of songs, playlists, notes and settings
   os-link.js   passes window shortcuts from framed apps to the desktop
   sounds.js    system sounds, made on the fly (no sound files)
+  drums.js     drum sounds, made on the fly; shared by Pulse and future apps
 apps/
   registry.js  the list of apps the desktop shows
   amp/         the player
   files/       files
+  pulse/       drum machine
   notes/       notes
   settings/    settings
 ```
@@ -90,6 +93,6 @@ To keep them safe or move them, open **Settings → Back up everything**. You ge
 
 1. Foundations: split Amp into the style kit, core and app (done)
 2. Neon OS shell: desktop, window manager, launcher, settings (done)
-3. The Rack: Pulse, Decks and Drift on a shared audio clock
+3. The Rack: Pulse (started), Decks and Drift on a shared audio clock
 4. Ship systems: the OS as a ship's console
 5. The game

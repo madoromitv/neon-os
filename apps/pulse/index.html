@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulse · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="pulse.css">
+</head>
+<body>
+  <header class="top">
+    <div class="lcd readout">
+      <span class="big" id="bpm">120</span><span class="unit">BPM</span>
+      <span class="pat" id="patLcd">A</span><span class="unit">PATTERN</span>
+      <span class="pos" id="pos">1.1</span>
+    </div>
+    <div class="transport">
+      <button class="btn icon" id="play" aria-label="Play (Space)" title="Play (Space)"></button>
+      <button class="btn icon" id="stop" aria-label="Stop" title="Stop"></button>
+      <span class="lbl">Tempo</span><button class="btn mini" id="bpmDown" aria-label="Slower">−</button><div class="slider h" id="tempo"></div><button class="btn mini" id="bpmUp" aria-label="Faster">+</button>
+      <span class="lbl">Swing</span><div class="slider h" id="swing"></div>
+    </div>
+    <div class="tools">
+      <span class="lbl">Pattern</span>
+      <span class="pats" id="pats"></span>
+      <button class="btn" id="copy" title="Copy this pattern to the next slot">Copy to next</button>
+      <button class="btn" id="clear">Clear</button>
+      <button class="btn" id="wav" title="Save 4 bars of this pattern as a WAV file">Export WAV</button>
+    </div>
+  </header>
+  <div class="grid" id="grid" role="grid" aria-label="Step sequencer"></div>
+  <p class="hint">Click a step to turn it on, again for an accent, again to turn it off. Space plays and stops.</p>
+  <script type="module" src="pulse.js"></script>
+</body>
+</html>

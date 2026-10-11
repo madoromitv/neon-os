@@ -53,8 +53,9 @@
     <span class="lbl" id="sysLbl">System</span>
     <div class="row">
       <button class="btn" id="tidy">Reset window layout</button>
+      <button class="btn" id="bootT" aria-pressed="true"><i class="led"></i>Boot screen</button>
     </div>
-    <p>Puts every window back to its default size the next time Neon OS opens.</p>
+    <p>Reset puts every window back to its default size the next time Neon OS opens. Boot screen turns the start-up sequence on or off.</p>
   </section>
   <script type="module">
     import "../../core/os-link.js";
@@ -73,6 +74,10 @@
       try { localStorage.removeItem("neon-os:layout"); } catch (err) {}
       e.target.textContent = "Done: reload Neon OS";
     });
+    const bootBtn = document.getElementById("bootT");
+    const syncBoot = t => bootBtn.setAttribute("aria-pressed", String(t.boot !== false));
+    bootBtn.addEventListener("click", () => syncBoot(setTheme({ boot: getTheme().boot === false })));
+    onTheme(syncBoot); syncBoot(getTheme());
     onTheme(sync);
     sync(getTheme());
 

@@ -5,7 +5,8 @@ import { APPS, PLANNED } from "../apps/registry.js";
 import { esc, clamp } from "../style-kit/ui.js";
 import { getTheme, setTheme, applyTheme, onTheme, ballHex } from "../core/theme.js";
 import { sfx } from "../core/sounds.js";
-import { Slider } from "../style-kit/ui.js";
+import { Slider, openMenu as popMenu } from "../style-kit/ui.js";
+import { runBoot } from "./boot.js";
 
 const $ = id => document.getElementById(id);
 const desk = $("desktop");
@@ -513,6 +514,53 @@ $("icons").addEventListener("click", e => {
 });
 $("icons").addEventListener("keydown", e => { const b = e.target.closest(".dicon"); if (b && e.key === "Enter") { e.preventDefault(); e.stopPropagation(); openApp(b.dataset.app); } });
 
+// ---------- right-click menus ----------
+function closeApp(appId) { const app = appById(appId); if (!app) return; if (app.native) closeNative(appId); else if (wins[appId]) closeFramed(appId); }
+function snapTo(wid, zone) { const st = wins[wid]; if (!st || st.autoH) return; st.snap = zone; render(wid); sfx.snap(); saveLayout(); }
+function windowMenu(wid, at) {
+  const st = wins[wid], app = appById(st.appId), native = !!app.native, sec = wid.split(":")[1];
+  const isMain = native && sec === app.native.main, panelToggle = native && (app.native.panels || {})[sec];
+  const items = [{ text: "Minimise", run: () => minimiseGroup(st.appId) }];
+  if (!st.autoH) {
+    items.push({ text: st.snap ? "Restore" : "Maximise", run: () => toggleMax(wid) },
+      { text: "Snap left", key: "Ctrl+Alt+←", run: () => snapTo(wid, "left") },
+      { text: "Snap right", key: "Ctrl+Alt+→", run: () => snapTo(wid, "right") });
+  }
+  items.push("-");
+  if (native && !isMain && panelToggle) items.push({ text: "Close panel", run: () => { const t = document.getElementById(panelToggle); if (t && t.getAttribute("aria-pressed") === "true") t.click(); } });
+  items.push({ text: native ? `Close ${app.name}` : "Close", danger: true, run: () => closeApp(st.appId) });
+  popMenu(null, items, at);
+}
+addEventListener("contextmenu", e => {
+  if (e.defaultPrevented) return; // an app already showed its own menu
+  const at = { x: e.clientX, y: e.clientY };
+  const icon = e.target.closest(".dicon"), task = e.target.closest(".task"), tb = e.target.closest(".owin > .titlebar");
+  if (icon) {
+    e.preventDefault(); const a = appById(icon.dataset.app);
+    popMenu(null, [{ text: `Open ${a.name}`, key: "Enter", run: () => openApp(a.id) }, { label: a.desc }], at);
+  } else if (task) {
+    e.preventDefault(); const k = task.dataset.app, a = appById(k), anyMin = appWins(k).some(w => wins[w].min);
+    popMenu(null, [
+      { text: anyMin ? "Restore" : "Bring to front", run: () => restoreGroup(k) },
+      { text: "Minimise", run: () => minimiseGroup(k) },
+      "-",
+      { text: `Close ${a.name}`, danger: true, run: () => closeApp(k) },
+    ], at);
+  } else if (tb && !e.target.closest("button")) {
+    e.preventDefault(); windowMenu(tb.parentElement.dataset.wid, at);
+  } else if (!e.target.closest(".owin, .taskbar, .pop, .startmenu, .traypop, .scrim")) {
+    e.preventDefault();
+    popMenu(null, [
+      { label: "Open" },
+      ...APPS.map(a => ({ text: a.name, run: () => openApp(a.id) })),
+      "-",
+      { text: "Tidy windows", run: tidy },
+      { text: "Change colour…", run: () => openApp("settings") },
+      { text: "Restart Neon OS", run: () => location.reload() },
+    ], at);
+  }
+});
+
 // ---------- wallpaper: the orb, idling ----------
 const wall = $("wall"), wctx = wall.getContext("2d");
 let sprite = null, WW = 0, WH = 0;
@@ -551,8 +599,9 @@ applyTheme();
 onTheme(t => { applyTheme(t); buildSprite(); if (reduced) drawWall(performance.now()); });
 buildSprite(); sizeWall(); requestAnimationFrame(drawWall);
 (async () => {
+  await runBoot();
   const saved = loadLayout();
-  if (!saved) { await openApp("amp"); return; }
+  if (!saved) return; // first visit: just the desktop
   const sw = saved.wins;
   if (saved.split) split = { x: clamp(+saved.split.x || 0.5, 0.15, 0.85), y: clamp(+saved.split.y || 0.5, 0.15, 0.85) };
   const wasClosed = new Set(saved.closed || []);
@@ -565,7 +614,6 @@ buildSprite(); sizeWall(); requestAnimationFrame(drawWall);
     await openApp(id, sw);
     appWins(id).forEach(k => { if (sw[k]) { wins[k].min = sw[k].min; keepInView(wins[k], els[k]); render(k); } });
   }
-  if (!Object.keys(wins).length && !closed.size) await openApp("amp");
   const f = front(); if (f) focus(f);
   renderTasks(); saveLayout();
 })();

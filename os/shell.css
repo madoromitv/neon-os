@@ -88,3 +88,25 @@ body > .toasts, body > .drop { z-index: 9900; }
 .traypop .wbody { padding: 10px 12px 12px; gap: 10px; }
 .traypop .vrow { display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: 8px; }
 .traypop .btn { justify-self: start; }
+
+/* boot screen */
+.boot { position: fixed; inset: 0; z-index: 99999; display: grid; place-items: center; background: var(--desk); cursor: pointer; transition: opacity .45s; }
+.boot::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: repeating-linear-gradient(180deg, #ffffff10 0 1px, transparent 1px 3px), radial-gradient(60% 50% at 50% 45%, var(--ball-faint), transparent 70%);
+  animation: boot-static .22s steps(4) 1; }
+.boot.out { opacity: 0; pointer-events: none; }
+.boot-in { display: grid; justify-items: center; gap: 14px; width: min(360px, calc(100vw - 32px)); }
+.boot-orb { width: 10px; height: 10px; border-radius: 50%; background: var(--ball); opacity: .2; transition: all .5s cubic-bezier(.2, .8, .2, 1); }
+.boot.awake .boot-orb { width: 34px; height: 34px; opacity: 1; box-shadow: 0 0 30px 8px var(--ball-dim), 0 0 4px #fff inset; }
+.boot-name { font-family: var(--font-lcd); font-size: 46px; font-weight: 400; letter-spacing: 8px; color: var(--ball); text-shadow: 0 0 12px var(--ball-dim); opacity: 0; transition: opacity .4s .1s; }
+.boot.awake .boot-name { opacity: 1; }
+.boot-lines { width: 100%; display: grid; gap: 2px; font-family: var(--font-lcd); font-size: 19px; color: var(--ink-dim); }
+.boot-line { display: flex; gap: 8px; opacity: 0; transform: translateY(3px); transition: opacity .18s, transform .18s; }
+.boot-line.on { opacity: 1; transform: none; }
+.boot-line .dots { flex: 1; border-bottom: 2px dotted var(--ink-faint); margin-bottom: 6px; }
+.boot-line .v { color: var(--ball); }
+.boot-ready { font-family: var(--font-lcd); font-size: 22px; letter-spacing: 4px; color: var(--ink); opacity: 0; transition: opacity .3s; }
+.boot.ready .boot-ready { opacity: 1; }
+.boot-skip { color: var(--ink-faint); font-size: 11px; letter-spacing: .1em; }
+.boot.still .boot-orb { width: 34px; height: 34px; opacity: 1; } .boot.still .boot-name { opacity: 1; }
+@keyframes boot-static { 0% { opacity: .9; } 50% { opacity: .3; } 100% { opacity: 0; } }
