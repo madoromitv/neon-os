@@ -11,6 +11,7 @@ Open it and you get a desktop. Open apps from the Neon button or the desktop ico
 - **Keyboard:** Ctrl+Alt+arrows snap the front window (Left/Right for halves, then Up/Down for quarters, Up for full screen, Down to restore or minimise)
 - **Close:** the X on Amp's player closes all of Amp and stops the music; the X on any other Amp panel closes just that panel
 - **Amp's player** carries every Amp window docked to it, like the classic player; drag any other Amp window to pull it free
+- **Sounds:** soft system sounds for opening, closing, minimising and snapping; the tray's speaker sets music and system volume and turns sounds off
 - **Collapse:** the arrow on an Amp panel collapses it to its title bar, and docked panels below slide up to close the gap
 
 **Live:** https://madoromitv.github.io/neon-os/
@@ -20,9 +21,9 @@ Open it and you get a desktop. Open apps from the Neon button or the desktop ico
 | App | What it is | Status |
 | --- | --- | --- |
 | Amp | Music player with library, playlists, equalizer and the Neon Orbit visualiser | Working |
+| Files | Browse songs, playlists and notes; play in Amp, download, rename, delete | Working |
 | Notes | Quick notes, saved in this browser | Working |
 | Settings | Orb colour for every app at once, backup and restore, layout reset | Working |
-| Orbit | The visualiser as its own app | Next |
 | Pulse | Drum machine and step sequencer | Planned |
 | Decks | Two-deck DJ mixer | Planned |
 | Drift | Synth | Planned |
@@ -48,9 +49,11 @@ core/        shared engine, used by every app
   theme.js     the shared orb colour; every app follows it live
   backup.js    one-file backup and restore of songs, playlists, notes and settings
   os-link.js   passes window shortcuts from framed apps to the desktop
+  sounds.js    system sounds, made on the fly (no sound files)
 apps/
   registry.js  the list of apps the desktop shows
   amp/         the player
+  files/       files
   notes/       notes
   settings/    settings
 ```

@@ -6,7 +6,7 @@ import { analyseSamples, decodeToMono } from "../../core/analysis.js";
 import { readTags, titleFromName, shrinkCover } from "../../core/tags.js";
 import { makeLocalStore } from "../../core/storage.js";
 import { getTheme, setTheme, onTheme } from "../../core/theme.js";
-import { onLibraryChange } from "../../core/backup.js";
+import { onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
 void closePop;
 
 const $ = id => document.getElementById(id);
@@ -374,7 +374,7 @@ async function removeFromPlaylist(pid, ids) {
 async function editTrack(t) {
   const r = await dialog({ title: "Edit details", fields: [{ label: "Title", value: t.title }, { label: "Artist", value: t.artist }, { label: "Album", value: t.album }], confirm: "Save" });
   if (!r) return;
-  try { await store.updateTrack(t.id, { title: r[0] || t.title, artist: r[1], album: r[2] }); renderAll(); if (curTrack() === t) setNowPlaying(); }
+  try { await store.updateTrack(t.id, { title: r[0] || t.title, artist: r[1], album: r[2] }); notifyLibraryChange("edit"); renderAll(); if (curTrack() === t) setNowPlaying(); }
   catch (e) { toast("Couldn't save those details. Try again.", true); }
 }
 async function deleteTracks(ts) {
@@ -385,7 +385,7 @@ async function deleteTracks(ts) {
     for (const p of store.playlists.filter(p => p.tracks.some(id => gone.has(id)))) await store.updatePlaylist(p.id, { tracks: p.tracks.filter(id => !gone.has(id)) });
     for (const t of ts) await store.deleteTrack(t);
     removePlIdx(pl.map((id, i) => gone.has(id) ? i : -1).filter(i => i >= 0));
-    mlSel.clear(); renderAll();
+    mlSel.clear(); renderAll(); notifyLibraryChange("delete");
     toast(ts.length === 1 ? `Deleted ${ts[0].title}` : `Deleted ${ts.length} songs`);
   } catch (e) { toast("Couldn't delete. Try again.", true); }
 }
@@ -531,7 +531,7 @@ function renderModes() {
 $("bShuf").addEventListener("click", () => { S.shuffle = !S.shuffle; history = []; renderModes(); save(); });
 $("bRep").addEventListener("click", () => { S.repeat = S.repeat === "off" ? "all" : S.repeat === "all" ? "one" : "off"; renderModes(); save(); });
 
-const volS = Slider($("vol"), { min: 0, max: 1, step: 0.01, value: S.vol, label: "Volume", text: v => Math.round(v * 100) + "%", onInput: v => { S.vol = v; Eng.setVolume(v); }, onChange: save });
+const volS = Slider($("vol"), { min: 0, max: 1, step: 0.01, value: S.vol, label: "Volume", text: v => Math.round(v * 100) + "%", onInput: v => { S.vol = v; Eng.setVolume(v); dispatchEvent(new CustomEvent("neonos:volume-changed", { detail: v })); }, onChange: save });
 const balS = Slider($("bal"), { min: -1, max: 1, step: 0.02, value: S.bal, label: "Balance", text: v => Math.abs(v) < 0.01 ? "Centre" : `${Math.round(Math.abs(v) * 100)}% ${v < 0 ? "left" : "right"}`, onInput: v => { if (Math.abs(v) < 0.06) v = 0; S.bal = v; Eng.setBalance(v); }, onChange: save });
 const seekS = Slider($("seek"), { min: 0, max: 1, step: 0.0005, value: 0, label: "Position", text: v => fmt(v * Eng.duration), onInput: () => {}, onChange: v => { if (Eng.buf) { Eng.seek(v * Eng.duration); resetViz(); save(); } } });
 const chaosS = Slider($("chaos"), { min: 0, max: 1, step: 0.01, value: S.chaos, label: "Chaos", text: v => Math.round(v * 100) + "%", onInput: v => { S.chaos = v; }, onChange: save });
@@ -674,7 +674,7 @@ async function processAdds() {
     }
   }
   adding = false;
-  if (newIds.length) { enqueue(newIds); toast(addDone === 1 ? "Added 1 song to the library and playlist" : `Added ${addDone} songs to the library and playlist`); }
+  if (newIds.length) { notifyLibraryChange("add"); enqueue(newIds); toast(addDone === 1 ? "Added 1 song to the library and playlist" : `Added ${addDone} songs to the library and playlist`); }
   renderMl();
 }
 let dragDepth = 0;
@@ -683,6 +683,16 @@ addEventListener("dragenter", e => { if (!hasFiles(e) || !store.canWrite) return
 addEventListener("dragover", e => { if (hasFiles(e) && store.canWrite) e.preventDefault(); });
 addEventListener("dragleave", e => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; $("drop").hidden = true; } });
 addEventListener("drop", e => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; $("drop").hidden = true; if (store.canWrite) enqueueFiles(e.dataTransfer.files); });
+
+// requests from Neon OS: the tray's music volume, and songs to play (from Files)
+let pendingPlay = null;
+addEventListener("neonos:volume", e => { volS.set(e.detail, true); save(); });
+addEventListener("neonos:play", e => {
+  const ids = e.detail.ids || [];
+  if (!storeReady) { pendingPlay = ids; return; }
+  const ok = ids.filter(id => byId(id)); if (!ok.length) return;
+  Eng.ensure(); setPl(ok); playIndex(0);
+});
 
 function renderAll() { renderTree(); renderMl(); renderPl(); setNowPlaying(); }
 
@@ -883,7 +893,15 @@ async function start() {
   try { await store.init(() => { if (storeReady) { renderTree(); renderMl(); renderPl(); } }); } catch (e) {}
   storeReady = true;
   renderAll();
-  onLibraryChange(async () => { try { await store.init(); } catch (e) {} renderAll(); toast("Library restored"); });
+  if (pendingPlay) { const ids = pendingPlay.filter(id => byId(id)); pendingPlay = null; if (ids.length) { Eng.ensure(); setPl(ids); playIndex(0); } }
+  onLibraryChange(async reason => {
+    try { await store.init(); } catch (e) {}
+    // a song deleted elsewhere drops out of the playlist too
+    const gone = pl.map((id, i) => byId(id) ? -1 : i).filter(i => i >= 0);
+    if (gone.length) removePlIdx(gone);
+    renderAll(); if (curTrack()) setNowPlaying();
+    if (reason === "restore") toast("Library restored");
+  });
   if (OBS) {
     let ids = library().map(t => t.id), start = 0;
     if (obsM[1]) { const p = playlistsSorted()[+obsM[2] - 1]; if (p) ids = p.tracks.filter(id => byId(id)); }

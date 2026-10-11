@@ -1,4 +1,4 @@
-// Neon OS core: back up and restore everything in one file
+// Neon OS core: back up and restore everything in one file, plus the shared library helpers apps use
 // A backup holds the library (songs, cover art, beat analysis), playlists, notes and settings.
 // File layout: "NEONOS01" (8 bytes) · header length (4 bytes) · header JSON · song and cover data, one after another.
 // The header lists each song with where its audio and cover sit in the data section, so restoring never has to
@@ -6,15 +6,15 @@
 const MAGIC = "NEONOS01", DB = "neon-orbit-player";
 const KEEP = ["neon-os:notes", "neon-os:theme", "neon-orbit-amp"]; // per-browser settings worth carrying over
 
-function openDb() {
+export function openDb() {
   return new Promise((res, rej) => {
     const rq = indexedDB.open(DB, 1);
     rq.onupgradeneeded = () => { rq.result.createObjectStore("tracks", { keyPath: "id" }); rq.result.createObjectStore("playlists", { keyPath: "id" }); };
     rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
   });
 }
-const all = (db, store) => new Promise((res, rej) => { const rq = db.transaction(store).objectStore(store).getAll(); rq.onsuccess = () => res(rq.result || []); rq.onerror = () => rej(rq.error); });
-const put = (db, store, rec) => new Promise((res, rej) => { const t = db.transaction(store, "readwrite"); t.objectStore(store).put(rec); t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
+export const all = (db, store) => new Promise((res, rej) => { const rq = db.transaction(store).objectStore(store).getAll(); rq.onsuccess = () => res(rq.result || []); rq.onerror = () => rej(rq.error); });
+export const put = (db, store, rec) => new Promise((res, rej) => { const t = db.transaction(store, "readwrite"); t.objectStore(store).put(rec); t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
 
 // What's in this browser right now: song count, playlist count, bytes of audio.
 export async function librarySummary() {
@@ -64,12 +64,19 @@ export async function importBackup(file, onProgress = () => {}) {
   for (const p of header.playlists || []) await put(db, "playlists", p);
   db.close();
   for (const [k, v] of Object.entries(header.settings || {})) { try { localStorage.setItem(k, v); } catch (e) {} }
-  if ("BroadcastChannel" in window) { const c = new BroadcastChannel("neon-os:library"); c.postMessage({ type: "changed" }); c.close(); }
+  notifyLibraryChange("restore");
   return { songs: (header.tracks || []).length, playlists: (header.playlists || []).length, created: header.created };
 }
 
-// Calls fn() when another window restores a backup, so open apps can reload their library.
+export const del = (db, store, key) => new Promise((res, rej) => { const t = db.transaction(store, "readwrite"); t.objectStore(store).delete(key); t.oncomplete = res; t.onerror = () => rej(t.error); });
+
+// Tells every open app the library changed. reason: "restore" (a backup), "add", "edit" or "delete".
+export function notifyLibraryChange(reason = "edit") {
+  if (!("BroadcastChannel" in window)) return;
+  const c = new BroadcastChannel("neon-os:library"); c.postMessage({ type: "changed", reason }); c.close();
+}
+// Calls fn(reason) when another window changes the library, so open apps can reload it.
 export function onLibraryChange(fn) {
   if (!("BroadcastChannel" in window)) return;
-  new BroadcastChannel("neon-os:library").addEventListener("message", e => { if (e.data && e.data.type === "changed") fn(); });
+  new BroadcastChannel("neon-os:library").addEventListener("message", e => { if (e.data && e.data.type === "changed") fn(e.data.reason); });
 }

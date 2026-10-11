@@ -3,7 +3,9 @@
 // so each of their windows is a real desktop window that can be dragged, snapped and stacked.
 import { APPS, PLANNED } from "../apps/registry.js";
 import { esc, clamp } from "../style-kit/ui.js";
-import { getTheme, applyTheme, onTheme, ballHex } from "../core/theme.js";
+import { getTheme, setTheme, applyTheme, onTheme, ballHex } from "../core/theme.js";
+import { sfx } from "../core/sounds.js";
+import { Slider } from "../style-kit/ui.js";
 
 const $ = id => document.getElementById(id);
 const desk = $("desktop");
@@ -34,7 +36,7 @@ async function openApp(appId, savedWins) {
   const app = appById(appId); if (!app) return;
   if (app.native) {
     if (!mounted.has(appId)) { closed.delete(appId); await mountNative(app, savedWins || parked); }
-    else { closed.delete(appId); appWins(appId).forEach(k => els[k].classList.remove("closed")); restoreGroup(appId); renderTasks(); saveLayout(); }
+    else { const was = closed.delete(appId); appWins(appId).forEach(k => els[k].classList.remove("closed")); restoreGroup(appId); renderTasks(); saveLayout(); if (was) sfx.open(); }
     return;
   }
   if (wins[appId]) { focus(appId); return; }
@@ -42,7 +44,7 @@ async function openApp(appId, savedWins) {
   const w = Math.min(app.w, a.w - 24), h = Math.min(app.h, a.h - 24);
   wins[appId] = savedWins && savedWins[appId] ? { ...savedWins[appId], z: ++zTop } :
     { wid: appId, appId, w, h, x: clamp((a.w - w) / 2 + n * 28, 0, a.w - w), y: clamp((a.h - h) / 2 + n * 28, 0, a.h - h), z: ++zTop, min: false, snap: null };
-  buildFramed(app); focus(appId); saveLayout();
+  buildFramed(app); focus(appId); saveLayout(); sfx.open();
 }
 
 function buildFramed(app) {
@@ -93,7 +95,7 @@ async function mountNative(app, savedWins) {
   await import(new URL(app.url + app.native.js, location.href).href);
   followCollapse(app.id);
   const top = appWins(app.id).sort((a, b) => wins[b].z - wins[a].z)[0];
-  focus(top); renderTasks(); saveLayout();
+  focus(top); renderTasks(); saveLayout(); sfx.open();
 }
 
 // Native windows get the shell's buttons beside their own: the main window can minimise or close the whole app,
@@ -115,6 +117,7 @@ function addNativeButtons(app, secId, el) {
 function closeNative(appId) {
   const app = appById(appId), stop = app.native.stop && document.getElementById(app.native.stop);
   if (stop) stop.click();
+  sfx.close();
   closed.add(appId);
   appWins(appId).forEach(k => els[k].classList.add("closed"));
   const f = front(); if (f) focus(f);
@@ -219,14 +222,14 @@ function focus(wid) {
   for (const k in els) els[k].classList.toggle("lit", k === wid);
   renderTasks();
 }
-function minimiseGroup(appId) { appWins(appId).forEach(k => { wins[k].min = true; render(k); }); const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
+function minimiseGroup(appId) { sfx.minimise(); appWins(appId).forEach(k => { wins[k].min = true; render(k); }); const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
 function restoreGroup(appId) {
   const ks = appWins(appId).sort((a, b) => wins[a].z - wins[b].z);
   ks.forEach(k => { wins[k].min = false; raise(k); render(k); });
   if (ks.length) focus(ks[ks.length - 1]);
 }
 function toggleMax(wid) { const st = wins[wid]; st.snap = st.snap ? null : "max"; render(wid); saveLayout(); }
-function closeFramed(wid) { els[wid].remove(); delete els[wid]; delete wins[wid]; const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
+function closeFramed(wid) { sfx.close(); els[wid].remove(); delete els[wid]; delete wins[wid]; const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
 function keepInView(st, el) {
   const a = area(), h = st.autoH && el ? el.offsetHeight : st.h;
   st.w = clamp(st.w, 260, a.w); if (!st.autoH) st.h = clamp(st.h, 140, a.h);
@@ -313,7 +316,7 @@ function startDrag(e, wid) {
   const up = () => {
     el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
     document.body.classList.remove("dragging"); showSnap(null);
-    if (zone) st.snap = zone;
+    if (zone) { st.snap = zone; sfx.snap(); }
     for (const k of group) { keepInView(wins[k], els[k]); render(k); }
     saveLayout();
   };
@@ -386,6 +389,7 @@ function snapKey(wid, key) {
   }
   const next = NEXT[key][String(st.snap)];
   if (next === "min") { minimiseGroup(st.appId); return; }
+  if (next !== st.snap) sfx.snap();
   st.snap = next; render(wid); saveLayout();
 }
 addEventListener("keydown", e => {
@@ -393,8 +397,14 @@ addEventListener("keydown", e => {
   const f = front(); if (!f) return;
   e.preventDefault(); e.stopPropagation(); snapKey(f, e.key);
 }, true);
-addEventListener("message", e => {
-  if (e.origin !== location.origin || !e.data || e.data.neonOs !== "key") return;
+addEventListener("message", async e => {
+  if (e.origin !== location.origin || !e.data) return;
+  if (e.data.neonOs === "play" && Array.isArray(e.data.ids)) { // a framed app (Files) asks Amp to play songs
+    await openApp("amp");
+    dispatchEvent(new CustomEvent("neonos:play", { detail: { ids: e.data.ids } }));
+    return;
+  }
+  if (e.data.neonOs !== "key") return;
   const fr = [...document.querySelectorAll(".owin iframe")].find(f => f.contentWindow === e.source);
   if (fr) snapKey(fr.closest(".owin").dataset.wid, e.data.key);
 });
@@ -418,10 +428,39 @@ function renderTasks() {
 $("tasks").addEventListener("click", e => {
   const b = e.target.closest("[data-app]"); if (!b) return;
   const k = b.dataset.app, f = front();
-  if (f && wins[f].appId === k) minimiseGroup(k); else restoreGroup(k);
+  if (f && wins[f].appId === k) minimiseGroup(k); else { if (appWins(k).some(w => wins[w].min)) sfx.restore(); restoreGroup(k); }
 });
 function tickClock() { const d = new Date(); $("clock").textContent = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; }
 tickClock(); setInterval(tickClock, 10000);
+
+// ---------- tray: volume ----------
+// System sounds on/off and their volume, plus Amp's music volume (Amp listens for neonos:volume).
+let trayPop = null, musicVol = 0.8;
+try { const a = JSON.parse(localStorage.getItem("neon-orbit-amp") || "{}"); if (typeof a.vol === "number") musicVol = a.vol; } catch (e) {}
+addEventListener("neonos:volume-changed", e => { musicVol = e.detail; if (trayPop) trayPop.music.set(musicVol); renderVolIcon(); });
+const VOL = { on: "M4 9v6h4l5 5V4L8 9zm12.5 3A4.5 4.5 0 0 0 14 8v8a4.47 4.47 0 0 0 2.5-4zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06a9 9 0 0 0 0-17.54z", off: "M4 9v6h4l5 5V4L8 9zm12.6 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4z" };
+function renderVolIcon() { $("volBtn").innerHTML = svg(musicVol < 0.01 && getTheme().sounds === false ? VOL.off : VOL.on); }
+function closeTray() { if (!trayPop) return; trayPop.el.remove(); trayPop = null; $("volBtn").setAttribute("aria-expanded", "false"); }
+function openTray() {
+  const t = getTheme(), el = document.createElement("div");
+  el.className = "win lit traypop"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Volume");
+  el.innerHTML = `<div class="titlebar"><span class="ttl">Volume</span></div><div class="wbody">
+    <div class="vrow"><span class="lbl">Music</span><div class="slider h" id="trMusic"></div></div>
+    <div class="vrow"><span class="lbl">System</span><div class="slider h" id="trSys"></div></div>
+    <button class="btn" id="trSnd" aria-pressed="${t.sounds !== false}"><i class="led"></i>System sounds</button></div>`;
+  document.body.appendChild(el);
+  const music = Slider(el.querySelector("#trMusic"), { min: 0, max: 1, step: 0.01, value: musicVol, label: "Music volume", text: v => Math.round(v * 100) + "%",
+    onInput: v => { musicVol = v; dispatchEvent(new CustomEvent("neonos:volume", { detail: v })); renderVolIcon(); } });
+  Slider(el.querySelector("#trSys"), { min: 0, max: 1, step: 0.01, value: t.sysVol == null ? 0.6 : t.sysVol, label: "System sounds volume", text: v => Math.round(v * 100) + "%",
+    onInput: v => setTheme({ sysVol: v }), onChange: () => sfx.tick() });
+  el.querySelector("#trSnd").addEventListener("click", e => { const on = getTheme().sounds === false; setTheme({ sounds: on }); e.currentTarget.setAttribute("aria-pressed", String(on)); if (on) sfx.chime(); renderVolIcon(); });
+  trayPop = { el, music };
+  $("volBtn").setAttribute("aria-expanded", "true");
+}
+$("volBtn").addEventListener("click", e => { e.stopPropagation(); trayPop ? closeTray() : openTray(); });
+document.addEventListener("pointerdown", e => { if (trayPop && !trayPop.el.contains(e.target) && !e.target.closest("#volBtn")) closeTray(); });
+document.addEventListener("keydown", e => { if (trayPop && e.key === "Escape") { closeTray(); $("volBtn").focus(); } });
+renderVolIcon();
 
 // ---------- start menu ----------
 let menu = null;
@@ -453,7 +492,7 @@ function tidy() {
   for (const id of mounted) { defaultAmpLayout(id); appWins(id).forEach(k => { wins[k].min = false; render(k); }); }
   renderTasks(); saveLayout();
 }
-$("startBtn").addEventListener("click", e => { e.stopPropagation(); menu ? closeMenu() : openMenu(); });
+$("startBtn").addEventListener("click", e => { e.stopPropagation(); if (menu) closeMenu(); else { sfx.tick(); openMenu(); } });
 document.addEventListener("pointerdown", e => { if (menu && !menu.contains(e.target) && !e.target.closest("#startBtn")) closeMenu(); });
 addEventListener("blur", closeMenu);
 document.addEventListener("keydown", e => {
