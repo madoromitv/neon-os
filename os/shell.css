@@ -59,3 +59,10 @@ body { overflow: hidden; user-select: none; }
   .task { flex-basis: 44px; }
   .task span { display: none; }
 }
+
+/* native app windows (Amp) and the overlays they open */
+.owin.shaded { height: auto !important; min-height: 0 !important; }
+.owin.shaded .grip { display: none; }
+body > .pop { z-index: 9700; }
+body > .scrim { z-index: 9800; }
+body > .toasts, body > .drop { z-index: 9900; }

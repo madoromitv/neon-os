@@ -1,5 +1,6 @@
 // Neon OS shell: desktop, window manager, taskbar, start menu
-// Each app runs in its own window (an iframe), so apps stay standalone and also work on their own pages.
+// Framed apps run in their own window (an iframe). Native apps (Amp) run inside the desktop,
+// so each of their windows is a real desktop window that can be dragged, snapped and stacked.
 import { APPS, PLANNED } from "../apps/registry.js";
 import { esc, clamp } from "../style-kit/ui.js";
 import { getTheme, applyTheme, onTheme, ballHex } from "../core/theme.js";
@@ -11,50 +12,109 @@ const appById = id => APPS.find(a => a.id === id);
 const svg = (d, cls = "i") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
 const ICON = { min: "M5 11h14v2H5z", max: "M5 5h14v14H5zm2 4v8h10V9z", restore: "M8 4h12v12h-3v3H5V8h3zm2 2v2h7v7h1V6zM7 10v7h8v-7z", close: "M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z" };
 const TASKBAR = 40, SNAP_EDGE = 6;
+const area = () => ({ w: innerWidth, h: innerHeight - TASKBAR });
 
-// ---------- layout state (saved per browser) ----------
+// ---------- state (saved per browser) ----------
+// wins: window id -> { wid, appId, x, y, w, h, z, min, snap, autoH }
+// A framed app has one window whose id is the app id. A native app has one window per section, e.g. "amp:winVis".
 const LKEY = "neon-os:layout";
-let wins = {};          // appId -> { appId, x, y, w, h, z, min, snap, restore }
-let zTop = 10;
-const els = {};         // appId -> window element
+let wins = {}, zTop = 10;
+const els = {};
+const mounted = new Set();
 function loadLayout() { try { const s = JSON.parse(localStorage.getItem(LKEY) || "{}"); return s && s.wins ? s : null; } catch (e) { return null; } }
 let saveT = null;
 function saveLayout() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(LKEY, JSON.stringify({ wins })); } catch (e) {} }, 200); }
-const area = () => ({ w: innerWidth, h: innerHeight - TASKBAR });
+const appWins = appId => Object.keys(wins).filter(k => wins[k].appId === appId);
 
-// ---------- windows ----------
-function openApp(appId) {
+// ---------- opening apps ----------
+async function openApp(appId, savedWins) {
   const app = appById(appId); if (!app) return;
-  if (wins[appId]) { wins[appId].min = false; render(appId); focus(appId); return; }
+  if (app.native) {
+    if (!mounted.has(appId)) await mountNative(app, savedWins);
+    else restoreGroup(appId);
+    return;
+  }
+  if (wins[appId]) { focus(appId); return; }
   const a = area(), n = Object.keys(wins).length;
   const w = Math.min(app.w, a.w - 24), h = Math.min(app.h, a.h - 24);
-  wins[appId] = { appId, w, h, x: clamp((a.w - w) / 2 + n * 28, 0, a.w - w), y: clamp((a.h - h) / 2 + n * 28, 0, a.h - h), z: ++zTop, min: false, snap: null, restore: null };
-  build(appId); focus(appId); saveLayout();
+  wins[appId] = savedWins && savedWins[appId] ? { ...savedWins[appId], z: ++zTop } :
+    { wid: appId, appId, w, h, x: clamp((a.w - w) / 2 + n * 28, 0, a.w - w), y: clamp((a.h - h) / 2 + n * 28, 0, a.h - h), z: ++zTop, min: false, snap: null };
+  buildFramed(app); focus(appId); saveLayout();
 }
 
-function build(appId) {
-  const app = appById(appId), st = wins[appId];
+function buildFramed(app) {
+  const wid = app.id;
   const el = document.createElement("section");
-  el.className = "win owin"; el.setAttribute("aria-label", app.name); el.dataset.app = appId;
+  el.className = "win owin"; el.setAttribute("aria-label", app.name); el.dataset.wid = wid;
   el.innerHTML = `<div class="titlebar"><span class="ttl">${esc(app.name)}</span><span class="tbtns">
       <button class="tbtn" data-act="min" aria-label="Minimise ${esc(app.name)}" title="Minimise">${svg(ICON.min)}</button>
       <button class="tbtn" data-act="max" aria-label="Maximise ${esc(app.name)}" title="Maximise">${svg(ICON.max)}</button>
       <button class="tbtn" data-act="close" aria-label="Close ${esc(app.name)}" title="Close">${svg(ICON.close)}</button></span></div>
     <div class="wbody frame"><iframe src="${esc(app.url)}" title="${esc(app.name)}" allow="autoplay; fullscreen"></iframe></div>
     <span class="grip" aria-hidden="true"></span>`;
-  desk.appendChild(el); els[appId] = el;
-  el.addEventListener("pointerdown", () => focus(appId), true);
-  el.querySelector('[data-act="min"]').addEventListener("click", () => minimise(appId));
-  el.querySelector('[data-act="max"]').addEventListener("click", () => toggleMax(appId));
-  el.querySelector('[data-act="close"]').addEventListener("click", () => close(appId));
-  const tb = el.querySelector(".titlebar");
-  tb.addEventListener("dblclick", e => { if (!e.target.closest("button")) toggleMax(appId); });
-  tb.addEventListener("pointerdown", e => startDrag(e, appId));
-  el.querySelector(".grip").addEventListener("pointerdown", e => startResize(e, appId));
-  render(appId); renderTasks();
-  void st;
+  desk.appendChild(el); els[wid] = el;
+  el.querySelector('[data-act="min"]').addEventListener("click", () => minimiseGroup(app.id));
+  el.querySelector('[data-act="max"]').addEventListener("click", () => toggleMax(wid));
+  el.querySelector('[data-act="close"]').addEventListener("click", () => closeFramed(wid));
+  el.querySelector(".titlebar").addEventListener("dblclick", e => { if (!e.target.closest("button")) toggleMax(wid); });
+  wireWindow(wid, true);
+  render(wid); renderTasks();
 }
 
+// A native app's page is fetched, its windows are moved onto the desktop, then its script runs here.
+async function mountNative(app, savedWins) {
+  mounted.add(app.id);
+  const html = await (await fetch(app.url)).text();
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  await new Promise(res => {
+    const link = document.createElement("link"); link.rel = "stylesheet"; link.href = app.url + app.native.css;
+    link.onload = link.onerror = res; document.head.appendChild(link);
+  });
+  const sections = [...doc.querySelectorAll("section.win[id]")];
+  for (const sec of sections) {
+    const node = document.adoptNode(sec);
+    node.classList.add("owin"); node.dataset.wid = `${app.id}:${sec.id}`;
+    desk.appendChild(node);
+  }
+  // everything else the app's page needs (file pickers, toasts, drop zone)
+  for (const node of [...doc.body.children]) if (node.tagName !== "SCRIPT" && !node.querySelector("section.win")) document.body.appendChild(document.adoptNode(node));
+  for (const sec of sections) {
+    const wid = `${app.id}:${sec.id}`, el = desk.querySelector(`[data-wid="${CSS.escape(wid)}"]`);
+    els[wid] = el;
+    const resizable = /Pl|Vis|Ml/.test(sec.id);
+    if (resizable) { const g = document.createElement("span"); g.className = "grip"; g.setAttribute("aria-hidden", "true"); el.appendChild(g); }
+    wins[wid] = savedWins && savedWins[wid] ? { ...savedWins[wid], z: ++zTop } : { wid, appId: app.id, x: 0, y: 0, w: 560, h: 300, z: ++zTop, min: false, snap: null, autoH: !resizable };
+    wireWindow(wid, resizable);
+  }
+  if (!sections.some(s => savedWins && savedWins[`${app.id}:${s.id}`])) defaultAmpLayout(app.id);
+  appWins(app.id).forEach(render);
+  await import(new URL(app.url + app.native.js, location.href).href);
+  const top = appWins(app.id).sort((a, b) => wins[b].z - wins[a].z)[0];
+  focus(top); renderTasks(); saveLayout();
+}
+
+// Amp's classic layout: player, equalizer and playlist stacked on the left; visualiser over the library on the right.
+function defaultAmpLayout(appId) {
+  const a = area(), L = 108, T = 14, G = 10, CW = 560;
+  const id = s => `${appId}:${s}`, hOf = s => (els[id(s)] ? els[id(s)].offsetHeight : 200) || 200;
+  const set = (s, g) => { if (wins[id(s)]) Object.assign(wins[id(s)], g, { snap: null, min: false }); };
+  set("winMain", { x: L, y: T, w: CW }); render(id("winMain"));
+  const eqY = T + hOf("winMain") + G;
+  set("winEq", { x: L, y: eqY, w: CW }); render(id("winEq"));
+  const plY = eqY + hOf("winEq") + G;
+  set("winPl", { x: L, y: plY, w: CW, h: Math.max(160, a.h - plY - T) });
+  const rx = L + CW + G, rw = Math.max(320, a.w - rx - 16), vh = Math.round((a.h - 2 * T - G) * 0.55);
+  set("winVis", { x: rx, y: T, w: rw, h: vh });
+  set("winMl", { x: rx, y: T + vh + G, w: rw, h: a.h - T - vh - G - T });
+}
+
+// ---------- window behaviour shared by both kinds ----------
+function wireWindow(wid, resizable) {
+  const el = els[wid];
+  el.addEventListener("pointerdown", () => focus(wid), true);
+  el.querySelector(".titlebar").addEventListener("pointerdown", e => startDrag(e, wid));
+  if (resizable) el.querySelector(".grip").addEventListener("pointerdown", e => startResize(e, wid));
+}
 function geom(st) {
   const a = area();
   if (st.snap === "max") return { x: 0, y: 0, w: a.w, h: a.h };
@@ -62,31 +122,41 @@ function geom(st) {
   if (st.snap === "right") return { x: Math.ceil(a.w / 2), y: 0, w: Math.floor(a.w / 2), h: a.h };
   return { x: st.x, y: st.y, w: st.w, h: st.h };
 }
-function render(appId) {
-  const st = wins[appId], el = els[appId]; if (!st || !el) return;
+function render(wid) {
+  const st = wins[wid], el = els[wid]; if (!st || !el) return;
   const g = geom(st);
-  Object.assign(el.style, { left: g.x + "px", top: g.y + "px", width: g.w + "px", height: g.h + "px", zIndex: st.z });
+  Object.assign(el.style, { position: "absolute", left: g.x + "px", top: g.y + "px", width: g.w + "px", height: st.autoH ? "" : g.h + "px", zIndex: st.z });
   el.classList.toggle("min", !!st.min);
   el.classList.toggle("max", !!st.snap);
   const mb = el.querySelector('[data-act="max"]');
-  mb.innerHTML = svg(st.snap ? ICON.restore : ICON.max); mb.title = st.snap ? "Restore" : "Maximise";
+  if (mb) { mb.innerHTML = svg(st.snap ? ICON.restore : ICON.max); mb.title = st.snap ? "Restore" : "Maximise"; }
 }
-function front() { let best = null; for (const k in wins) if (!wins[k].min && (!best || wins[k].z > wins[best].z)) best = k; return best; }
-function focus(appId) {
-  const st = wins[appId]; if (!st) return;
-  if (front() !== appId || st.min) { st.z = ++zTop; st.min = false; render(appId); saveLayout(); }
-  for (const k in els) els[k].classList.toggle("lit", k === appId);
+function front() { let best = null; for (const k in wins) if (!wins[k].min && !(els[k] && els[k].hidden) && (!best || wins[k].z > wins[best].z)) best = k; return best; }
+function raise(wid) {
+  wins[wid].z = ++zTop;
+  if (zTop > 5000) { // keep stacking numbers small so menus and dialogs always sit above windows
+    Object.keys(wins).sort((a, b) => wins[a].z - wins[b].z).forEach((k, i) => { wins[k].z = 10 + i; render(k); });
+    zTop = 10 + Object.keys(wins).length;
+  }
+}
+function focus(wid) {
+  const st = wins[wid]; if (!st) return;
+  if (front() !== wid || st.min) { raise(wid); st.min = false; render(wid); saveLayout(); }
+  for (const k in els) els[k].classList.toggle("lit", k === wid);
   renderTasks();
 }
-function minimise(appId) { wins[appId].min = true; render(appId); const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
-function toggleMax(appId) { const st = wins[appId]; st.snap = st.snap ? null : "max"; render(appId); saveLayout(); }
-function close(appId) { els[appId].remove(); delete els[appId]; delete wins[appId]; const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
-
-// keeps a window reachable after the browser is resized
-function keepInView(st) {
-  const a = area();
-  st.w = clamp(st.w, 260, a.w); st.h = clamp(st.h, 140, a.h);
-  st.x = clamp(st.x, -st.w + 120, a.w - 120); st.y = clamp(st.y, 0, a.h - 30);
+function minimiseGroup(appId) { appWins(appId).forEach(k => { wins[k].min = true; render(k); }); const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
+function restoreGroup(appId) {
+  const ks = appWins(appId).sort((a, b) => wins[a].z - wins[b].z);
+  ks.forEach(k => { wins[k].min = false; raise(k); render(k); });
+  if (ks.length) focus(ks[ks.length - 1]);
+}
+function toggleMax(wid) { const st = wins[wid]; st.snap = st.snap ? null : "max"; render(wid); saveLayout(); }
+function closeFramed(wid) { els[wid].remove(); delete els[wid]; delete wins[wid]; const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
+function keepInView(st, el) {
+  const a = area(), h = st.autoH && el ? el.offsetHeight : st.h;
+  st.w = clamp(st.w, 260, a.w); if (!st.autoH) st.h = clamp(st.h, 140, a.h);
+  st.x = clamp(st.x, -st.w + 120, a.w - 120); st.y = clamp(st.y, 0, Math.max(0, a.h - Math.min(h, 30)));
 }
 
 // ---------- drag, snap, resize ----------
@@ -97,59 +167,58 @@ function showSnap(zone) {
   const g = geom({ snap: zone });
   Object.assign(snapEl.style, { left: g.x + 6 + "px", top: g.y + 6 + "px", width: g.w - 12 + "px", height: g.h - 12 + "px" });
 }
-function startDrag(e, appId) {
+function startDrag(e, wid) {
   if (e.button !== 0 || e.target.closest("button")) return;
-  const st = wins[appId], el = els[appId];
+  const st = wins[wid], el = els[wid];
   e.preventDefault(); el.setPointerCapture(e.pointerId);
   let g = geom(st), offX = e.clientX - g.x, offY = e.clientY - g.y, zone = null, moved = false;
   document.body.classList.add("dragging");
   const move = ev => {
     if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
-    if (!moved && st.snap) { // pull a snapped window free, keeping the grab point under the cursor
-      const fx = offX / g.w; st.snap = null; offX = fx * st.w; offY = Math.min(offY, 18);
-    }
+    if (!moved && st.snap) { const fx = offX / g.w; st.snap = null; offX = fx * st.w; offY = Math.min(offY, 18); }
     moved = true;
     st.x = ev.clientX - offX; st.y = clamp(ev.clientY - offY, 0, area().h - 30);
-    render(appId);
-    zone = ev.clientY <= SNAP_EDGE ? "max" : ev.clientX <= SNAP_EDGE ? "left" : ev.clientX >= innerWidth - SNAP_EDGE ? "right" : null;
+    render(wid);
+    zone = st.autoH ? null : ev.clientY <= SNAP_EDGE ? "max" : ev.clientX <= SNAP_EDGE ? "left" : ev.clientX >= innerWidth - SNAP_EDGE ? "right" : null;
     showSnap(zone);
   };
   const up = () => {
     el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
     document.body.classList.remove("dragging"); showSnap(null);
     if (zone) st.snap = zone;
-    keepInView(st); render(appId); saveLayout();
+    keepInView(st, el); render(wid); saveLayout();
   };
   el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
 }
-function startResize(e, appId) {
-  const st = wins[appId], el = els[appId]; if (st.snap) return;
+function startResize(e, wid) {
+  const st = wins[wid], el = els[wid]; if (st.snap) return;
   e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId);
   const sx = e.clientX, sy = e.clientY, w0 = st.w, h0 = st.h;
   document.body.classList.add("dragging");
-  const move = ev => { st.w = Math.max(260, w0 + ev.clientX - sx); st.h = Math.max(140, h0 + ev.clientY - sy); render(appId); };
-  const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); document.body.classList.remove("dragging"); keepInView(st); render(appId); saveLayout(); };
+  const move = ev => { st.w = Math.max(260, w0 + ev.clientX - sx); st.h = Math.max(140, h0 + ev.clientY - sy); render(wid); };
+  const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); document.body.classList.remove("dragging"); keepInView(st, el); render(wid); saveLayout(); };
   el.addEventListener("pointermove", move); el.addEventListener("pointerup", up);
 }
-// clicks inside an app (an iframe) don't reach the shell, so watch where focus goes instead
+// clicks inside a framed app don't reach the shell, so watch where focus goes instead
 addEventListener("blur", () => setTimeout(() => {
   const f = document.activeElement;
-  if (f && f.tagName === "IFRAME") { const w = f.closest(".owin"); if (w) focus(w.dataset.app); }
+  if (f && f.tagName === "IFRAME") { const w = f.closest(".owin"); if (w) focus(w.dataset.wid); }
 }, 0));
-addEventListener("resize", () => { for (const k in wins) { keepInView(wins[k]); render(k); } sizeWall(); });
+addEventListener("resize", () => { for (const k in wins) { keepInView(wins[k], els[k]); render(k); } sizeWall(); });
 
-// ---------- taskbar ----------
+// ---------- taskbar: one button per app ----------
 function renderTasks() {
-  const f = front();
-  $("tasks").innerHTML = Object.keys(wins).map(k => {
+  const f = front(), fApp = f ? wins[f].appId : null;
+  const apps = [...new Set(Object.values(wins).map(w => w.appId))];
+  $("tasks").innerHTML = apps.map(k => {
     const a = appById(k);
-    return `<button class="btn task${k === f ? " front" : ""}" data-app="${esc(k)}" title="${esc(a.name)}">${svg(a.icon)}<span>${esc(a.name)}</span></button>`;
+    return `<button class="btn task${k === fApp ? " front" : ""}" data-app="${esc(k)}" title="${esc(a.name)}">${svg(a.icon)}<span>${esc(a.name)}</span></button>`;
   }).join("");
 }
 $("tasks").addEventListener("click", e => {
   const b = e.target.closest("[data-app]"); if (!b) return;
-  const k = b.dataset.app;
-  if (front() === k && !wins[k].min) minimise(k); else focus(k);
+  const k = b.dataset.app, f = front();
+  if (f && wins[f].appId === k) minimiseGroup(k); else restoreGroup(k);
 });
 function tickClock() { const d = new Date(); $("clock").textContent = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; }
 tickClock(); setInterval(tickClock, 10000);
@@ -166,7 +235,7 @@ function openMenu() {
     <div class="sm-sep"></div>
     ${PLANNED.map(p => `<div class="sm-item soon" aria-disabled="true"><span><b>${esc(p.name)}</b><small>${esc(p.desc)}, coming</small></span></div>`).join("")}
     <div class="sm-sep"></div>
-    <button class="sm-item" role="menuitem" data-act="reset"><span><b>Tidy windows</b><small>Close everything and reset the layout</small></span></button>
+    <button class="sm-item" role="menuitem" data-act="tidy"><span><b>Tidy windows</b><small>Close framed apps and put Amp back in place</small></span></button>
   </div>`;
   document.body.appendChild(menu);
   $("startBtn").setAttribute("aria-expanded", "true");
@@ -175,8 +244,13 @@ function openMenu() {
     const b = e.target.closest("button.sm-item"); if (!b) return;
     closeMenu();
     if (b.dataset.app) openApp(b.dataset.app);
-    else if (b.dataset.act === "reset") { for (const k of Object.keys(wins)) close(k); }
+    else if (b.dataset.act === "tidy") tidy();
   });
+}
+function tidy() {
+  for (const k of Object.keys(wins)) if (!appById(wins[k].appId).native) closeFramed(k);
+  for (const id of mounted) { defaultAmpLayout(id); appWins(id).forEach(k => { wins[k].min = false; render(k); }); }
+  renderTasks(); saveLayout();
 }
 $("startBtn").addEventListener("click", e => { e.stopPropagation(); menu ? closeMenu() : openMenu(); });
 document.addEventListener("pointerdown", e => { if (menu && !menu.contains(e.target) && !e.target.closest("#startBtn")) closeMenu(); });
@@ -186,9 +260,9 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") { closeMenu(); $("startBtn").focus(); }
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     const items = [...menu.querySelectorAll("button.sm-item")], i = items.indexOf(document.activeElement);
-    items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus(); e.preventDefault();
+    items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus(); e.preventDefault(); e.stopPropagation();
   }
-});
+}, true);
 
 // ---------- desktop icons ----------
 $("icons").innerHTML = APPS.map(a => `<button class="dicon" data-app="${esc(a.id)}" title="Open ${esc(a.name)}"><span class="tile">${svg(a.icon)}</span>${esc(a.name)}</button>`).join("");
@@ -197,7 +271,7 @@ $("icons").addEventListener("click", e => {
   document.querySelectorAll(".dicon").forEach(x => x.classList.toggle("sel", x === b));
   if (e.detail >= 2 || matchMedia("(pointer: coarse)").matches) openApp(b.dataset.app);
 });
-$("icons").addEventListener("keydown", e => { const b = e.target.closest(".dicon"); if (b && e.key === "Enter") { e.preventDefault(); openApp(b.dataset.app); } });
+$("icons").addEventListener("keydown", e => { const b = e.target.closest(".dicon"); if (b && e.key === "Enter") { e.preventDefault(); e.stopPropagation(); openApp(b.dataset.app); } });
 
 // ---------- wallpaper: the orb, idling ----------
 const wall = $("wall"), wctx = wall.getContext("2d");
@@ -228,20 +302,26 @@ function drawWall(now) {
     wctx.drawImage(sprite, cx + x - s * 2, cy + y - s * 2, s * 4, s * 4);
   }
   wctx.globalAlpha = 1;
-  if (!reduced) requestAnimationFrame(drawWall);
+  if (!reduced && !document.hidden) requestAnimationFrame(drawWall);
 }
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !reduced) requestAnimationFrame(drawWall); });
 
 // ---------- start ----------
 applyTheme();
 onTheme(t => { applyTheme(t); buildSprite(); if (reduced) drawWall(performance.now()); });
 buildSprite(); sizeWall(); requestAnimationFrame(drawWall);
-const saved = loadLayout();
-if (saved) {
-  for (const k of Object.keys(saved.wins).sort((a, b) => saved.wins[a].z - saved.wins[b].z)) {
-    if (!appById(k)) continue;
-    wins[k] = { ...saved.wins[k], z: ++zTop }; keepInView(wins[k]); build(k);
+(async () => {
+  const saved = loadLayout();
+  if (!saved) { await openApp("amp"); return; }
+  const sw = saved.wins;
+  const apps = [...new Set(Object.values(sw).map(w => w.appId).filter(appById))];
+  apps.sort((a, b) => Math.max(...Object.values(sw).filter(w => w.appId === a).map(w => w.z)) - Math.max(...Object.values(sw).filter(w => w.appId === b).map(w => w.z)));
+  for (const id of apps) {
+    const app = appById(id);
+    await openApp(id, sw);
+    appWins(id).forEach(k => { if (sw[k]) { wins[k].min = sw[k].min; keepInView(wins[k], els[k]); render(k); } });
   }
+  if (!Object.keys(wins).length) await openApp("amp");
   const f = front(); if (f) focus(f);
-} else {
-  openApp("amp");
-}
+  renderTasks(); saveLayout();
+})();

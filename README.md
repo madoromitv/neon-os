@@ -46,6 +46,8 @@ apps/
 
 Every app is also a normal page on its own (for example `apps/amp/`), so it works outside the desktop too.
 
+There are two kinds of app. **Native** apps (Amp) run inside the desktop, so each of their windows is a real desktop window. **Framed** apps (Notes, Settings) run in a window of their own. A native app's windows share one taskbar button, and its music keeps playing when it's minimised.
+
 ## Adding an app
 
 1. Make a folder in `apps/` with an `index.html` that loads the style kit
