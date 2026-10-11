@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<style>
+  body { padding: 14px; display: grid; gap: 14px; align-content: start; }
+  .preview { height: 64px; display: flex; align-items: center; gap: 14px; padding: 0 16px; }
+  .preview i { width: 22px; height: 22px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 16px 4px var(--ball-dim), inset 0 0 3px #fff; }
+  .preview b { font-size: 30px; letter-spacing: 2px; }
+  .group { display: grid; gap: 8px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sw { width: 34px; height: 34px; border-radius: 3px; border: 1px solid var(--edge); background: var(--c); box-shadow: 0 0 10px -2px var(--c), inset 1px 1px 0 #ffffff55; }
+  .sw[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .picker { width: 34px; height: 34px; border-radius: 3px; overflow: hidden; display: grid; border: 1px solid var(--edge); cursor: pointer;
+    background: conic-gradient(#ff3d3d, #ffd23d, #3dff6e, #3ff2ff, #a066ff, #ff3de8, #ff3d3d); }
+  .picker.on { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .picker input { opacity: 0; width: 100%; height: 100%; border: 0; padding: 0; cursor: pointer; }
+  p { margin: 0; color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <div class="lcd preview"><i aria-hidden="true"></i><b id="name">CYAN</b></div>
+  <section class="group" aria-labelledby="colLbl">
+    <span class="lbl" id="colLbl">Orb colour</span>
+    <div class="row">
+      <button class="sw" style="--c: var(--violet)" data-c="violet" aria-label="Violet"></button>
+      <button class="sw" style="--c: var(--magenta)" data-c="magenta" aria-label="Magenta"></button>
+      <button class="sw" style="--c: var(--cyan)" data-c="cyan" aria-label="Cyan"></button>
+      <label class="picker" id="picker" title="Pick any colour"><input type="color" id="custom" aria-label="Custom colour" value="#3ff2ff"></label>
+    </div>
+    <p>Every Neon OS app and window follows this colour straight away.</p>
+  </section>
+  <section class="group" aria-labelledby="sysLbl">
+    <span class="lbl" id="sysLbl">System</span>
+    <div class="row">
+      <button class="btn" id="tidy">Reset window layout</button>
+    </div>
+    <p>Puts every window back to its default size the next time Neon OS opens.</p>
+  </section>
+  <script type="module">
+    import { getTheme, setTheme, applyTheme, onTheme, isHex } from "../../core/theme.js";
+    const sync = t => {
+      applyTheme(t);
+      document.querySelectorAll(".sw").forEach(s => s.setAttribute("aria-pressed", String(s.dataset.c === t.ball)));
+      const custom = isHex(t.ball);
+      document.getElementById("picker").classList.toggle("on", custom);
+      if (custom) document.getElementById("custom").value = t.ball;
+      document.getElementById("name").textContent = custom ? t.ball.toUpperCase() : t.ball.toUpperCase();
+    };
+    document.querySelectorAll(".sw").forEach(s => s.addEventListener("click", () => sync(setTheme({ ball: s.dataset.c }))));
+    document.getElementById("custom").addEventListener("input", e => sync(setTheme({ ball: e.target.value })));
+    document.getElementById("tidy").addEventListener("click", e => {
+      try { localStorage.removeItem("neon-os:layout"); } catch (err) {}
+      e.target.textContent = "Done: reload Neon OS";
+    });
+    onTheme(sync);
+    sync(getTheme());
+  </script>
+</body>
+</html>

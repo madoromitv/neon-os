@@ -5,6 +5,7 @@ import { Eng } from "../../core/engine.js";
 import { analyseSamples, decodeToMono } from "../../core/analysis.js";
 import { readTags, titleFromName, shrinkCover } from "../../core/tags.js";
 import { makeLocalStore } from "../../core/storage.js";
+import { getTheme, setTheme, onTheme } from "../../core/theme.js";
 void closePop;
 
 const $ = id => document.getElementById(id);
@@ -44,6 +45,7 @@ let S = { color: "cyan", chaos: 0.7, vol: 0.8, bal: 0, eqOn: true, pre: 0, bands
   pl: [], cur: -1, pos: 0, remain: false, mini: "spec", shade: {}, show: { eq: true, pl: true, vis: true, ml: true } };
 try { const s = JSON.parse(localStorage.getItem(SKEY) || "{}"); Object.assign(S, s); S.show = Object.assign({ eq: true, pl: true, vis: true, ml: true }, s.show || {}); } catch (e) {}
 const isHex = v => /^#[0-9a-f]{6}$/i.test(v);
+S.color = getTheme().ball; // the orb colour is shared across Neon OS
 if (!COLORS[S.color] && !isHex(S.color)) S.color = "cyan";
 if (!Array.isArray(S.bands) || S.bands.length !== 10) S.bands = PRESETS.Flat.slice();
 let saveT = null;
@@ -586,8 +588,8 @@ function syncSwatches() {
   const pk = document.querySelector(".picker"); pk.classList.toggle("on", isHex(S.color)); pk.style.background = isHex(S.color) ? S.color : "";
   if (isHex(S.color)) $("customColor").value = S.color;
 }
-document.querySelectorAll(".swatch").forEach(s => s.addEventListener("click", () => { S.color = s.dataset.c; buildSprite(); syncSwatches(); drawEqGraph(); save(); }));
-$("customColor").addEventListener("input", e => { S.color = e.target.value; buildSprite(); syncSwatches(); drawEqGraph(); save(); });
+document.querySelectorAll(".swatch").forEach(s => s.addEventListener("click", () => { S.color = s.dataset.c; setTheme({ ball: S.color }); buildSprite(); syncSwatches(); drawEqGraph(); save(); }));
+$("customColor").addEventListener("input", e => { S.color = e.target.value; setTheme({ ball: S.color }); buildSprite(); syncSwatches(); drawEqGraph(); save(); });
 function toggleFs() {
   const w = $("winVis");
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -865,6 +867,7 @@ function frame(now) {
 
 // =================== start ===================
 async function start() {
+  onTheme(t => { if (t.ball === S.color) return; S.color = t.ball; buildSprite(); syncSwatches(); drawEqGraph(); });
   buildSprite(); syncSwatches(); renderModes(); renderWindows(); applyEq();
   renderAll(); resize();
   requestAnimationFrame(frame);

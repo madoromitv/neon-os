@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<style>
+  body { padding: 10px; display: flex; flex-direction: column; gap: 8px; height: 100%; }
+  .bar { display: flex; align-items: center; gap: 6px; }
+  .bar .lcd { margin-left: auto; font-size: 18px; line-height: 22px; padding: 0 8px; }
+  textarea { flex: 1; width: 100%; resize: none; padding: 10px 12px; font-family: var(--font-lcd); font-size: 21px; line-height: 1.25;
+    color: var(--ball); background: var(--lcd); border: 1px solid #000; border-radius: 2px; text-shadow: 0 0 6px var(--ball-dim);
+    box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #3a3450, inset 0 0 24px var(--ball-faint); outline: none; }
+  textarea:focus { box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #3a3450, inset 0 0 24px var(--ball-faint), 0 0 0 1px var(--ball); }
+  textarea::placeholder { color: var(--ball); opacity: .4; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <button class="btn" id="stamp" title="Add today's date">Stamp</button>
+    <button class="btn" id="copy">Copy</button>
+    <span class="lcd" id="state">SAVED</span>
+  </div>
+  <textarea id="pad" aria-label="Notes" placeholder="Type anything. It saves as you go." spellcheck="true"></textarea>
+  <script type="module">
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    applyTheme(); onTheme(applyTheme);
+    const KEY = "neon-os:notes", pad = document.getElementById("pad"), state = document.getElementById("state");
+    try { pad.value = localStorage.getItem(KEY) || ""; } catch (e) {}
+    let t = null;
+    const save = () => { state.textContent = "SAVING"; clearTimeout(t); t = setTimeout(() => { try { localStorage.setItem(KEY, pad.value); state.textContent = "SAVED"; } catch (e) { state.textContent = "NOT SAVED"; } }, 300); };
+    pad.addEventListener("input", save);
+    document.getElementById("stamp").addEventListener("click", () => {
+      const d = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+      const s = pad.selectionStart; pad.setRangeText(`${s && pad.value[s - 1] !== "\n" ? "\n" : ""}— ${d} —\n`, s, pad.selectionEnd, "end"); pad.focus(); save();
+    });
+    document.getElementById("copy").addEventListener("click", async e => {
+      try { await navigator.clipboard.writeText(pad.value); e.target.textContent = "Copied"; } catch (err) { pad.select(); e.target.textContent = "Ctrl+C"; }
+      setTimeout(() => e.target.textContent = "Copy", 1500);
+    });
+    addEventListener("storage", e => { if (e.key === KEY && document.activeElement !== pad) pad.value = e.newValue || ""; });
+  </script>
+</body>
+</html>

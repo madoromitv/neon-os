@@ -1,0 +1,61 @@
+/* Neon OS shell: desktop, windows, taskbar, start menu */
+body { overflow: hidden; user-select: none; }
+#wall { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.desktop { position: fixed; inset: 0 0 40px 0; }
+
+/* desktop icons */
+.icons { position: absolute; left: 12px; top: 12px; display: grid; gap: 6px; grid-auto-flow: column; grid-template-rows: repeat(auto-fill, 86px); height: calc(100% - 24px); align-content: start; }
+.dicon { width: 84px; height: 82px; display: grid; justify-items: center; align-content: center; gap: 6px; border-radius: 3px; color: var(--ink); font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-shadow: 0 1px 6px #000; }
+.dicon .tile { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--edge); border-radius: 4px;
+  background: linear-gradient(180deg, #423c57, #26222f); box-shadow: inset 1px 1px 0 #6a6286, inset -1px -1px 0 #17141f, 0 6px 16px -8px #000; color: var(--ball); }
+.dicon .tile svg { width: 20px; height: 20px; filter: drop-shadow(0 0 4px var(--ball-dim)); }
+.dicon:hover, .dicon:focus-visible { background: #ffffff0d; outline: none; }
+.dicon.sel { background: var(--sel); }
+
+/* windows */
+.owin { position: absolute; min-width: 260px; min-height: 140px; }
+.owin .titlebar { cursor: default; }
+.owin .titlebar .ttl { pointer-events: none; }
+.owin .tbtns { position: relative; display: flex; gap: 3px; margin-left: auto; }
+.owin .titlebar .ttl { margin: 0 auto 0 auto; }
+.owin .wbody.frame { padding: 0 4px 4px; }
+.owin iframe { flex: 1; width: 100%; border: 0; display: block; background: var(--desk); border-radius: 2px; box-shadow: inset 1px 1px 0 #000; }
+.owin.dragging iframe, body.dragging iframe { pointer-events: none; }
+.owin.min { display: none; }
+.owin.max { border-radius: 0; }
+.grip { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 0 50%, #6a6286 50% 56%, transparent 56% 66%, #6a6286 66% 72%, transparent 72% 82%, #6a6286 82% 88%, transparent 88%); }
+.owin.max .grip { display: none; }
+.snap { position: fixed; z-index: 9000; border: 2px solid var(--ball); background: var(--ball-faint); border-radius: 4px; box-shadow: 0 0 24px var(--ball-dim); pointer-events: none; transition: all .08s; }
+
+/* taskbar */
+.taskbar { position: fixed; left: 0; right: 0; bottom: 0; height: 40px; z-index: 9500; display: flex; align-items: center; gap: 6px; padding: 0 8px;
+  background: linear-gradient(180deg, var(--metal-1), var(--metal-2)); border-top: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--metal-hi); }
+.start { gap: 8px; min-height: 28px; padding: 0 12px 0 10px; }
+.start i { width: 12px; height: 12px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 10px 2px var(--ball); }
+.tasks { flex: 1; min-width: 0; display: flex; gap: 4px; overflow: hidden; }
+.task { min-width: 0; max-width: 180px; flex: 0 1 180px; justify-content: flex-start; min-height: 28px; }
+.task span { overflow: hidden; text-overflow: ellipsis; }
+.task.front { background: linear-gradient(180deg, #1c1926, #2b2736); box-shadow: inset 1px 1px 0 #0b0910, inset -1px -1px 0 #4b4462; }
+.tray { display: flex; align-items: center; gap: 8px; }
+.clock { font-size: 22px; line-height: 26px; padding: 0 10px; min-width: 70px; text-align: center; }
+
+/* start menu */
+.startmenu { position: fixed; left: 8px; bottom: 46px; z-index: 9600; width: 280px; }
+.startmenu .wbody { padding: 8px; gap: 6px; }
+.startmenu .hero { padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
+.startmenu .hero b { font-size: 26px; line-height: 1; letter-spacing: 2px; }
+.startmenu .hero i { width: 16px; height: 16px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 12px 3px var(--ball-dim); }
+.sm-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border-radius: 2px; text-align: left; }
+.sm-item:hover, .sm-item:focus-visible { background: var(--sel); outline: none; }
+.sm-item svg { width: 16px; height: 16px; fill: var(--ball); }
+.sm-item b { font-size: 13px; font-weight: 600; }
+.sm-item small { display: block; font-size: 11px; color: var(--ink-dim); }
+.sm-item.soon { opacity: .45; cursor: default; }
+.sm-item.soon:hover { background: none; }
+.sm-sep { height: 1px; background: #000; box-shadow: 0 1px 0 #3a3450; margin: 4px 2px; }
+
+@media (max-width: 700px) {
+  .task { flex-basis: 44px; }
+  .task span { display: none; }
+}
