@@ -1,0 +1,88 @@
+/* Neon OS style kit: chrome
+   Windows, title bars, bevel buttons with LEDs, LCD panels, sliders, menus, dialogs, toasts. */
+/* ----- window chrome ----- */
+.win {
+  min-width: 0; display: flex; flex-direction: column;
+  background: linear-gradient(180deg, var(--metal-1), var(--metal-2));
+  border: 1px solid var(--edge); border-radius: 4px;
+  box-shadow: inset 1px 1px 0 var(--metal-hi), inset -1px -1px 0 var(--metal-lo), 0 14px 34px -16px #000;
+}
+.titlebar { flex: none; height: 22px; display: flex; align-items: center; gap: 6px; padding: 0 5px 0 8px; position: relative; user-select: none; }
+.titlebar::before { content: ""; position: absolute; left: 8px; right: 30px; top: 7px; height: 8px;
+  background: repeating-linear-gradient(180deg, #4d4766 0 1px, transparent 1px 3px); opacity: .7; }
+.titlebar .ttl { position: relative; margin: 0 auto; padding: 0 10px; background: var(--metal-1); font-size: 10.5px; font-weight: 700; letter-spacing: .32em; text-transform: uppercase; color: var(--ink-dim); white-space: nowrap; }
+.win:focus-within .titlebar .ttl, .win.lit .titlebar .ttl { color: var(--ball); text-shadow: 0 0 8px var(--ball-dim); }
+.tbtn { position: relative; width: 14px; height: 14px; display: grid; place-items: center; border: 1px solid var(--edge); border-radius: 2px;
+  background: linear-gradient(#433d58, #25212f); box-shadow: inset 1px 1px 0 #6a6286; color: var(--ink-dim); }
+.tbtn svg { width: 10px; height: 10px; }
+.tbtn:hover { color: var(--ink); }
+.wbody { min-height: 0; flex: 1; display: flex; flex-direction: column; padding: 4px 8px 8px; gap: 8px; }
+.win.shaded .wbody { display: none; }
+
+/* ----- bevel buttons, LEDs, LCD ----- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 24px; padding: 0 10px;
+  border: 1px solid var(--edge); border-radius: 3px;
+  background: linear-gradient(180deg, #423c57, #26222f);
+  box-shadow: inset 1px 1px 0 #6a6286, inset -1px -1px 0 #17141f;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink);
+  white-space: nowrap;
+}
+.btn:hover { background: linear-gradient(180deg, #4b4462, #2b2735); }
+.btn:active, .btn.down { background: linear-gradient(180deg, #1c1926, #2b2736); box-shadow: inset 1px 1px 0 #0b0910, inset -1px -1px 0 #4b4462; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn .led { width: 7px; height: 7px; border-radius: 1px; background: #1a1622; box-shadow: inset 0 0 0 1px #000; }
+.btn[aria-pressed="true"] .led { background: var(--ball); box-shadow: 0 0 6px var(--ball), inset 0 0 2px #fff; }
+.btn.icon { padding: 0; width: 34px; min-height: 26px; }
+.btn.icon svg { width: 13px; height: 13px; }
+.lcd {
+  background: var(--lcd); color: var(--ball); font-family: var(--font-lcd);
+  border: 1px solid #000; border-radius: 2px;
+  box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #3a3450, inset 0 0 24px var(--ball-faint);
+  text-shadow: 0 0 6px var(--ball-dim);
+  position: relative; overflow: hidden;
+}
+.lcd::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(180deg, #ffffff06 0 1px, transparent 1px 3px); }
+.lbl { font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-dim); white-space: nowrap; }
+
+/* ----- sliders (custom, horizontal + vertical) ----- */
+.slider { position: relative; touch-action: none; cursor: pointer; }
+.slider .groove { position: absolute; background: #07060b; border-radius: 2px; box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #3a3450; overflow: hidden; }
+.slider .fill { position: absolute; background: linear-gradient(90deg, var(--ball-dim), var(--ball)); box-shadow: 0 0 8px var(--ball-dim); }
+.slider .thumb { position: absolute; border: 1px solid var(--edge); border-radius: 2px; background: linear-gradient(180deg, #5a5374, #2d2939); box-shadow: inset 1px 1px 0 #7d74a0, 0 1px 3px #000; }
+.slider:focus-visible { outline: none; }
+.slider:focus-visible .thumb { outline: 2px solid var(--ball); outline-offset: 1px; }
+.slider.h { height: 16px; }
+.slider.h .groove { left: 0; right: 0; top: 5px; height: 6px; }
+.slider.h .fill { left: 0; top: 0; bottom: 0; }
+.slider.h .thumb { top: 1px; width: 22px; height: 14px; margin-left: -11px; }
+.slider.h.center .fill { background: var(--ball-dim); }
+.slider.v { width: 18px; height: 100%; }
+.slider.v .groove { top: 0; bottom: 0; left: 6px; width: 6px; }
+.slider.v .fill { left: 0; right: 0; bottom: 0; background: linear-gradient(0deg, var(--ball-dim), var(--ball)); }
+.slider.v.center .fill { background: var(--ball-dim); }
+.slider.v .thumb { left: 0; width: 18px; height: 11px; margin-top: -5.5px; }
+
+/* ----- menus, dialogs, toasts ----- */
+.pop { position: fixed; z-index: 30; min-width: 200px; max-width: min(300px, calc(100vw - 24px)); padding: 3px; background: linear-gradient(180deg, var(--metal-1), var(--metal-2)); border: 1px solid var(--edge); border-radius: 3px; box-shadow: inset 1px 1px 0 var(--metal-hi), 0 16px 40px -12px #000; max-height: calc(100vh - 24px); overflow-y: auto; }
+.pop .mi { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border-radius: 2px; text-align: left; font-size: 12.5px; }
+.pop .mi:hover, .pop .mi:focus-visible { background: var(--sel); outline: none; }
+.pop .mi:disabled { opacity: .45; }
+.pop .mi.danger { color: var(--danger); }
+.pop .mi .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pop .mi .k { margin-left: auto; font-family: var(--font-lcd); font-size: 15px; color: var(--ink-faint); }
+.pop .sep { height: 1px; background: #000; box-shadow: 0 1px 0 #3a3450; margin: 4px 2px; }
+.pop .sub { padding: 6px 10px 2px; }
+.scrim { position: fixed; inset: 0; z-index: 40; background: #06040bb3; display: grid; place-items: center; padding: 16px; }
+.dialog { width: min(400px, 100%); }
+.dialog .wbody { padding: 12px 14px 14px; gap: 12px; }
+.dialog p { margin: 0; color: var(--ink-dim); line-height: 1.5; }
+.dialog label { display: grid; gap: 5px; }
+.dialog input { background: #000; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; padding: 7px 9px; font-size: 13.5px; }
+.dialog input:focus { outline: none; box-shadow: 0 0 0 1px var(--ball); }
+.dialog .acts { display: flex; justify-content: flex-end; gap: 6px; }
+.toasts { position: fixed; right: 16px; bottom: 16px; z-index: 50; display: grid; gap: 6px; justify-items: end; pointer-events: none; }
+.toast { max-width: min(380px, calc(100vw - 32px)); padding: 8px 12px; border-radius: 3px; background: linear-gradient(180deg, var(--metal-1), var(--metal-2)); border: 1px solid var(--edge); border-left: 3px solid var(--ball); box-shadow: inset 1px 1px 0 var(--metal-hi), 0 10px 26px -10px #000; font-size: 12.5px; line-height: 1.45; }
+.toast.err { border-left-color: var(--danger); }
+.drop { position: fixed; inset: 10px; z-index: 60; border: 2px dashed var(--ball); border-radius: 6px; display: grid; place-items: center; background: #06040bcc; pointer-events: none; }
+.drop p { font-family: var(--font-lcd); font-size: 34px; color: var(--ball); text-shadow: 0 0 10px var(--ball-dim); }

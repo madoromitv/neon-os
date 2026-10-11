@@ -1,0 +1,36 @@
+/* Neon OS style kit: tokens
+   Every colour, font and glow in the suite comes from here. Apps never hard-code these values.
+   The ball colour (--ball) follows the visualiser orb; changing it re-tints every LCD, LED and glow. */
+:root {
+  /* desk and metal chrome */
+  --desk: #07050c;
+  --metal-hi: #575070;
+  --metal-1: #312c42;
+  --metal-2: #1e1b2a;
+  --metal-lo: #110e19;
+  --edge: #040308;
+
+  /* displays and text */
+  --lcd: #030206;
+  --ink: #e9e4f5;
+  --ink-dim: #9a91b4;
+  --ink-faint: #5e5775;
+  --sel: #2c2350;
+  --danger: #ff5c8a;
+
+  /* accents */
+  --violet: #a066ff;
+  --magenta: #ff3de8;
+  --cyan: #3ff2ff;
+
+  /* the ball colour and its glows */
+  --ball: var(--cyan);
+  --ball-dim: color-mix(in srgb, var(--ball) 28%, transparent);
+  --ball-faint: color-mix(in srgb, var(--ball) 12%, transparent);
+
+  /* type */
+  --font-chrome: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --font-lcd: "VT323", "Lucida Console", "Courier New", monospace;
+
+  color-scheme: dark;
+}

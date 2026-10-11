@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Orbit Amp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="amp.css">
+</head>
+<body>
+<div class="desk" id="desk">
+  <div class="col col-left">
+    <!-- MAIN WINDOW -->
+    <section class="win lit" id="winMain" aria-label="Player">
+      <div class="titlebar"><span class="ttl">Neon Orbit</span><button class="tbtn" data-shade="winMain" aria-label="Shade the player window" title="Shade"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v2H5z"/></svg></button></div>
+      <div class="wbody">
+        <div class="main-top">
+          <div class="lcd lcd-left">
+            <span class="state" id="stateIcon" aria-hidden="true"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg></span>
+            <span class="bigtime dim" id="bigTime" role="button" tabindex="0" title="Show time remaining" aria-label="Elapsed time">00:00</span>
+            <canvas class="mini" id="mini" role="button" tabindex="0" aria-label="Mini visualiser: spectrum. Click to switch to oscilloscope." title="Click to switch display"></canvas>
+          </div>
+          <div class="main-right">
+            <div class="lcd marquee" id="marquee" aria-live="off"><span id="marqueeText">NEON ORBIT &middot; PICK A SONG FROM THE LIBRARY &middot;</span></div>
+            <div class="info-row">
+              <span class="chip"><span class="lcd" id="kbps">&nbsp;</span><span class="lbl">kbps</span></span>
+              <span class="chip"><span class="lcd" id="bpmBox">&nbsp;</span><span class="lbl">bpm</span></span>
+              <span class="beat" aria-hidden="true"><i id="beat0"></i><i id="beat1"></i><i id="beat2"></i><i id="beat3"></i><span class="lbl">beat</span></span>
+            </div>
+            <div class="slider-row">
+              <span class="lbl">Vol</span><div class="slider h" id="vol"></div>
+              <span class="lbl">Bal</span><div class="slider h center" id="bal"></div>
+            </div>
+            <div class="toggles">
+                <button class="btn" id="tEq" aria-pressed="true"><i class="led"></i>EQ</button>
+                <button class="btn" id="tPl" aria-pressed="true"><i class="led"></i>PL</button>
+                <button class="btn" id="tVis" aria-pressed="true"><i class="led"></i>VIS</button>
+                <button class="btn" id="tMl" aria-pressed="true"><i class="led"></i>LIB</button>
+            </div>
+          </div>
+        </div>
+        <div class="slider h seek" id="seek"></div>
+        <div class="transport">
+          <button class="btn icon" id="bPrev" aria-label="Previous (Z)" title="Previous (Z)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6.6v10.8a.8.8 0 0 1-1.24.66L9 12.66V17.5H6.8v-11H9v4.84l7.76-5.4A.8.8 0 0 1 18 6.6z"/></svg></button>
+          <button class="btn icon" id="bPlay" aria-label="Play (X)" title="Play (X)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l10.8-6.86a1 1 0 0 0 0-1.7L9.52 4.29A1 1 0 0 0 8 5.14z"/></svg></button>
+          <button class="btn icon" id="bPause" aria-label="Pause (C)" title="Pause (C)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h3.2v16H7zM13.8 4H17v16h-3.2z"/></svg></button>
+          <button class="btn icon" id="bStop" aria-label="Stop (V)" title="Stop (V)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg></button>
+          <button class="btn icon" id="bNext" aria-label="Next (B)" title="Next (B)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6.6v10.8a.8.8 0 0 0 1.24.66L15 12.66V17.5h2.2v-11H15v4.84L7.24 5.94A.8.8 0 0 0 6 6.6z"/></svg></button>
+          <button class="btn icon" id="bEject" aria-label="Add files (L)" title="Add files (L)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14v2.5H5zM12 5l7 8.5H5z"/></svg></button>
+          <span class="spacer"></span>
+          <button class="btn" id="bShuf" aria-pressed="false"><i class="led"></i>Shuffle</button>
+          <button class="btn" id="bRep" aria-pressed="false" aria-label="Repeat: off"><i class="led"></i><span id="repTxt">Repeat</span></button>
+          <span class="brandmark" aria-hidden="true"><i></i></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- EQUALIZER -->
+    <section class="win" id="winEq" aria-label="Equalizer">
+      <div class="titlebar"><span class="ttl">Equalizer</span><button class="tbtn" data-shade="winEq" aria-label="Shade the equalizer" title="Shade"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v2H5z"/></svg></button></div>
+      <div class="wbody">
+        <div class="eq-top">
+          <button class="btn" id="eqOn" aria-pressed="true"><i class="led"></i>On</button>
+          <button class="btn" id="eqReset">Reset</button>
+          <canvas class="lcd eq-graph" id="eqGraph" aria-hidden="true"></canvas>
+          <button class="btn" id="eqPresets" aria-haspopup="menu">Presets <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg></button>
+        </div>
+        <div class="eq-body" id="eqBody"></div>
+      </div>
+    </section>
+
+    <!-- PLAYLIST EDITOR -->
+    <section class="win" id="winPl" aria-label="Playlist editor">
+      <div class="titlebar"><span class="ttl">Playlist editor</span><button class="tbtn" data-shade="winPl" aria-label="Shade the playlist editor" title="Shade"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v2H5z"/></svg></button></div>
+      <div class="wbody">
+        <div class="lcd pl-list" id="plList" role="listbox" aria-label="Current playlist" aria-multiselectable="true" tabindex="0"></div>
+        <div class="pl-bar">
+          <button class="btn" id="plAdd" aria-haspopup="menu">Add</button>
+          <button class="btn" id="plRem" aria-haspopup="menu">Rem</button>
+          <button class="btn" id="plSel" aria-haspopup="menu">Sel</button>
+          <button class="btn" id="plMisc" aria-haspopup="menu">Misc</button>
+          <button class="btn" id="plListBtn" aria-haspopup="menu">List</button>
+          <span class="lcd" id="plTime">0:00/0:00</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="col col-right">
+    <!-- VISUALISER -->
+    <section class="win" id="winVis" aria-label="Neon Orbit visualiser">
+      <div class="titlebar"><span class="ttl">Neon Orbit visualiser</span><button class="tbtn" data-shade="winVis" aria-label="Shade the visualiser" title="Shade"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v2H5z"/></svg></button></div>
+      <div class="wbody">
+        <div class="vis-tools">
+          <span class="lbl">Colour</span>
+          <button class="swatch" style="--c: var(--violet)" data-c="violet" aria-label="Violet"></button>
+          <button class="swatch" style="--c: var(--magenta)" data-c="magenta" aria-label="Magenta"></button>
+          <button class="swatch" style="--c: var(--cyan)" data-c="cyan" aria-label="Cyan"></button>
+          <label class="picker" title="Pick any colour"><input type="color" id="customColor" aria-label="Custom colour" value="#3ff2ff"></label>
+          <span class="chaos"><span class="lbl">Chaos</span><span class="slider h" id="chaos"></span></span>
+          <button class="btn" id="obsBtn" aria-haspopup="dialog">OBS</button>
+          <button class="btn" id="fsBtn" title="Fullscreen (F)">Full</button>
+        </div>
+        <div class="stage" id="stage">
+          <canvas id="viz" aria-label="Twelve glowing balls orbiting in time with the music"></canvas>
+          <div class="np" id="stageNp"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MEDIA LIBRARY -->
+    <section class="win" id="winMl" aria-label="Media library">
+      <div class="titlebar"><span class="ttl">Media library</span><button class="tbtn" data-shade="winMl" aria-label="Shade the media library" title="Shade"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v2H5z"/></svg></button></div>
+      <div class="wbody">
+        <div class="ml">
+          <nav class="ml-tree" aria-label="Library sections">
+            <span class="tree-head lbl">Local media</span>
+            <button class="tree-item" id="treeAll" aria-current="true"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h2v16H4zm4 0h2v16H8zm4.4.6 1.9-.6 5.1 15.4-1.9.6z"/></svg><span class="name">All songs</span><span class="n" id="allCount">0</span></button>
+            <span class="tree-head lbl">Playlists</span>
+            <div id="treePls"></div>
+            <button class="tree-item" id="treeNew"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg><span class="name">New playlist</span></button>
+            <form class="new-pl" id="newPlForm" hidden><input id="newPlName" type="text" maxlength="80" placeholder="Playlist name" aria-label="New playlist name"><button class="btn" type="submit">OK</button></form>
+            <div class="tree-art"><span class="lbl">Now playing</span><div class="art" id="treeArt"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></div><small id="treeArtTxt">Nothing yet</small></div>
+          </nav>
+          <div class="ml-main">
+            <div class="ml-tools">
+              <h2 id="mlTitle">All songs</h2>
+              <button class="btn" id="mlPlay">Play</button>
+              <button class="btn" id="mlEnq">Enqueue</button>
+              <button class="btn" id="mlSend" aria-haspopup="menu">Send to <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg></button>
+              <button class="btn" id="mlAdd">Add files</button>
+              <button class="btn" id="mlRename" hidden>Rename</button>
+              <button class="btn" id="mlDelete" hidden>Delete</button>
+              <label class="search" for="mlSearch"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4a6 6 0 0 1 4.8 9.6l4.8 4.8-1.4 1.4-4.8-4.8A6 6 0 1 1 10 4zm0 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg><input id="mlSearch" type="search" placeholder="Search" aria-label="Search the library"></label>
+            </div>
+            <div class="table" id="mlTable" role="grid" aria-label="Songs" tabindex="0">
+              <div class="thead" role="row">
+                <button data-sort="title" role="columnheader">Title</button>
+                <button data-sort="artist" role="columnheader">Artist</button>
+                <button data-sort="album" role="columnheader">Album</button>
+                <button class="r" data-sort="bpm" role="columnheader">BPM</button>
+                <button class="r" data-sort="duration" role="columnheader">Time</button>
+              </div>
+              <div id="mlRows"></div>
+            </div>
+            <div class="status"><span class="bar-track" id="addTrack" hidden><i id="addBar"></i></span><span class="msg" id="mlStatus">Loading the library&hellip;</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<input id="fileIn" type="file" accept="audio/*,.mp3,.flac,.wav,.ogg,.m4a,.aac,.opus" multiple hidden>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="drop" id="drop" hidden><p>DROP SONGS TO ADD THEM</p></div>
+<script type="module" src="amp.js"></script>
+</body>
+</html>

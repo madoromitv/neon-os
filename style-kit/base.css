@@ -1,0 +1,14 @@
+/* Neon OS style kit: base
+   Page defaults every app shares: the dark desk, the chrome font, focus rings in the ball colour. */
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--desk); color: var(--ink); font-family: var(--font-chrome); font-size: 13px;
+  background-image: radial-gradient(60% 50% at 15% 0%, #2a105033, transparent 70%), radial-gradient(50% 60% at 100% 100%, #3d0b3a33, transparent 70%);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; padding: 0; }
+input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ball); outline-offset: 1px; }
+svg.i { width: 14px; height: 14px; fill: currentColor; display: block; flex: none; }
