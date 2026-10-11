@@ -4,7 +4,7 @@ A browser desktop and suite of apps in the Neon Orbit style: bevelled gunmetal c
 
 Open it and you get a desktop: drag windows by their title bars, snap them to the left, right or top edge, minimise them to the taskbar, and open apps from the Neon button or the desktop icons. The layout is remembered.
 
-**Live:** https://madoromitv.github.io/Neon-OS/
+**Live:** https://madoromitv.github.io/neon-os/
 
 ## Apps
 
