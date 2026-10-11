@@ -19,7 +19,7 @@ const starter = () => { // a simple beat so there's something to hear straight a
 };
 
 // ---------- state ----------
-let S = { bpm: 120, swing: 0, cur: "A", patterns: { A: starter(), B: blank(), C: blank(), D: blank() }, vol: VOICES.map(() => 0.8), mute: VOICES.map(() => false) };
+let S = { bpm: 120, swing: 0, master: 0.9, cur: "A", patterns: { A: starter(), B: blank(), C: blank(), D: blank() }, vol: VOICES.map(() => 0.8), mute: VOICES.map(() => false) };
 try {
   const s = JSON.parse(localStorage.getItem(KEY) || "null");
   if (s && s.patterns) S = { ...S, ...s, patterns: { ...S.patterns, ...s.patterns } };
@@ -34,7 +34,7 @@ let ctx = null, master = null, buses = [];
 function ensureAudio() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
-    master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
+    master = ctx.createGain(); master.gain.value = S.master; master.connect(ctx.destination);
     buses = VOICES.map((_, i) => { const g = ctx.createGain(); g.gain.value = S.mute[i] ? 0 : S.vol[i]; g.connect(master); return g; });
   }
   if (ctx.state !== "running") ctx.resume().catch(() => {});
@@ -141,6 +141,9 @@ function renderTransport() {
 }
 const tempo = Slider($("tempo"), { min: 60, max: 200, step: 1, value: S.bpm, label: "Tempo", text: v => `${v} BPM`, onInput: v => { S.bpm = v; $("bpm").textContent = v; if (S.link) clock.setBpm(v); }, onChange: save });
 Slider($("swing"), { min: 0, max: 0.6, step: 0.01, value: S.swing, label: "Swing", text: v => Math.round(v / 0.6 * 100) + "%", onInput: v => { S.swing = v; }, onChange: save });
+Slider($("master"), { min: 0, max: 1, step: 0.01, value: S.master, label: "Pulse volume", text: v => Math.round(v * 100) + "%",
+  onInput: v => { S.master = v; $("masterPct").textContent = Math.round(v * 100) + "%"; if (master) master.gain.setTargetAtTime(v, ctx.currentTime, 0.01); }, onChange: save });
+$("masterPct").textContent = Math.round(S.master * 100) + "%";
 $("bpmDown").addEventListener("click", () => { tempo.set(S.bpm - 1, true); save(); });
 $("bpmUp").addEventListener("click", () => { tempo.set(S.bpm + 1, true); save(); });
 $("play").addEventListener("click", () => playing ? stop() : start());
@@ -168,7 +171,7 @@ $("wav").addEventListener("click", async () => {
   const btn = $("wav"); btn.disabled = true; btn.textContent = "Rendering…";
   try {
     const SR = 44100, bars = 4, len = bars * STEPS * stepDur() + 1.2;
-    const off = new OfflineAudioContext(2, Math.ceil(len * SR), SR), m = off.createGain(); m.gain.value = 0.9; m.connect(off.destination);
+    const off = new OfflineAudioContext(2, Math.ceil(len * SR), SR), m = off.createGain(); m.gain.value = S.master; m.connect(off.destination);
     const bs = VOICES.map((_, i) => { const g = off.createGain(); g.gain.value = S.mute[i] ? 0 : S.vol[i]; g.connect(m); return g; });
     const p = pat();
     for (let n = 0; n < bars * STEPS; n++) { const s = n % STEPS, t = stepTime(0.02 + n * stepDur(), s); VOICES.forEach((v, i) => { if (p[i][s]) hit(off, bs[i], v.id, t, p[i][s] === 2 ? 1 : 0.62); }); }

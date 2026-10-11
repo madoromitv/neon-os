@@ -283,7 +283,7 @@ function songRow(id, curId) {
   const t = byId(id);
   return `<div class="trow${mlSel.has(id) ? " sel" : ""}${id === curId ? " cur" : ""}" role="row" data-id="${esc(id)}" aria-selected="${mlSel.has(id)}">
     <span class="star${t.fav ? " on" : ""}" role="gridcell" data-star title="${t.fav ? "Remove from favourites" : "Add to favourites"}">${t.fav ? "★" : "☆"}</span>
-    <span role="gridcell">${esc(t.title)}</span><span class="d" role="gridcell">${esc(t.artist || "")}</span><span class="d" role="gridcell">${esc(t.album || "")}</span>
+    <span role="gridcell">${esc(t.title)}</span><span class="d" role="gridcell">${esc(t.artist || "")}</span><span class="d" role="gridcell">${esc(t.album || "")}</span><span class="d" role="gridcell">${esc(t.genre || "")}</span>
     <span class="num r" role="gridcell">${t.bpm ? Math.round(t.bpm) : ""}</span><span class="num r" role="gridcell">${fmt(t.duration)}</span></div>`;
 }
 function groupRow(g) {
