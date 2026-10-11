@@ -202,9 +202,49 @@ async function savePlAs() {
 }
 
 // ---------- media library ----------
+// Views: all songs, a playlist, a smart playlist, the artist or album lists, or one artist or album.
+// The song list only draws the rows on screen, so it stays quick with thousands of songs.
 let mlView = { type: "all" }, mlSort = { key: null, dir: 1 }, mlSearch = "", mlSel = new Set(), mlAnchor = null;
+const nkey = s => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
+const DAY = 864e5;
+const SMART = [
+  { id: "recent", name: "Recently added", ids: () => library().filter(t => t.addedAt).sort((a, b) => String(b.addedAt).localeCompare(String(a.addedAt))).slice(0, 250) },
+  { id: "fav", name: "Favourites", ids: () => library().filter(t => t.fav) },
+  { id: "most", name: "Most played", ids: () => library().filter(t => t.plays).sort((a, b) => b.plays - a.plays).slice(0, 100) },
+  { id: "lately", name: "Played lately", ids: () => library().filter(t => t.lastPlayed && Date.now() - Date.parse(t.lastPlayed) < 30 * DAY).sort((a, b) => String(b.lastPlayed).localeCompare(String(a.lastPlayed))) },
+  { id: "never", name: "Never played", ids: () => library().filter(t => !t.plays) },
+  { id: "b0", name: "Tempo under 100", ids: () => library().filter(t => t.bpm && t.bpm < 100) },
+  { id: "b1", name: "Tempo 100–120", ids: () => library().filter(t => t.bpm >= 100 && t.bpm < 120) },
+  { id: "b2", name: "Tempo 120–130", ids: () => library().filter(t => t.bpm >= 120 && t.bpm < 130) },
+  { id: "b3", name: "Tempo 130–150", ids: () => library().filter(t => t.bpm >= 130 && t.bpm < 150) },
+  { id: "b4", name: "Tempo 150 and up", ids: () => library().filter(t => t.bpm >= 150) },
+];
+const smartById = id => SMART.find(x => x.id === id);
+// artists and albums, worked out from the songs' tags
+let groupsCache = null, groupsFor = -1;
+function groups() {
+  const lib = library(), sig = lib.length + ":" + lib.reduce((n, t) => n + (t.title || "").length + (t.album || "").length, 0);
+  if (groupsCache && groupsFor === sig) return groupsCache;
+  const artists = new Map(), albums = new Map();
+  for (const t of lib) {
+    const ak = nkey(t.artist) || "~", a = artists.get(ak) || { key: ak, name: t.artist || "Unknown artist", songs: [], albums: new Set() };
+    a.songs.push(t.id); if (t.album) a.albums.add(nkey(t.album)); artists.set(ak, a);
+    if (t.album) {
+      const bk = ak + "|" + nkey(t.album), b = albums.get(bk) || { key: bk, name: t.album, artist: t.artist || "Unknown artist", songs: [], cover: null };
+      b.songs.push(t.id); if (!b.cover && t.coverUrl) b.cover = t.coverUrl; albums.set(bk, b);
+    }
+  }
+  const byName = (x, y) => x.name.localeCompare(y.name, undefined, { sensitivity: "base" });
+  groupsCache = { artists: [...artists.values()].sort(byName), albums: [...albums.values()].sort(byName) }; groupsFor = sig;
+  return groupsCache;
+}
+const inOrder = ids => ids.slice().sort((a, b) => { const A = byId(a), B = byId(b); return (A.album || "").localeCompare(B.album || "", undefined, { sensitivity: "base" }) || (A.title || "").localeCompare(B.title || "", undefined, { sensitivity: "base" }); });
+const isGroupList = () => mlView.type === "artists" || mlView.type === "albums";
 function mlIds() {
   if (mlView.type === "pl") { const p = plById(mlView.id); return p ? p.tracks.filter(id => byId(id)) : []; }
+  if (mlView.type === "smart") { const sm = smartById(mlView.id); return sm ? sm.ids().map(t => t.id) : []; }
+  if (mlView.type === "artist") { const a = groups().artists.find(x => x.key === mlView.key); return a ? inOrder(a.songs) : []; }
+  if (mlView.type === "album") { const b = groups().albums.find(x => x.key === mlView.key); return b ? inOrder(b.songs) : []; }
   return library().map(t => t.id);
 }
 function mlVisible() {
@@ -216,14 +256,23 @@ function mlVisible() {
     ids = ids.slice().sort((a, b) => {
       const A = byId(a), B = byId(b);
       if (k === "bpm" || k === "duration") return ((A[k] || 0) - (B[k] || 0)) * d;
+      if (k === "fav") return ((B.fav ? 1 : 0) - (A.fav ? 1 : 0)) * d;
       return (A[k] || "").localeCompare(B[k] || "", undefined, { sensitivity: "base" }) * d;
     });
   }
   return ids;
 }
+function groupsVisible() {
+  const g = groups(), list = mlView.type === "artists" ? g.artists : g.albums, q = mlSearch.trim().toLowerCase();
+  return q ? list.filter(x => x.name.toLowerCase().includes(q) || (x.artist || "").toLowerCase().includes(q)) : list;
+}
 function renderTree() {
   $("allCount").textContent = library().length;
   $("treeAll").setAttribute("aria-current", String(mlView.type === "all"));
+  const g = groups(), on = t => mlView.type === t || (t === "artists" && mlView.type === "artist") || (t === "albums" && mlView.type === "album");
+  $("treeBrowse").innerHTML = `<button class="tree-item" data-browse="artists" aria-current="${on("artists")}">${icon("library")}<span class="name">Artists</span><span class="n">${g.artists.length}</span></button>
+    <button class="tree-item" data-browse="albums" aria-current="${on("albums")}">${icon("note")}<span class="name">Albums</span><span class="n">${g.albums.length}</span></button>`;
+  $("treeSmart").innerHTML = SMART.map(sm => { const n = sm.ids().length; return `<button class="tree-item" data-smart="${sm.id}" aria-current="${mlView.type === "smart" && mlView.id === sm.id}">${icon("tune")}<span class="name">${esc(sm.name)}</span><span class="n">${n}</span></button>`; }).join("");
   $("treePls").innerHTML = playlistsSorted().map(p => `<button class="tree-item" data-pl="${esc(p.id)}" aria-current="${mlView.type === "pl" && mlView.id === p.id}">${icon("playlist")}<span class="name">${esc(p.name)}</span><span class="n">${p.tracks.filter(id => byId(id)).length}</span></button>`).join("");
   $("treeNew").hidden = !store.canWrite;
   $("mlAdd").hidden = !store.canWrite;
@@ -231,36 +280,92 @@ function renderTree() {
 }
 $("treePls").addEventListener("click", e => { const b = e.target.closest("[data-pl]"); if (b) setMlView({ type: "pl", id: b.dataset.pl }); });
 $("treePls").addEventListener("dblclick", e => { const b = e.target.closest("[data-pl]"); if (!b) return; const p = plById(b.dataset.pl); if (p) { Eng.ensure(); setPl(p.tracks.filter(id => byId(id))); playIndex(S.shuffle ? Math.floor(Math.random() * pl.length) : 0); } });
+$("treeBrowse").addEventListener("click", e => { const b = e.target.closest("[data-browse]"); if (b) setMlView({ type: b.dataset.browse }); });
+$("treeSmart").addEventListener("click", e => { const b = e.target.closest("[data-smart]"); if (b) setMlView({ type: "smart", id: b.dataset.smart }); });
+$("treeSmart").addEventListener("dblclick", e => { const b = e.target.closest("[data-smart]"); if (!b) return; const ids = smartById(b.dataset.smart).ids().map(t => t.id); if (ids.length) { Eng.ensure(); setPl(ids); playIndex(S.shuffle ? Math.floor(Math.random() * ids.length) : 0); } });
 $("treeAll").addEventListener("click", () => setMlView({ type: "all" }));
-function setMlView(v) { mlView = v; mlSel.clear(); mlSearch = ""; $("mlSearch").value = ""; mlSort = { key: null, dir: 1 }; renderTree(); renderMl(); $("mlTable").scrollTop = 0; }
+$("mlBack").addEventListener("click", () => setMlView({ type: mlView.type === "artist" ? "artists" : "albums" }));
+function setMlView(v) { mlView = v; mlSel.clear(); mlSearch = ""; $("mlSearch").value = ""; mlSort = { key: null, dir: 1 }; renderTree(); $("mlTable").scrollTop = 0; renderMl(); }
 
+// ---------- the list: only the rows in view are drawn ----------
+const ROW = 26;
+let vRows = [], vKind = "song";
+function viewTitle() {
+  const p = mlView.type === "pl" ? plById(mlView.id) : null;
+  if (p) return p.name;
+  if (mlView.type === "smart") return (smartById(mlView.id) || {}).name || "Smart playlist";
+  if (mlView.type === "artists") return "Artists";
+  if (mlView.type === "albums") return "Albums";
+  if (mlView.type === "artist") { const a = groups().artists.find(x => x.key === mlView.key); return a ? a.name : "Artist"; }
+  if (mlView.type === "album") { const b = groups().albums.find(x => x.key === mlView.key); return b ? `${b.name} · ${b.artist}` : "Album"; }
+  return "All songs";
+}
 function renderMl() {
   const p = mlView.type === "pl" ? plById(mlView.id) : null;
   if (mlView.type === "pl" && !p) mlView = { type: "all" };
-  $("mlTitle").textContent = p ? p.name : "All songs";
+  const grp = isGroupList();
+  $("mlTitle").textContent = viewTitle();
+  $("mlBack").hidden = !(mlView.type === "artist" || mlView.type === "album");
   $("mlRename").hidden = $("mlDelete").hidden = !(p && store.canWrite);
+  ["mlPlay", "mlEnq", "mlSend"].forEach(id => { $(id).hidden = grp; });
+  $("mlTable").classList.toggle("groups", grp);
   document.querySelectorAll(".thead [data-sort]").forEach(b => {
     const on = mlSort.key === b.dataset.sort;
     b.setAttribute("aria-sort", on ? (mlSort.dir > 0 ? "ascending" : "descending") : "none");
     b.dataset.label = b.dataset.label || b.textContent;
-    b.textContent = b.dataset.label + (on ? (mlSort.dir > 0 ? " ▴" : " ▾") : "");
+    b.textContent = b.dataset.label + (on && b.dataset.sort !== "fav" ? (mlSort.dir > 0 ? " ▴" : " ▾") : "");
   });
-  const ids = mlVisible();
-  const curId = curTrack() ? curTrack().id : null;
-  if (!ids.length) {
-    $("mlRows").innerHTML = mlSearch.trim() ? `<div class="ml-empty"><b>No songs match “${esc(mlSearch.trim())}”.</b>Try a title, artist or album.</div>`
-      : p ? `<div class="ml-empty"><b>This playlist is empty.</b>Select songs in All songs, then use Send to.</div>`
-      : `<div class="ml-empty"><b>No songs yet.</b>Use Add files or Add folder, or drop songs or whole folders onto the window.</div>`;
-  } else {
-    $("mlRows").innerHTML = ids.map(id => {
-      const t = byId(id);
-      return `<div class="trow${mlSel.has(id) ? " sel" : ""}${id === curId ? " cur" : ""}" role="row" data-id="${esc(id)}" aria-selected="${mlSel.has(id)}">
-        <span role="gridcell">${esc(t.title)}</span><span class="d" role="gridcell">${esc(t.artist || "")}</span><span class="d" role="gridcell">${esc(t.album || "")}</span>
-        <span class="num r" role="gridcell">${t.bpm ? Math.round(t.bpm) : ""}</span><span class="num r" role="gridcell">${fmt(t.duration)}</span></div>`;
-    }).join("");
-  }
+  vKind = grp ? "group" : "song";
+  vRows = grp ? groupsVisible() : mlVisible();
+  drawRows();
   const n = mlIds().length, tot = mlIds().reduce((s, id) => s + (byId(id).duration || 0), 0);
-  if (!adding) setStatus(`${n} ${n === 1 ? "song" : "songs"}, ${Math.round(tot / 60)} min. ${analyser && analyser.pending ? `Finding beats: ${analyser.pending} to go. ` : ""}${storeNote()}`);
+  const what = grp ? `${vRows.length} ${mlView.type === "artists" ? (vRows.length === 1 ? "artist" : "artists") : (vRows.length === 1 ? "album" : "albums")}` : `${n} ${n === 1 ? "song" : "songs"}, ${Math.round(tot / 60)} min.`;
+  if (!adding) setStatus(`${what} ${analyser && analyser.pending ? `Finding beats: ${analyser.pending} to go. ` : ""}${storeNote()}`);
+}
+function songRow(id, curId) {
+  const t = byId(id);
+  return `<div class="trow${mlSel.has(id) ? " sel" : ""}${id === curId ? " cur" : ""}" role="row" data-id="${esc(id)}" aria-selected="${mlSel.has(id)}">
+    <span class="star${t.fav ? " on" : ""}" role="gridcell" data-star title="${t.fav ? "Remove from favourites" : "Add to favourites"}">${t.fav ? "★" : "☆"}</span>
+    <span role="gridcell">${esc(t.title)}</span><span class="d" role="gridcell">${esc(t.artist || "")}</span><span class="d" role="gridcell">${esc(t.album || "")}</span>
+    <span class="num r" role="gridcell">${t.bpm ? Math.round(t.bpm) : ""}</span><span class="num r" role="gridcell">${fmt(t.duration)}</span></div>`;
+}
+function groupRow(g) {
+  const art = mlView.type === "albums";
+  return `<div class="grow" role="row" data-g="${esc(g.key)}" title="Open · double-click to play">
+    ${art ? (g.cover ? `<img class="thumb" src="${esc(g.cover)}" alt="">` : `<span class="thumb"></span>`) : icon("library")}
+    <span>${esc(g.name)}</span><span class="d">${art ? esc(g.artist) : `${g.albums.size} album${g.albums.size === 1 ? "" : "s"}`}</span>
+    <span class="num">${g.songs.length}</span><span class="d">song${g.songs.length === 1 ? "" : "s"}</span></div>`;
+}
+function drawRows() {
+  const box = $("mlTable"), n = vRows.length;
+  if (!n) {
+    const p = mlView.type === "pl" ? plById(mlView.id) : null;
+    $("mlRows").innerHTML = mlSearch.trim() ? `<div class="ml-empty"><b>Nothing matches “${esc(mlSearch.trim())}”.</b>Try a title, artist or album.</div>`
+      : p ? `<div class="ml-empty"><b>This playlist is empty.</b>Select songs in All songs, then use Send to.</div>`
+      : mlView.type === "smart" ? `<div class="ml-empty"><b>Nothing here yet.</b>${mlView.id === "fav" ? "Click the star beside a song to add it." : mlView.id.startsWith("b") ? "Songs appear once their tempo has been worked out." : "Songs appear here as you play them."}</div>`
+      : `<div class="ml-empty"><b>No songs yet.</b>Use Add files or Add folder, or drop songs or whole folders onto the window.</div>`;
+    return;
+  }
+  const head = vKind === "song" ? 24 : 0, h = box.clientHeight || 400;
+  const top = Math.max(0, Math.min(box.scrollTop - head, n * ROW - h)); // the list may just have got shorter
+  const start = Math.max(0, Math.floor(top / ROW) - 10), end = Math.min(n, Math.ceil((top + h) / ROW) + 10);
+  const curId = curTrack() ? curTrack().id : null;
+  let html = `<div style="height:${start * ROW}px"></div>`;
+  for (let i = start; i < end; i++) html += vKind === "song" ? songRow(vRows[i], curId) : groupRow(vRows[i]);
+  $("mlRows").innerHTML = html + `<div style="height:${(n - end) * ROW}px"></div>`;
+}
+let drawQueued = false;
+$("mlTable").addEventListener("scroll", () => { if (drawQueued) return; drawQueued = true; requestAnimationFrame(() => { drawQueued = false; drawRows(); }); }, { passive: true });
+if (window.ResizeObserver) new ResizeObserver(() => drawRows()).observe($("mlTable"));
+function ensureVisible(i) {
+  const box = $("mlTable"), headH = vKind === "song" ? 24 : 0, y = headH + i * ROW;
+  if (y - headH < box.scrollTop) box.scrollTop = y - headH;
+  else if (y + ROW > box.scrollTop + box.clientHeight) box.scrollTop = y + ROW - box.clientHeight;
+  drawRows();
+}
+async function toggleFav(ids, on) {
+  for (const id of ids) { const t = byId(id); if (t && !t.builtin) await store.updateTrack(id, { fav: on == null ? !t.fav : on }); }
+  notifyLibraryChange("edit"); renderTree(); renderMl();
 }
 function storeNote() {
   if (!storeReady) return "Loading…";
@@ -274,6 +379,9 @@ function setStatus(msg, prog) {
   if (prog != null) $("addBar").style.width = (clamp(prog, 0, 1) * 100).toFixed(1) + "%";
 }
 $("mlRows").addEventListener("click", e => {
+  const g = e.target.closest(".grow");
+  if (g) { setMlView({ type: mlView.type === "artists" ? "artist" : "album", key: g.dataset.g }); return; }
+  if (e.target.closest("[data-star]")) { const r = e.target.closest(".trow"); if (r) toggleFav([r.dataset.id]); return; }
   const row = e.target.closest(".trow"); if (!row) return;
   const id = row.dataset.id, ids = mlVisible();
   if (e.shiftKey && mlAnchor) { const a = ids.indexOf(mlAnchor), b = ids.indexOf(id); mlSel = new Set(ids.slice(Math.min(a, b), Math.max(a, b) + 1)); }
@@ -283,17 +391,21 @@ $("mlRows").addEventListener("click", e => {
 });
 function syncMlSel() { document.querySelectorAll("#mlRows .trow").forEach(r => { const on = mlSel.has(r.dataset.id); r.classList.toggle("sel", on); r.setAttribute("aria-selected", String(on)); }); }
 $("mlRows").addEventListener("dblclick", e => {
+  const g = e.target.closest(".grow");
+  if (g) { const grp = vRows.find(x => x.key === g.dataset.g); if (grp) { Eng.ensure(); const ids = inOrder(grp.songs); setPl(ids); playIndex(0); } return; }
+  if (e.target.closest("[data-star]")) return;
   const row = e.target.closest(".trow"); if (!row) return;
   Eng.ensure();
   const ids = mlVisible();
   setPl(ids); playIndex(ids.indexOf(row.dataset.id));
 });
 $("mlTable").addEventListener("keydown", e => {
+  if (isGroupList()) return;
   const ids = mlVisible(); if (!ids.length) return;
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     const i = clamp(ids.indexOf(mlAnchor) + (e.key === "ArrowDown" ? 1 : -1), 0, ids.length - 1);
-    mlSel = new Set([ids[i]]); mlAnchor = ids[i]; renderMl();
-    const r = $("mlRows").querySelector(`[data-id="${CSS.escape(ids[i])}"]`); if (r) r.scrollIntoView({ block: "nearest" });
+    mlSel = new Set([ids[i]]); mlAnchor = ids[i];
+    ensureVisible(i);
     e.preventDefault(); e.stopPropagation();
   } else if (e.key === "Enter" && mlAnchor) { Eng.ensure(); setPl(ids); playIndex(ids.indexOf(mlAnchor)); e.preventDefault(); }
   else if ((e.key === "a" || e.key === "A") && (e.ctrlKey || e.metaKey)) { mlSel = new Set(ids); renderMl(); e.preventDefault(); }
@@ -318,6 +430,7 @@ function trackMenu(ids) {
     { text: "Play", key: "Enter", run: () => { Eng.ensure(); setPl(ids); playIndex(0); } },
     { text: "Enqueue", run: () => enqueue(ids) },
     { text: "Play next", run: () => { pl.splice(cur + 1, 0, ...ids); renderPl(); save(); } },
+    ...(store.canWrite && own.length ? [{ text: own.every(t => t.fav) ? "Remove from favourites" : "Add to favourites", run: () => toggleFav(own.map(t => t.id), !own.every(t => t.fav)) }] : []),
     ...(sendToItems(ids).length ? ["-", ...sendToItems(ids)] : []),
     ...(mlView.type === "pl" && store.canWrite ? ["-", { text: "Remove from this playlist", run: () => removeFromPlaylist(mlView.id, ids) }] : []),
     ...(store.canWrite && (one && !one.builtin) ? ["-", { text: "Edit details", run: () => editTrack(one) }] : []),
@@ -333,7 +446,7 @@ $("mlRows").addEventListener("contextmenu", e => {
   const row = e.target.closest(".trow"); if (!row) return;
   e.preventDefault();
   const id = row.dataset.id;
-  if (!mlSel.has(id)) { mlSel = new Set([id]); mlAnchor = id; renderMl(); }
+  if (!mlSel.has(id)) { mlSel = new Set([id]); mlAnchor = id; syncMlSel(); }
   openMenu(null, trackMenu(mlVisible().filter(x => mlSel.has(x))), { x: e.clientX, y: e.clientY });
 });
 document.querySelectorAll(".thead [data-sort]").forEach(b => b.addEventListener("click", () => {
@@ -341,7 +454,7 @@ document.querySelectorAll(".thead [data-sort]").forEach(b => b.addEventListener(
   if (mlSort.key !== k) mlSort = { key: k, dir: 1 }; else if (mlSort.dir === 1) mlSort.dir = -1; else mlSort = { key: null, dir: 1 };
   renderMl();
 }));
-$("mlSearch").addEventListener("input", e => { mlSearch = e.target.value; renderMl(); });
+$("mlSearch").addEventListener("input", e => { mlSearch = e.target.value; $("mlTable").scrollTop = 0; renderMl(); });
 $("mlAdd").addEventListener("click", () => $("fileIn").click());
 $("mlAddFolder").addEventListener("click", () => $("folderIn").click());
 $("treeNew").addEventListener("click", () => { $("newPlForm").hidden = false; $("newPlName").value = ""; $("newPlName").focus(); });
@@ -423,7 +536,9 @@ function normalise(raw) {
   return d;
 }
 function unloadTrack() { Eng.stop(); Eng.buf = null; loadedId = null; data = null; setNowPlaying(); }
+let countedId = null; // a play counts once the song has run 30 seconds (or half of a short one)
 async function playIndex(i, { autoplay = true, at = 0, fromHistory = false } = {}) {
+  countedId = null;
   if (i < 0 || i >= pl.length) return;
   const t = byId(pl[i]); if (!t) return;
   if (!fromHistory && cur >= 0 && cur !== i) { history.push(cur); if (history.length > 200) history.shift(); }
@@ -976,6 +1091,10 @@ function frame(now) {
   }
   ctx.globalAlpha = 1;
 
+  if (loadedId && countedId !== loadedId && Eng.state === "playing" && Eng.time() > Math.min(30, Eng.duration * 0.5)) {
+    countedId = loadedId; const t = byId(loadedId);
+    if (t && !t.builtin && store.canWrite) store.updateTrack(t.id, { plays: (t.plays || 0) + 1, lastPlayed: new Date().toISOString() }).then(() => { if (mlView.type === "smart") scheduleRender(); else renderTree(); }).catch(() => {});
+  }
   if (!OBS && now - lastUi > 33) {
     lastUi = now;
     drawMini(envs, Eng.state === "playing");

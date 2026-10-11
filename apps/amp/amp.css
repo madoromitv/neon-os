@@ -97,7 +97,7 @@ body { overflow: hidden; }
 .search input { background: none; border: 0; outline: none; width: 140px; font-size: 12.5px; }
 .search:focus-within { box-shadow: 0 0 0 1px var(--ball); }
 .table { flex: 1; min-height: 0; overflow: auto; background: #0a0810; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; }
-.trow, .thead { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, 1.5fr) 50px 54px; gap: 10px; padding: 0 10px; align-items: center; min-width: 520px; }
+.trow, .thead { display: grid; grid-template-columns: 18px minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, 1.5fr) 50px 54px; gap: 10px; padding: 0 10px; align-items: center; min-width: 520px; }
 .thead { position: sticky; top: 0; z-index: 1; height: 24px; background: linear-gradient(180deg, #3a3550, #24202f); border-bottom: 1px solid #000; }
 .thead button { text-align: left; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-dim); white-space: nowrap; overflow: hidden; }
 .thead button[aria-sort="ascending"], .thead button[aria-sort="descending"] { color: var(--ball); }
@@ -147,3 +147,18 @@ body.obs .stage { background: transparent; box-shadow: none; }
   .transport .brandmark { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .marquee span { transform: none !important; } }
+
+/* library: favourites, browsing, smart playlists */
+.star { cursor: pointer; color: var(--ink-faint); font-size: 13px; text-align: center; }
+.star.on { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+.star:hover { color: var(--ink); }
+.thead .starh { text-align: center; }
+.grow { display: grid; grid-template-columns: 22px minmax(0, 2fr) minmax(0, 1.4fr) 60px 60px; gap: 10px; padding: 0 10px; align-items: center; height: 26px; font-size: 12.5px; min-width: 460px; cursor: default; user-select: none; }
+.grow:nth-child(even) { background: #ffffff04; }
+.grow:hover { background: #ffffff0a; }
+.grow > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grow .d { color: var(--ink-dim); }
+.grow .num { font-family: var(--font-lcd); font-size: 16px; color: var(--ink-dim); text-align: right; }
+.grow .thumb { width: 20px; height: 20px; border-radius: 2px; object-fit: cover; display: block; background: linear-gradient(135deg, #2a1050, #3d0b3a); }
+.grow svg { width: 15px; height: 15px; fill: var(--ball); }
+#mlTable.groups .thead { display: none; }

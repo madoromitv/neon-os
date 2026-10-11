@@ -120,6 +120,9 @@
           <nav class="ml-tree" aria-label="Library sections">
             <span class="tree-head lbl">Local media</span>
             <button class="tree-item" id="treeAll" aria-current="true"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h2v16H4zm4 0h2v16H8zm4.4.6 1.9-.6 5.1 15.4-1.9.6z"/></svg><span class="name">All songs</span><span class="n" id="allCount">0</span></button>
+            <div id="treeBrowse"></div>
+            <span class="tree-head lbl">Smart playlists</span>
+            <div id="treeSmart"></div>
             <span class="tree-head lbl">Playlists</span>
             <div id="treePls"></div>
             <button class="tree-item" id="treeNew"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg><span class="name">New playlist</span></button>
@@ -128,6 +131,7 @@
           </nav>
           <div class="ml-main">
             <div class="ml-tools">
+              <button class="btn" id="mlBack" hidden>‹ Back</button>
               <h2 id="mlTitle">All songs</h2>
               <button class="btn" id="mlPlay">Play</button>
               <button class="btn" id="mlEnq">Enqueue</button>
@@ -140,6 +144,7 @@
             </div>
             <div class="table" id="mlTable" role="grid" aria-label="Songs" tabindex="0">
               <div class="thead" role="row">
+                <button data-sort="fav" role="columnheader" class="starh" title="Favourites" aria-label="Favourites">★</button>
                 <button data-sort="title" role="columnheader">Title</button>
                 <button data-sort="artist" role="columnheader">Artist</button>
                 <button data-sort="album" role="columnheader">Album</button>
