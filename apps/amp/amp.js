@@ -6,6 +6,7 @@ import { analyseSamples, decodeToMono } from "../../core/analysis.js";
 import { readTags, titleFromName, shrinkCover } from "../../core/tags.js";
 import { makeLocalStore } from "../../core/storage.js";
 import { getTheme, setTheme, onTheme } from "../../core/theme.js";
+import { onLibraryChange } from "../../core/backup.js";
 void closePop;
 
 const $ = id => document.getElementById(id);
@@ -575,7 +576,13 @@ const WIN = { eq: "winEq", pl: "winPl", vis: "winVis", ml: "winMl" };
 const TOG = { eq: "tEq", pl: "tPl", vis: "tVis", ml: "tMl" };
 function renderWindows() {
   for (const k in WIN) { $(WIN[k]).hidden = !S.show[k]; $(TOG[k]).setAttribute("aria-pressed", String(!!S.show[k])); }
-  document.querySelectorAll("[data-shade]").forEach(b => { const w = $(b.dataset.shade); w.classList.toggle("shaded", !!S.shade[b.dataset.shade]); b.setAttribute("aria-expanded", String(!S.shade[b.dataset.shade])); });
+  document.querySelectorAll("[data-shade]").forEach(b => {
+    const w = $(b.dataset.shade), sh = !!S.shade[b.dataset.shade];
+    w.classList.toggle("shaded", sh); b.setAttribute("aria-expanded", String(!sh));
+    // collapsed: arrow points down to expand; open: arrow points up to collapse
+    b.innerHTML = icon(sh ? "down" : "up"); b.title = sh ? "Expand" : "Collapse";
+    b.setAttribute("aria-label", (sh ? "Expand " : "Collapse ") + (w.getAttribute("aria-label") || "window"));
+  });
   setTimeout(() => { resize(); drawEqGraph(); }, 0);
 }
 for (const k in TOG) $(TOG[k]).addEventListener("click", () => { S.show[k] = !S.show[k]; renderWindows(); save(); });
@@ -876,6 +883,7 @@ async function start() {
   try { await store.init(() => { if (storeReady) { renderTree(); renderMl(); renderPl(); } }); } catch (e) {}
   storeReady = true;
   renderAll();
+  onLibraryChange(async () => { try { await store.init(); } catch (e) {} renderAll(); toast("Library restored"); });
   if (OBS) {
     let ids = library().map(t => t.id), start = 0;
     if (obsM[1]) { const p = playlistsSorted()[+obsM[2] - 1]; if (p) ids = p.tracks.filter(id => byId(id)); }

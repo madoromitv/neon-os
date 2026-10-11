@@ -11,6 +11,7 @@ Open it and you get a desktop. Open apps from the Neon button or the desktop ico
 - **Keyboard:** Ctrl+Alt+arrows snap the front window (Left/Right for halves, then Up/Down for quarters, Up for full screen, Down to restore or minimise)
 - **Close:** the X on Amp's player closes all of Amp and stops the music; the X on any other Amp panel closes just that panel
 - **Amp's player** carries every Amp window docked to it, like the classic player; drag any other Amp window to pull it free
+- **Collapse:** the arrow on an Amp panel collapses it to its title bar, and docked panels below slide up to close the gap
 
 **Live:** https://madoromitv.github.io/neon-os/
 
@@ -20,7 +21,7 @@ Open it and you get a desktop. Open apps from the Neon button or the desktop ico
 | --- | --- | --- |
 | Amp | Music player with library, playlists, equalizer and the Neon Orbit visualiser | Working |
 | Notes | Quick notes, saved in this browser | Working |
-| Settings | Orb colour for every app at once, layout reset | Working |
+| Settings | Orb colour for every app at once, backup and restore, layout reset | Working |
 | Orbit | The visualiser as its own app | Next |
 | Pulse | Drum machine and step sequencer | Planned |
 | Decks | Two-deck DJ mixer | Planned |
@@ -45,6 +46,8 @@ core/        shared engine, used by every app
   tags.js      song titles, artists and cover art
   storage.js   the library (this browser's IndexedDB)
   theme.js     the shared orb colour; every app follows it live
+  backup.js    one-file backup and restore of songs, playlists, notes and settings
+  os-link.js   passes window shortcuts from framed apps to the desktop
 apps/
   registry.js  the list of apps the desktop shows
   amp/         the player
@@ -77,6 +80,8 @@ Then open http://localhost:8000.
 ## Your music
 
 Songs you add are stored in your own browser and never uploaded. The repository holds no music.
+
+To keep them safe or move them, open **Settings → Back up everything**. You get one `.neonos` file with your songs, playlists, notes and settings. **Restore a backup** in any browser or on any computer brings it all back; restoring adds to what's there and never deletes songs.
 
 ## Roadmap
 

@@ -91,6 +91,7 @@ async function mountNative(app, savedWins) {
   if (!sections.some(s => savedWins && savedWins[`${app.id}:${s.id}`])) defaultAmpLayout(app.id);
   appWins(app.id).forEach(render);
   await import(new URL(app.url + app.native.js, location.href).href);
+  followCollapse(app.id);
   const top = appWins(app.id).sort((a, b) => wins[b].z - wins[a].z)[0];
   focus(top); renderTasks(); saveLayout();
 }
@@ -118,6 +119,34 @@ function closeNative(appId) {
   appWins(appId).forEach(k => els[k].classList.add("closed"));
   const f = front(); if (f) focus(f);
   renderTasks(); saveLayout();
+}
+
+// When a window collapses or expands, windows docked below it slide up or down with it, like the classic player.
+function followCollapse(appId) {
+  if (!window.ResizeObserver) return;
+  const last = {};
+  const ro = new ResizeObserver(entries => {
+    for (const en of entries) {
+      const el = en.target, wid = el.dataset.wid, st = wins[wid]; if (!st) continue;
+      const h = el.offsetHeight, old = last[wid]; last[wid] = h;
+      if (old == null || !h || Math.abs(h - old) < 2 || document.body.classList.contains("dragging")) continue;
+      const r = rectOf(wid), oldBottom = r.y + old, moved = new Set([wid]);
+      const shift = (bottom, x0, x1) => {
+        for (const k of appWins(appId)) {
+          if (moved.has(k) || !visible(k) || wins[k].snap) continue;
+          const o = rectOf(k);
+          if (Math.abs(o.y - bottom) <= 2 && o.x < x1 && x0 < o.x + o.w) {
+            moved.add(k); const ob = o.y + o.h;
+            wins[k].y = Math.max(0, o.y + (h - old)); render(k);
+            shift(ob, o.x, o.x + o.w);
+          }
+        }
+      };
+      shift(oldBottom, r.x, r.x + r.w);
+      if (moved.size > 1) saveLayout();
+    }
+  });
+  appWins(appId).forEach(k => ro.observe(els[k]));
 }
 
 // Amp's classic layout: player, equalizer and playlist stacked on the left; visualiser over the library on the right.
