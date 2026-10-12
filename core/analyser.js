@@ -2,11 +2,12 @@
 // Songs join the library straight away and are analysed here afterwards: decoded on the page (the browser does this
 // natively), then handed to a pool of workers (analysis-worker.js), one per spare core, up to four.
 // prioritise(id) moves a song to the front, e.g. when it's played before its turn.
+// Songs in a linked folder the browser hasn't been given access to yet wait aside; resume() tries them again.
 import { decodeToMono, analyseSamples } from "./analysis.js";
 
 export function createAnalyser({ getBlob, onDone, onError = () => {}, onIdle = () => {} }) {
   const size = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
-  const queue = [], active = new Set(), pool = [], free = [];
+  const queue = [], active = new Set(), pool = [], free = [], blocked = new Set();
   let failedWorkers = false;
   function worker() {
     if (failedWorkers) return null;
@@ -32,12 +33,14 @@ export function createAnalyser({ getBlob, onDone, onError = () => {}, onIdle = (
       const dec = await decodeToMono(await blob.arrayBuffer());
       const analysis = await analyse(id, dec.y, dec.sr);
       await onDone(id, analysis, dec.duration);
-    } catch (e) { await onError(id, e); }
+    } catch (e) { if (e && e.code === "needs_permission") blocked.add(id); else await onError(id, e); }
     finally { active.delete(id); pump(); if (!active.size && !queue.length) onIdle(); }
   }
   function pump() { while (active.size < size && queue.length) run(queue.shift()); }
   return {
     get pending() { return queue.length + active.size; },
+    get waiting() { return blocked.size; },
+    resume() { const ids = [...blocked]; blocked.clear(); for (const id of ids) if (!active.has(id) && !queue.includes(id)) queue.push(id); pump(); },
     enqueue(ids) { for (const id of ids) if (!active.has(id) && !queue.includes(id)) queue.push(id); pump(); },
     prioritise(id) { if (active.has(id)) return; const i = queue.indexOf(id); if (i >= 0) queue.splice(i, 1); queue.unshift(id); pump(); },
     has: id => active.has(id) || queue.includes(id),

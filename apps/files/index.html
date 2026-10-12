@@ -52,6 +52,7 @@
     import { treeHTML, treeClick, treeIcon } from "../../core/library-tree.js";
     import { vlist } from "../../style-kit/vlist.js";
     import { esc, toast, dialog } from "../../style-kit/ui.js";
+    import { fileOf } from "../../core/linked.js";
     applyTheme(); onTheme(applyTheme);
 
     const $ = id => document.getElementById(id);
@@ -109,7 +110,7 @@
       list.set(shown, t => `<div class="lrow song${sel.has(t.id) ? " sel" : ""}" role="row" data-id="${esc(t.id)}" aria-selected="${sel.has(t.id)}">
         <span class="star${t.fav ? " on" : ""}" data-star title="${t.fav ? "Remove from favourites" : "Add to favourites"}">${t.fav ? "★" : "☆"}</span>
         <span>${esc(t.title)}</span><span class="d">${esc(t.artist || "")}</span><span class="d">${esc(t.album || "")}</span><span class="d">${esc(t.genre || "")}</span>
-        <span class="d">${ext(t.mime)}</span><span class="num">${t.blob ? mb(t.blob.size) : ""}</span><span class="num">${esc(day(t.addedAt))}</span></div>`, { keepScroll });
+        <span class="d" title="${t.blob ? "Copied into this browser" : "Plays from your linked folder"}">${ext(t.mime)}${t.blob ? "" : " ↗"}</span><span class="num">${t.blob ? mb(t.blob.size) : t.size ? mb(t.size) : ""}</span><span class="num">${esc(day(t.addedAt))}</span></div>`, { keepScroll });
       $("del").textContent = view.type === "pl" ? "Remove" : "Delete";
       syncSel();
     }
@@ -117,7 +118,8 @@
     function syncSel() {
       document.querySelectorAll("#rows .lrow.song").forEach(r => { const on = sel.has(r.dataset.id); r.classList.toggle("sel", on); r.setAttribute("aria-selected", String(on)); });
       const bytes = shown.reduce((n, t) => n + (t.blob ? t.blob.size : 0), 0);
-      $("status").textContent = sel.size ? `${sel.size} selected` : `${shown.length} ${shown.length === 1 ? "song" : "songs"} · ${mb(bytes)}`;
+      const linked = shown.filter(t => !t.blob && t.link).length;
+      $("status").textContent = sel.size ? `${sel.size} selected` : `${shown.length} ${shown.length === 1 ? "song" : "songs"} · ${mb(bytes)} in this browser${linked ? ` · ${linked} from your linked folder (↗)` : ""}`;
       const n = sel.size; $("play").disabled = !n; $("save").disabled = n !== 1; $("rename").disabled = n !== 1; $("del").disabled = !n;
     }
     const setView = v => { view = v; sel.clear(); anchor = null; $("q").value = ""; render(false); };
@@ -168,10 +170,14 @@
       else toast("Open Files from the Neon OS desktop to play songs in Amp.");
     }
     $("play").addEventListener("click", () => playIds([...sel]));
-    $("save").addEventListener("click", () => {
+    $("save").addEventListener("click", async () => {
       let blob, name;
       if (view.type === "notes") { blob = new Blob([localStorage.getItem("neon-os:notes") || ""], { type: "text/plain" }); name = "notes.txt"; }
-      else { const t = byId([...sel][0]); if (!t || !t.blob) return; blob = t.blob; name = `${[t.artist, t.title].filter(Boolean).join(" - ").replace(/[\\/:*?"<>|]+/g, "")}.${ext(t.mime).toLowerCase()}`; }
+      else {
+        const t = byId([...sel][0]); if (!t) return;
+        try { blob = await fileOf(t, true); } catch (e) { toast(e.code === "needs_permission" ? "Neon OS needs permission to read your music folder. Try again and choose Allow." : `Couldn't find ${t.title} in your linked folder.`, true); return; }
+        name = `${[t.artist, t.title].filter(Boolean).join(" - ").replace(/[\\/:*?"<>|]+/g, "")}.${ext(t.mime).toLowerCase()}`;
+      }
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
     });
     $("rename").addEventListener("click", async () => {

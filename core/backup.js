@@ -58,7 +58,8 @@ export async function importBackup(file, onProgress = () => {}) {
     // copy the bytes out of the file so the restored song doesn't depend on the backup file staying put
     const blob = audio ? new Blob([await slice(audio).arrayBuffer()], { type: audio.type || rest.mime || "audio/mpeg" }) : null;
     const coverBlob = cover ? new Blob([await slice(cover).arrayBuffer()], { type: cover.type || "image/jpeg" }) : null;
-    if (blob) await put(db, "tracks", { ...rest, blob, coverBlob });
+    // linked songs carry no audio: they come back as entries that play again once their folder is linked here
+    if (blob || rest.link) await put(db, "tracks", { ...rest, blob, coverBlob });
     onProgress(++i / Math.max(1, header.tracks.length));
   }
   for (const p of header.playlists || []) await put(db, "playlists", p);

@@ -9,6 +9,7 @@ import { createAnalyser } from "../../core/analyser.js";
 import { SMART, smartById, buildGroups, albumOrder, viewSongs, viewGroups, viewTitle as libTitle, searchGroups, groupNote, nkey } from "../../core/library.js";
 import { getTheme, setTheme, onTheme, applyTheme } from "../../core/theme.js";
 import { notify } from "../../core/notify.js";
+import { fileOf, linkSupported, listFolders, saveFolder, removeFolder, scanFolder, foldersNeedingAccess, reconnectAll, hasAccess } from "../../core/linked.js";
 import { onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
 void closePop;
 
@@ -163,6 +164,7 @@ $("plAdd").addEventListener("click", e => openMenu(e.currentTarget, [
   { text: "Add everything in this library view", run: () => enqueue(mlVisible()) },
   { text: "Add files from your computer", disabled: !store.canWrite, key: "L", run: () => $("fileIn").click() },
   { text: "Add a folder (searches inside)", disabled: !store.canWrite, run: () => $("folderIn").click() },
+  ...(linkSupported ? [{ text: "Link a music folder", disabled: !store.canWrite, run: () => linkFolder() }] : []),
 ]));
 $("plRem").addEventListener("click", e => openMenu(e.currentTarget, [
   { text: "Remove selected", disabled: !plSel.size, key: "Del", run: () => removePlIdx([...plSel]) },
@@ -301,7 +303,7 @@ function drawRows() {
     $("mlRows").innerHTML = mlSearch.trim() ? `<div class="ml-empty"><b>Nothing matches “${esc(mlSearch.trim())}”.</b>Try a title, artist or album.</div>`
       : p ? `<div class="ml-empty"><b>This playlist is empty.</b>Select songs in All songs, then use Send to.</div>`
       : mlView.type === "smart" ? `<div class="ml-empty"><b>Nothing here yet.</b>${mlView.id === "fav" ? "Click the star beside a song to add it." : mlView.id.startsWith("b") ? "Songs appear once their tempo has been worked out." : "Songs appear here as you play them."}</div>`
-      : `<div class="ml-empty"><b>No songs yet.</b>Use Add files or Add folder, or drop songs or whole folders onto the window.</div>`;
+      : `<div class="ml-empty"><b>No songs yet.</b>Use Add files or ${linkSupported ? "Folders" : "Add folder"}, or drop songs or whole folders onto the window.</div>`;
     return;
   }
   const head = vKind === "song" ? 24 : 0, h = box.clientHeight || 400;
@@ -414,7 +416,8 @@ document.querySelectorAll(".thead [data-sort]").forEach(b => b.addEventListener(
 }));
 $("mlSearch").addEventListener("input", e => { mlSearch = e.target.value; $("mlTable").scrollTop = 0; renderMl(); });
 $("mlAdd").addEventListener("click", () => $("fileIn").click());
-$("mlAddFolder").addEventListener("click", () => $("folderIn").click());
+$("mlAddFolder").addEventListener("click", e => { if (linkSupported) folderMenu(e.currentTarget); else $("folderIn").click(); });
+if (linkSupported) { $("mlAddFolder").textContent = "Folders ▾"; $("mlAddFolder").title = "Link a music folder, rescan it, or copy a folder in"; $("mlAddFolder").setAttribute("aria-haspopup", "menu"); }
 $("treeNew").addEventListener("click", () => { $("newPlForm").hidden = false; $("newPlName").value = ""; $("newPlName").focus(); });
 $("newPlName").addEventListener("keydown", e => { if (e.key === "Escape") $("newPlForm").hidden = true; });
 $("newPlForm").addEventListener("submit", async e => {
@@ -475,7 +478,7 @@ async function trackBytes(t) {
     const emb = embedded("aud-" + t.key);
     if (emb) ab = decode(emb).buffer;
     else { const r = await fetch(t.src); if (!r.ok) throw new Error("missing_file"); ab = await r.arrayBuffer(); }
-  } else ab = await store.audioBytes(t);
+  } else ab = await store.audioBytes(t, true); // a linked song may need the browser's permission again; playing is a click, so it can ask
   byteCache.set(t.id, ab);
   if (byteCache.size > 3) byteCache.delete(byteCache.keys().next().value);
   return ab;
@@ -509,6 +512,7 @@ async function playIndex(i, { autoplay = true, at = 0, fromHistory = false } = {
     if (!Eng.ensure()) throw new Error("no_webaudio");
     const [ab, an] = await Promise.all([trackBytes(t), getAnalysis(t)]);
     if (seq !== loadSeq) return;
+    if (analyser && analyser.waiting) { analyser.resume(); checkAccess(); } // access was just given: carry on analysing
     let buf;
     try { buf = await Eng.decode(ab); } catch (e) { throw new Error("decode"); }
     if (seq !== loadSeq) return;
@@ -518,15 +522,18 @@ async function playIndex(i, { autoplay = true, at = 0, fromHistory = false } = {
     t.kbps = Math.round(ab.byteLength * 8 / buf.duration / 1000);
     loading = false;
     setNowPlaying();
-    if (autoplay) { Eng.play(at); checkRunning(); } else { Eng.offset = at; }
+    if (autoplay) { Eng.play(at); checkRunning(); setNowPlaying(); } else { Eng.offset = at; }
     save();
   } catch (e) {
     if (seq !== loadSeq) return;
     loading = false; setNowPlaying();
     const m = e && e.message;
+    if (m === "needs_permission") checkAccess();
     toast(m === "no_webaudio" ? "This browser can't play audio here. Try a current version of Chrome, Edge or Firefox."
       : m === "decode" ? `Couldn't play ${t.title}: this browser can't decode that file.`
       : m === "missing_file" ? `Couldn't find ${t.src}. Keep the song files in the same folder as the page.`
+      : m === "needs_permission" ? `Neon OS needs your permission to read your music folder again. Press Reconnect folder in the library, then play ${t.title}.`
+      : m === "missing" ? `Couldn't find ${t.title} in your linked folder. It may have been moved, renamed or deleted; Rescan folders finds it again.`
       : `Couldn't load ${t.title}. Check your connection and try again.`, true);
   }
 }
@@ -738,12 +745,96 @@ const norm = s => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
 const findDup = (size, title, artist, album) => store.tracks.find(t => norm(t.title) === norm(title) && (
   t.size === size || (artist && norm(t.artist) === norm(artist)) || (album && norm(t.album) === norm(album))));
 let batch = null; // { total, done, added, replaced, skipped, failed, dupMode }
+const newBatch = (extra = {}) => ({ total: 0, done: 0, added: 0, replaced: 0, skipped: 0, failed: 0, converted: 0, relinked: 0, known: 0, freed: 0, dupMode: null, newIds: [], ...extra });
+const mbs = n => n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.max(0.1, n / 1e6).toFixed(1) + " MB";
+async function askConvert() {
+  const v = await choose({ title: "Already copied in", text: "Some songs in this folder are already copied into your library. Play them from the folder instead? Their playlists, favourites, play counts and beat analysis stay; the copies are removed from the browser, freeing space.",
+    options: [{ label: "Use the folder", value: "link" }, { label: "Keep the copies", value: "keep" }] });
+  return v || "keep";
+}
+
+// ---------- linked folders ----------
+// Songs play straight from a folder on your disk; nothing is copied. Rescan picks up songs added or removed since.
+async function linkFolder(handle) {
+  if (!handle) { try { handle = await showDirectoryPicker({ id: "neon-music", mode: "read" }); } catch (e) { return; } }
+  const folder = await saveFolder(handle);
+  await rescan([folder]);
+}
+async function rescan(list) {
+  list = list || await listFolders(true);
+  if (!list.length) { toast("No linked folders yet. Use Folders, then Link a music folder."); return; }
+  if (batch) { toast("Wait for the songs being added to finish, then rescan."); return; }
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  const items = [], missing = new Set();
+  for (const folder of list) {
+    if (!(await hasAccess(folder, true))) { toast(`Neon OS wasn't given access to ${folder.name}.`, true); continue; }
+    setStatus(`Searching ${folder.name}…`, null);
+    let found;
+    try { found = await scanFolder(folder, n => setStatus(`Searching ${folder.name}… ${n} music file${n === 1 ? "" : "s"} found`, null)); }
+    catch (e) { toast(`Couldn't read ${folder.name}. Is the drive connected?`, true); continue; }
+    const paths = new Set(found.map(x => x.path)), known = new Set();
+    for (const t of store.tracks) if (t.link && t.link.folder === folder.id) { known.add(t.link.path); if (!paths.has(t.link.path)) missing.add(t.id); }
+    for (const x of found) if (!known.has(x.path)) items.push({ handle: x.handle, link: { folder: folder.id, path: x.path }, name: x.path.split("/").pop() });
+  }
+  checkAccess();
+  batch = newBatch({ link: true, missing, after: askMissing });
+  batch.total = items.length;
+  addQ.push(...items);
+  await processAdds();
+}
+async function askMissing(B) {
+  const gone = [...(B.missing || [])].map(id => byId(id)).filter(Boolean);
+  if (!gone.length) return;
+  const ok = await dialog({ title: "Songs no longer in your folder", text: gone.length === 1 ? `${gone[0].title} isn't in your linked folder any more. Remove it from your library?` : `${gone.length} songs aren't in your linked folder any more. Remove them from your library and playlists?`, confirm: "Remove", cancel: "Keep them" });
+  if (!ok) return;
+  const ids = new Set(gone.map(t => t.id));
+  for (const p of store.playlists.filter(p => p.tracks.some(id => ids.has(id)))) await store.updatePlaylist(p.id, { tracks: p.tracks.filter(id => !ids.has(id)) });
+  for (const t of gone) await store.deleteTrack(t);
+  removePlIdx(pl.map((id, i) => ids.has(id) ? i : -1).filter(i => i >= 0));
+  renderAll(); notifyLibraryChange("delete");
+}
+async function unlinkFolder(folder) {
+  const songs = store.tracks.filter(t => t.link && t.link.folder === folder.id && !t.blob);
+  const v = await choose({ title: `Stop linking ${folder.name}`, text: songs.length ? `${songs.length} song${songs.length === 1 ? " plays" : "s play"} from this folder. Remove ${songs.length === 1 ? "it" : "them"} from your library too? Nothing on your disk is touched either way.` : "Nothing on your disk is touched.",
+    options: songs.length ? [{ label: "Remove the songs", value: "remove", danger: true }, { label: "Keep them listed", value: "keep" }] : [{ label: "Stop linking", value: "keep" }] });
+  if (!v) return;
+  if (v === "remove") {
+    const ids = new Set(songs.map(t => t.id));
+    for (const p of store.playlists.filter(p => p.tracks.some(id => ids.has(id)))) await store.updatePlaylist(p.id, { tracks: p.tracks.filter(id => !ids.has(id)) });
+    for (const t of songs) await store.deleteTrack(t);
+    removePlIdx(pl.map((id, i) => ids.has(id) ? i : -1).filter(i => i >= 0));
+  }
+  await removeFolder(folder.id); renderAll(); notifyLibraryChange("delete"); checkAccess();
+  toast(`Stopped linking ${folder.name}`);
+}
+// the Reconnect button shows while a linked folder is waiting for the browser's permission
+async function checkAccess() {
+  const need = linkSupported && store.tracks.some(t => t.link && !t.blob) ? await foldersNeedingAccess() : [];
+  $("mlReconnect").hidden = !need.length;
+  if (need.length) $("mlReconnect").title = `The browser needs your permission again to read ${need.map(f => f.name).join(", ")}`;
+}
+$("mlReconnect").addEventListener("click", async () => {
+  const ok = await reconnectAll();
+  checkAccess();
+  if (ok) { if (analyser) analyser.resume(); toast("Folder reconnected"); }
+  else toast("The browser wasn't given access. Press Reconnect folder and choose Allow.", true);
+});
+async function folderMenu(at) {
+  const fs = await listFolders(true);
+  openMenu(at, [
+    { text: "Link a music folder…", run: () => linkFolder() },
+    { text: "Rescan linked folders", disabled: !fs.length, run: () => rescan() },
+    { text: "Copy a folder in…", run: () => $("folderIn").click() },
+    ...(fs.length ? ["-", { label: "Linked folders" }, ...fs.map(f => ({ text: `Stop linking ${f.name}`, run: () => unlinkFolder(f) }))] : []),
+    "-", { label: "Linked songs play from your disk and use no space. Copied songs live in the browser." },
+  ]);
+}
 function enqueueFiles(files, from = "files") {
   const list = [...files].filter(isAudio);
   if (!list.length) { toast(from === "folder" ? "No music files found in that folder." : "Those files aren't audio. Try MP3, FLAC, WAV, OGG or M4A.", true); return; }
   if (!store.canWrite) { toast("This library can't save songs here.", true); return; }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); // ask the browser not to clear the library
-  if (!batch) batch = { total: 0, done: 0, added: 0, replaced: 0, skipped: 0, failed: 0, dupMode: null, newIds: [] };
+  if (!batch) batch = newBatch();
   batch.total += list.length;
   addQ.push(...list); processAdds();
 }
@@ -778,22 +869,42 @@ async function processAdds() {
   adding = false;
   const B = batch; batch = null;
   if (B) {
-    if (B.added || B.replaced) notifyLibraryChange("add");
+    if (B.added || B.replaced || B.converted || B.relinked) notifyLibraryChange("add");
     if (B.newIds.length && B.newIds.length <= 100) enqueue(B.newIds); // big imports don't flood the playlist
-    const parts = [B.added && `added ${B.added}`, B.replaced && `replaced ${B.replaced}`, B.skipped && `skipped ${B.skipped} duplicate${B.skipped === 1 ? "" : "s"}`, B.failed && `${B.failed} couldn't be read`].filter(Boolean);
+    const parts = [B.converted && `${B.converted} now play from your folder (${mbs(B.freed)} freed)`, B.relinked && `found ${B.relinked} that had moved`, B.added && `added ${B.added}`, B.replaced && `replaced ${B.replaced}`, B.skipped && `skipped ${B.skipped} duplicate${B.skipped === 1 ? "" : "s"}`, B.failed && `${B.failed} couldn't be read`].filter(Boolean);
     if (parts.length) {
       const msg = parts.join(", ").replace(/^./, c => c.toUpperCase()) + "." + (B.added + B.replaced ? " Beats and tempo are worked out in the background." : "");
-      if (B.total < 6 || !notify("Songs added", msg, "amp")) toast(msg, !B.added && !B.replaced && B.failed > 0);
-    }
+      if (B.total < 6 || !notify(B.link ? "Folder linked" : "Songs added", msg, "amp")) toast(msg, !B.added && !B.replaced && B.failed > 0);
+    } else if (B.link) toast("Your folder is up to date.");
+    if (B.after) await B.after(B);
   }
   scheduleRender();
 }
-async function addOne(f, B) {
-  let title = titleFromName(f.name);
+async function addOne(item, B) {
+  const link = item.link || null; // { folder, path } for a song in a linked folder
+  let f = item, title = titleFromName(item.name || (link && link.path.split("/").pop()) || "");
   try {
+    if (link) f = await item.handle.getFile();
     setStatus(`Adding song ${Math.min(B.done + 1, B.total)} of ${B.total} · ${title}`, B.done / B.total);
     const tags = readTags(await readHead(f)); title = tags.title || title;
     let dup = findDup(f.size, title, tags.artist, tags.album);
+    if (link && dup) { // linking a folder: songs already in the library are matched up instead of added twice
+      if (dup.link && dup.link.folder === link.folder && dup.link.path === link.path) { B.known++; B.done++; return; }
+      const lost = dup.link && !dup.blob && (B.missing && B.missing.has(dup.id) || !(await listFolders()).some(x => x.id === dup.link.folder));
+      if (lost) { // the same song moved within the folder, or restored from a backup: point it at the file here
+        await store.updateTrack(dup.id, { link, size: f.size }); if (B.missing) B.missing.delete(dup.id);
+        B.relinked++; B.done++; scheduleRender(); return;
+      }
+      if (dup.blob) { // copied in earlier: play it from the folder instead and drop the copy
+        if (!B.convertMode) B.convertMode = await (B.convertAsk || (B.convertAsk = askConvert()));
+        if (B.convertMode === "link") {
+          const freed = dup.blob.size; store.audioCache.delete(dup.id); byteCache.delete(dup.id);
+          await store.updateTrack(dup.id, { blob: null, link, size: f.size });
+          B.converted++; B.freed += freed; B.done++; scheduleRender(); return;
+        }
+        B.skipped++; B.done++; return;
+      }
+    }
     // a copy of a song another lane is adding right now counts as a duplicate too
     const same = x => norm(x.title) === norm(title) && (x.size === f.size || (tags.artist && norm(x.artist) === norm(tags.artist)) || (tags.album && norm(x.album) === norm(tags.album)));
     const twin = !dup && (B.inflight || (B.inflight = [])).some(same);
@@ -808,7 +919,7 @@ async function addOne(f, B) {
     }
     const [duration, cover] = await Promise.all([durationOf(f), tags.cover ? shrinkCover(tags.cover.blob) : null]);
     const meta = { title, artist: tags.artist || "", album: tags.album || "", genre: tags.genre || "", year: tags.year || "", duration: Math.round(duration), bpm: null, size: f.size };
-    const t = await store.addTrack({ blob: f, mime: mimeFor(f), meta, analysis: null, cover });
+    const t = await store.addTrack({ blob: f, link, mime: mimeFor(f), meta, analysis: null, cover });
     if (dup && B.dupMode === "replace") { // the new copy takes the old one's place in every playlist
       for (const p of store.playlists.filter(p => p.tracks.includes(dup.id))) await store.updatePlaylist(p.id, { tracks: p.tracks.map(id => id === dup.id ? t.id : id) });
       pl = pl.map(id => id === dup.id ? t.id : id);
@@ -854,7 +965,7 @@ async function refreshTags() {
 let analyser = null, analysedSinceNotice = 0, analysedRun = 0;
 function startAnalyser() {
   analyser = createAnalyser({
-    getBlob: id => { const t = store.tracks.find(x => x.id === id); return t && t.blob; },
+    getBlob: id => { const t = store.tracks.find(x => x.id === id); return t ? fileOf(t) : null; },
     onDone: async (id, a, dur) => {
       const t = store.tracks.find(x => x.id === id); if (!t) return;
       await store.updateTrack(id, { analysis: a, bpm: a.bpm, duration: Math.round(dur) || t.duration });
@@ -902,8 +1013,19 @@ addEventListener("drop", async e => {
   if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; $("drop").hidden = true;
   if (!store.canWrite) return;
   // entries must be read straight away, before anything waits
-  const entries = [...(e.dataTransfer.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  const items = [...(e.dataTransfer.items || [])];
+  const handles = linkSupported ? items.map(i => i.getAsFileSystemHandle ? i.getAsFileSystemHandle().catch(() => null) : null) : [];
+  const entries = items.map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
   const files = [...e.dataTransfer.files];
+  if (linkSupported && entries.some(en => en.isDirectory)) {
+    const dirs = (await Promise.all(handles)).filter(h => h && h.kind === "directory");
+    if (dirs.length) {
+      const how = await choose({ title: "Add this folder", text: "Link it to play songs straight from your disk (no space used, and Rescan picks up new songs), or copy the songs into the browser (works even if the folder moves or the drive is unplugged).",
+        options: [{ label: "Link the folder", value: "link" }, { label: "Copy songs in", value: "copy" }] });
+      if (!how) return;
+      if (how === "link") { for (const d of dirs) await linkFolder(d); return; }
+    }
+  }
   if (entries.some(en => en.isDirectory)) enqueueFiles(await filesFromEntries(entries), "folder");
   else enqueueFiles(files);
 });
@@ -1123,6 +1245,7 @@ async function start() {
   try { await store.init(() => { if (storeReady) { renderTree(); renderMl(); renderPl(); } }); } catch (e) {}
   storeReady = true;
   startAnalyser();
+  checkAccess();
   refreshTags();
   renderAll();
   if (pendingPlay) { const ids = pendingPlay.filter(id => byId(id)); pendingPlay = null; if (ids.length) { Eng.ensure(); setPl(ids); playIndex(0); } }

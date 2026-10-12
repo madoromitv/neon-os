@@ -11,6 +11,7 @@ import { vlist } from "../../style-kit/vlist.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, esc, dialog } from "../../style-kit/ui.js";
 import { notify } from "../../core/notify.js";
+import { fileOf } from "../../core/linked.js";
 applyTheme(); onTheme(applyTheme);
 
 const $ = id => document.getElementById(id);
@@ -132,11 +133,11 @@ async function load(k, t) {
   if (d.playing) pause(d);
   d.f("title").textContent = "LOADING…";
   try {
-    const buf = await ctx.decodeAudioData(await t.blob.arrayBuffer());
+    const buf = await ctx.decodeAudioData(await (await fileOf(t, true)).arrayBuffer());
     const an = t.analysis || {}, off = typeof an.offset === "number" ? an.offset : 1024 / 22050;
     Object.assign(d, { track: t, buf, pos: 0, cue: 0, loop: null, rate: 1, beats: (an.beats || []).map(b => b + off), peaks: peaksFrom(an, off) });
     d.pitch.set(0); renderDeck(d); drawWave(d);
-  } catch (e) { d.f("title").textContent = "EMPTY"; toast(`Couldn't load ${t.title}`, true); }
+  } catch (e) { d.f("title").textContent = "EMPTY"; toast(e && e.code === "needs_permission" ? "Neon OS needs permission to read your music folder. Load the song again and choose Allow." : `Couldn't load ${t.title}`, true); }
 }
 // waveform: the analysis' loudness per band, averaged per pixel column (bass weighs heaviest)
 function peaksFrom(an, off) {
@@ -208,7 +209,7 @@ $("rec").addEventListener("click", () => {
 let tracks = [], playlists = [], groups = buildGroups([]), view = { type: "all" }, shown = [];
 const list = vlist($("list"), $("rows"), { rowHeight: 26, head: 24, empty: () => `<div class="lempty"><b>${$("q").value.trim() ? "Nothing matches." : tracks.length ? "Nothing here yet." : "No songs yet."}</b>${$("q").value.trim() ? "Try a title, artist, album or genre." : tracks.length ? (view.type === "smart" && view.id.startsWith("b") ? "Songs appear once their tempo has been worked out." : "") : "Add songs in Amp; they appear here straight away."}</div>` });
 async function loadLibrary() {
-  try { const db = await openDb(); tracks = (await all(db, "tracks")).filter(t => t.blob); playlists = await all(db, "playlists"); db.close(); } catch (e) { tracks = []; playlists = []; }
+  try { const db = await openDb(); tracks = (await all(db, "tracks")).filter(t => t.blob || t.link); playlists = await all(db, "playlists"); db.close(); } catch (e) { tracks = []; playlists = []; }
   tracks.forEach(t => { if (t.coverBlob && !t.coverUrl) t.coverUrl = URL.createObjectURL(t.coverBlob); });
   playlists.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
   groups = buildGroups(tracks);

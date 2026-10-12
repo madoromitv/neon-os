@@ -1,5 +1,7 @@
 // Neon OS core: the library, saved in this browser (IndexedDB)
 // Every app shares the same database, so songs added in one app appear in the others.
+// A song is either copied in (blob) or read from a linked folder on disk (link); see linked.js.
+import { fileOf } from "./linked.js";
 export function makeLocalStore() {
   let idb = null;
   const tx = (store, mode, fn) => new Promise((res, rej) => {
@@ -25,9 +27,9 @@ export function makeLocalStore() {
         st.playlists = (await tx("playlists", "readonly", s => s.getAll())) || [];
       } catch (e) {}
     },
-    async addTrack({ buf, blob, mime, meta, analysis, cover }) {
-      // blob: the original file as-is (fast, nothing read into memory); buf: bytes already read
-      const rec = { id: id("t"), ...meta, mime, blob: blob || new Blob([buf], { type: mime }), analysis: analysis || null, coverBlob: cover || null, addedAt: new Date().toISOString() };
+    async addTrack({ buf, blob, link, mime, meta, analysis, cover }) {
+      // blob: the original file as-is (fast, nothing read into memory); buf: bytes already read; link: { folder, path } on disk
+      const rec = { id: id("t"), ...meta, mime, blob: link ? null : blob || new Blob([buf], { type: mime }), link: link || null, analysis: analysis || null, coverBlob: cover || null, addedAt: new Date().toISOString() };
       await tx("tracks", "readwrite", s => s.put(rec));
       const t = { ...rec, coverUrl: cover ? URL.createObjectURL(cover) : null };
       st.tracks.push(t);
@@ -45,10 +47,10 @@ export function makeLocalStore() {
       const u = st.audioCache.get(t.id); if (u) { URL.revokeObjectURL(u); st.audioCache.delete(t.id); }
     },
     async audioUrl(t) {
-      if (!st.audioCache.has(t.id)) st.audioCache.set(t.id, URL.createObjectURL(t.blob));
+      if (!st.audioCache.has(t.id)) st.audioCache.set(t.id, URL.createObjectURL(await fileOf(t)));
       return st.audioCache.get(t.id);
     },
-    async audioBytes(t) { return await t.blob.arrayBuffer(); },
+    async audioBytes(t, ask = false) { return await (await fileOf(t, ask)).arrayBuffer(); },
     async analysis(t) { return t.analysis; },
     async createPlaylist(name) {
       const p = { id: id("p"), name, tracks: [], createdAt: new Date().toISOString() };
