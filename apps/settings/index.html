@@ -69,6 +69,7 @@
     <span class="lbl" id="stLbl">Storage and install</span>
     <div class="lcd stat" id="stStat">CHECKING STORAGE…</div>
     <p id="stSplit"></p>
+    <p id="stSync"></p>
     <p id="stLag" class="warn" hidden></p>
     <div class="row">
       <button class="btn" id="persist">Protect my library</button>
@@ -129,6 +130,14 @@
     // ---------- storage and install ----------
     const gb = n => n >= 1e12 ? (n / 1e12).toFixed(1) + " TB" : n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.max(0.1, n / 1e6).toFixed(1) + " MB";
     let lib = null; // the library summary, filled in by the Backup section
+    // library sync through the music folder (set up in Amp: Folders, then Sync)
+    async function syncLine() {
+      const { syncConf } = await import("../../core/sync.js"), { listFolders } = await import("../../core/linked.js");
+      const c = syncConf(), f = c && c.folder ? (await listFolders(true)).find(x => x.id === c.folder) : null;
+      $id("stSync").textContent = f ? `Library sync is on, through ${f.name}${c.last ? `, last synced ${new Date(c.last).toLocaleString()}` : ""}. Every computer that links the same shared folder keeps the same playlists, favourites, play counts and settings.`
+        : "Library sync is off. To keep several computers the same, keep your music folder in Google Drive, Dropbox or OneDrive, then in Amp choose Folders, then Sync this library.";
+    }
+    syncLine().catch(() => {});
     async function syncStorage() {
       const st = navigator.storage;
       if (lib) {

@@ -70,6 +70,39 @@ const tests = {
     s = await lib(p); check(s.copied === 0 && s.linked === 2 && s.bytes === 0, "Free up space swaps copies for linked files");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "sync through the music folder"() {
+    const p = await page(); await desk(p);
+    const b64 = fs.readFileSync(FX + "song.wav").toString("base64");
+    await p.evaluate(async b64 => {
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0)), root = await navigator.storage.getDirectory(), music = await root.getDirectoryHandle("Music", { create: true });
+      for (const n of ["one.wav", "two.wav"]) { const w = await (await music.getFileHandle(n, { create: true })).createWritable(); await w.write(bytes); await w.close(); }
+      window.showDirectoryPicker = async () => music;
+    }, b64);
+    await amp(p);
+    await p.click("#mlAddFolder"); await p.click(".pop .mi:has-text('Link a music folder')"); await p.waitForTimeout(2500);
+    await p.click("#mlAddFolder"); await p.click(".pop .mi:has-text('Sync this library through Music')"); await p.waitForTimeout(2500);
+    const file = () => p.evaluate(async () => { const m = await (await navigator.storage.getDirectory()).getDirectoryHandle("Music"); return JSON.parse(await (await (await m.getFileHandle("neon-os-library.json")).getFile()).text()); });
+    let f = await file(); check(Object.keys(f.tracks).length === 2, "library saved to the folder");
+    // pretend the other computer changed things
+    await p.evaluate(async () => {
+      const m = await (await navigator.storage.getDirectory()).getDirectoryHandle("Music"), fh = await m.getFileHandle("neon-os-library.json");
+      const d = JSON.parse(await (await fh.getFile()).text());
+      d.tracks["Music/two.wav"].title = "Renamed on laptop"; d.tracks["Music/one.wav"].plays = 3; d.tracks["Music/one.wav"].fav = true;
+      d.playlists.pLaptop = { name: "From laptop", tracks: ["Music/one.wav"] }; d.settings["neon-os:pulse"] = JSON.stringify({ bpm: 141 });
+      const w = await fh.createWritable(); await w.write(JSON.stringify(d)); await w.close();
+    });
+    await p.click("#mlAddFolder"); await p.click(".pop .mi:has-text('Sync now')"); await p.waitForTimeout(2000);
+    const lib2 = await p.evaluate(() => import("./core/backup.js").then(async m => { const db = await m.openDb(); const t = await m.all(db, "tracks"), pls = await m.all(db, "playlists"); db.close(); return { titles: t.map(x => x.title).sort().join(), plays: t.map(x => x.plays || 0).sort().join(), favs: t.filter(x => x.fav).length, pls: pls.map(x => x.name + ":" + x.tracks.length).join() }; }));
+    check(lib2.titles.includes("Renamed on laptop"), "a title changed on the other computer arrives");
+    check(lib2.favs === 1 && lib2.plays.includes("3"), "favourites and play counts arrive");
+    check(lib2.pls === "From laptop:1", "a playlist made on the other computer arrives");
+    check(await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:pulse")).bpm) === 141, "Rack settings arrive");
+    // and a change here goes back to the file
+    await p.click("#mlRows .trow"); await p.keyboard.press("Control+KeyI"); await p.fill('.dialog [data-k="genre"]', "Synced"); await p.click(".dialog [type=submit]"); await p.waitForTimeout(500);
+    await p.click("#mlAddFolder"); await p.click(".pop .mi:has-text('Sync now')"); await p.waitForTimeout(1500);
+    f = await file(); check(Object.values(f.tracks).some(t => t.genre === "Synced") && Object.values(f.tracks).some(t => t.plays === 3), "a change here is written back, keeping theirs");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "details editor and Tidy names"() {
     const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
     await p.click("#mlRows .trow"); await p.click("#mlRows .trow:nth-of-type(3)", { modifiers: ["Shift"] });

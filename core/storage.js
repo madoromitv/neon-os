@@ -63,6 +63,11 @@ export function makeLocalStore() {
       Object.assign(p, patch);
       await tx("playlists", "readwrite", s => s.put({ ...p }));
     },
+    // a playlist made on another computer keeps its id, so both computers mean the same one (sync.js)
+    async putPlaylist(p) {
+      await tx("playlists", "readwrite", s => s.put({ ...p }));
+      const i = st.playlists.findIndex(x => x.id === p.id); if (i >= 0) st.playlists[i] = { ...p }; else st.playlists.push({ ...p });
+    },
     async deletePlaylist(pid) { await tx("playlists", "readwrite", s => s.delete(pid)); st.playlists = st.playlists.filter(x => x.id !== pid); },
   };
   return st;

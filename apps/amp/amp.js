@@ -12,7 +12,8 @@ import { notify } from "../../core/notify.js";
 import { createGlow, createGlow2D } from "../../core/glow.js";
 import { measureLoudness, levelGain } from "../../core/loudness.js";
 import { editDetails, tidyNames } from "../../core/details.js";
-import { fileOf, linkSupported, listFolders, saveFolder, removeFolder, scanFolder, foldersNeedingAccess, reconnectAll, hasAccess } from "../../core/linked.js";
+import { fileOf, linkSupported, listFolders, saveFolder, removeFolder, scanFolder, foldersNeedingAccess, reconnectAll, hasAccess, folderById, setWriteFolder } from "../../core/linked.js";
+import { syncConf, setSyncConf, deviceId, loadBase, saveBase, clearBase, readRemote, writeRemote, snapshot, merge, removals, urlToBlob, stable, trackKey } from "../../core/sync.js";
 import { onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
 void closePop;
 
@@ -843,6 +844,7 @@ async function linkFolder(handle) {
   if (!handle) { try { handle = await showDirectoryPicker({ id: "neon-music", mode: "read" }); } catch (e) { return; } }
   const folder = await saveFolder(handle);
   await rescan([folder]);
+  await offerSync(folder);
 }
 async function rescan(list, opts = {}) {
   list = list || await listFolders(true);
@@ -900,7 +902,7 @@ async function checkAccess() {
 $("mlReconnect").addEventListener("click", async () => {
   const ok = await reconnectAll();
   checkAccess();
-  if (ok) { if (analyser) analyser.resume(); toast("Folder reconnected"); }
+  if (ok) { if (analyser) analyser.resume(); toast("Folder reconnected"); syncNow(false); }
   else toast("The browser wasn't given access. Press Reconnect folder and choose Allow.", true);
 });
 // Swaps every copied song for the same song in a linked folder, without asking song by song
@@ -918,15 +920,128 @@ async function folderMenu(at) {
     return;
   }
   const fs = await listFolders(true), copies = store.tracks.filter(t => t.blob), bytes = copies.reduce((n, t) => n + t.blob.size, 0);
+  const sc = syncConf(), sf = sc && sc.folder ? fs.find(f => f.id === sc.folder) : null;
+  const syncItems = !fs.length ? [] : sf
+    ? ["-", { label: "Sync" }, { note: `This library syncs through ${sf.name}${sc.last ? `, last ${agoText(sc.last)}` : ""}.${syncError ? " " + syncError : ""}` }, { text: "Sync now", run: () => syncNow(true) }, { text: "Stop syncing", run: stopSync }]
+    : ["-", { label: "Sync" }, ...fs.map(f => ({ text: `Sync this library through ${f.name}…`, run: () => enableSync(f) })), { note: "Keeps playlists, favourites, play counts and settings the same on every computer that links this folder (a folder in Google Drive, Dropbox or OneDrive, or a drive you carry between them)." }];
   openMenu(at, [
     { text: "Link a music folder…", run: () => linkFolder() },
     { text: "Rescan linked folders", disabled: !fs.length, run: () => rescan() },
     { text: copies.length ? `Free up space (${mbs(bytes)} of copies)` : "Free up space", disabled: !copies.length, run: freeUpSpace },
     { text: "Copy a folder in…", run: () => $("folderIn").click() },
+    ...syncItems,
     ...(fs.length ? ["-", { label: "Linked folders" }, ...fs.map(f => ({ text: `Stop linking ${f.name}`, run: () => unlinkFolder(f) }))] : []),
     "-", { note: "Linked songs play from your disk and use no space. Copied songs live in the browser." },
   ]);
 }
+
+// ---------- sync through the music folder (core/sync.js) ----------
+// The library's details live in neon-os-library.json in the linked folder; every computer that links the same
+// (shared) folder merges it with its own library: on opening, every 30 seconds while something changed, and on leaving.
+let syncBusy = false, syncError = "", lastLocal = "", lastRemoteMod = 0;
+const agoText = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : new Date(t).toLocaleString(); };
+const extMime = p => ({ mp3: "audio/mpeg", flac: "audio/flac", wav: "audio/wav", ogg: "audio/ogg", oga: "audio/ogg", m4a: "audio/mp4", aac: "audio/aac", opus: "audio/ogg", webm: "audio/webm" }[(p.split(".").pop() || "").toLowerCase()] || "audio/mpeg");
+async function enableSync(folder) {
+  // straight after the click, so the browser can ask to let Neon OS save one file in the folder
+  if (!(await hasAccess(folder, true, "readwrite"))) { toast("Neon OS needs permission to save its library file in that folder to sync. Try again and choose Allow (it only ever writes neon-os-library.json).", true); return; }
+  setSyncConf({ ...(syncConf() || {}), device: deviceId(), folder: folder.id, last: 0 });
+  setWriteFolder(folder.id); await clearBase(); lastLocal = ""; lastRemoteMod = 0;
+  const had = await readRemote(folder);
+  toast(had ? `Merging with the library saved in ${folder.name}…` : `Saving this library to ${folder.name}…`);
+  await syncNow(true);
+}
+async function stopSync() {
+  const c = syncConf() || {}; setSyncConf({ device: c.device || deviceId() }); setWriteFolder(null); await clearBase();
+  checkAccess(); toast("Sync is off. Your library stays as it is on this computer, and the file in the folder is left alone.");
+}
+// after linking a folder: if another computer already syncs through it, offer to join
+async function offerSync(folder) {
+  if (syncConf() && syncConf().folder) return;
+  const r = await readRemote(folder); if (!r) return;
+  const n = Object.keys(r.data.tracks || {}).length;
+  const v = await choose({ title: "A library from another computer", text: `${folder.name} holds a Neon OS library (${n.toLocaleString()} songs, saved ${new Date(r.data.updated).toLocaleString()}). Sync with it, so playlists, favourites, play counts and settings match on both computers?`,
+    options: [{ label: "Sync with it", value: "yes" }, { label: "Not now", value: "no" }] });
+  if (v === "yes") await enableSync(folder);
+}
+async function syncNow(manual = false) {
+  const conf = syncConf(); if (!conf || !conf.folder || syncBusy || batch || !storeReady) return;
+  const folder = await folderById(conf.folder);
+  if (!folder) { setSyncConf({ device: conf.device }); return; }
+  setWriteFolder(folder.id);
+  if (!(await hasAccess(folder, manual, "readwrite"))) { syncError = "Waiting for permission: press Reconnect folder."; checkAccess(); return; }
+  syncBusy = true;
+  try {
+    const fs = await listFolders(), names = new Map(fs.map(f => [f.id, f.name])), nameOf = id => names.get(id) || "unlinked-" + id;
+    const local = await snapshot(store.tracks, store.playlists, nameOf), localText = stable(local);
+    const rem = await readRemote(folder);
+    if (!manual && localText === lastLocal && (!rem || rem.modified === lastRemoteMod)) return; // nothing new either side
+    const base = await loadBase(), remote = rem ? { tracks: rem.data.tracks || {}, playlists: rem.data.playlists || {}, settings: rem.data.settings || {} } : null;
+    const merged = remote ? merge(local, base, remote) : local;
+    const gone = removals(local, merged);
+    if (gone > 20 && gone > Object.keys(local.tracks).length * 0.25) { // looks like a mistake (a half-copied folder, a cleared library): stop
+      syncError = `Sync paused: it would have removed ${gone} songs here. Check the folder, then choose Sync now.`;
+      if (!manual) notify("Sync paused", syncError, "amp"); else toast(syncError, true);
+      return;
+    }
+    const changed = await applyMerged(merged, local, fs);
+    const mergedText = stable(merged);
+    if (!remote || stable(remote) !== mergedText) await writeRemote(folder, { format: "neon-os-sync", version: 1, updated: new Date().toISOString(), device: deviceId(), ...merged });
+    await saveBase(merged);
+    const after = await readRemote(folder); lastRemoteMod = after ? after.modified : 0;
+    lastLocal = stable(await snapshot(store.tracks, store.playlists, nameOf));
+    setSyncConf({ ...syncConf(), last: Date.now() }); syncError = "";
+    if (changed) { renderAll(); notifyLibraryChange("edit"); }
+    if (manual) toast(changed ? `Synced: ${changed} change${changed === 1 ? "" : "s"} from the other computer.` : "Synced. Everything matches.");
+  } catch (e) { syncError = "The last sync didn't finish. It tries again shortly."; if (manual) toast("Couldn't sync just now. Is the folder still there?", true); }
+  finally { syncBusy = false; }
+}
+// brings this computer's library in line with the merged data; returns how many things changed
+async function applyMerged(M, L, fs) {
+  let n = 0;
+  const byKey = new Map(), names = new Map(fs.map(f => [f.id, f.name]));
+  for (const t of store.tracks) { const k = trackKey(t, id => names.get(id) || "unlinked-" + id); if (k) byKey.set(k, t); }
+  const linkFor = k => { const i = k.indexOf("/"), name = k.slice(0, i), f = fs.find(x => x.name === name); return { folder: f ? f.id : "unlinked-" + name, path: k.slice(i + 1) }; };
+  const FIELDS = ["title", "artist", "album", "genre", "year", "fav", "plays", "lastPlayed", "bpm", "duration", "loud", "peak"];
+  for (const [k, m] of Object.entries(M.tracks)) {
+    const t = byKey.get(k), was = L.tracks[k] || {};
+    if (!t) { // a song added on the other computer
+      const meta = {}; for (const f of FIELDS) if (m[f] != null) meta[f] = m[f];
+      meta.title = meta.title || k.split("/").pop();
+      const nt = await store.addTrack({ link: linkFor(k), mime: extMime(k), meta, analysis: null, cover: m.cover ? await urlToBlob(m.cover) : null });
+      if (m.cover) await store.updateTrack(nt.id, { coverEdited: true });
+      byKey.set(k, nt); if (analyser) analyser.enqueue([nt.id]); n++; continue;
+    }
+    const patch = {};
+    for (const f of FIELDS) if (JSON.stringify(m[f]) !== JSON.stringify(was[f])) patch[f] = m[f] == null ? (f === "fav" ? false : f === "plays" ? 0 : "") : m[f];
+    if (m.cover !== was.cover) { patch.coverBlob = m.cover ? await urlToBlob(m.cover) : null; patch.coverEdited = !!m.cover; }
+    if (Object.keys(patch).length) { await saveDetails(t, patch); n++; }
+  }
+  const gone = [...byKey.entries()].filter(([k]) => !M.tracks[k]).map(([, t]) => t);
+  if (gone.length) { // removed on the other computer
+    const ids = new Set(gone.map(t => t.id));
+    for (const p of store.playlists.filter(p => p.tracks.some(id => ids.has(id)))) await store.updatePlaylist(p.id, { tracks: p.tracks.filter(id => !ids.has(id)) });
+    for (const t of gone) await store.deleteTrack(t);
+    removePlIdx(pl.map((id, i) => ids.has(id) ? i : -1).filter(i => i >= 0)); n += gone.length;
+  }
+  const idOf = k => k.startsWith("copy:") ? (byId(k.slice(5)) ? k.slice(5) : null) : (byKey.get(k) || {}).id || null;
+  for (const [id, mp] of Object.entries(M.playlists)) {
+    const tracks = (mp.tracks || []).map(idOf).filter(Boolean), cur = store.playlists.find(p => p.id === id);
+    if (!cur) { await store.putPlaylist({ id, name: mp.name, tracks, createdAt: new Date().toISOString() }); n++; }
+    else if (cur.name !== mp.name || JSON.stringify(cur.tracks) !== JSON.stringify(tracks)) { await store.putPlaylist({ ...cur, name: mp.name, tracks }); n++; }
+  }
+  for (const p of [...store.playlists]) if (!M.playlists[p.id]) { await store.deletePlaylist(p.id); n++; }
+  for (const [k, v0] of Object.entries(M.settings)) {
+    let v = v0;
+    if (k === "neon-os:chop") { try { const c = JSON.parse(v); if ("trackKey" in c) { c.trackId = c.trackKey ? idOf(c.trackKey) : null; delete c.trackKey; } v = JSON.stringify(c); } catch (e) {} }
+    let curV = null; try { curV = localStorage.getItem(k); } catch (e) {}
+    if (curV === v) continue;
+    if (k === "neon-os:theme") { try { setTheme(JSON.parse(v)); } catch (e) {} } else { try { localStorage.setItem(k, v); } catch (e) {} }
+    n++;
+  }
+  return n;
+}
+setInterval(() => syncNow(false), 30000);
+addEventListener("visibilitychange", () => { if (document.hidden) syncNow(false); });
 function enqueueFiles(files, from = "files") {
   const list = [...files].filter(isAudio);
   if (!list.length) { toast(from === "folder" ? "No music files found in that folder." : "Those files aren't audio. Try MP3, FLAC, WAV, OGG or M4A.", true); return; }
@@ -979,6 +1094,7 @@ async function processAdds() {
       if (left.length) setTimeout(() => toast(`${left.length} song${left.length === 1 ? " is" : "s are"} still copied into the browser (${mbs(bytes)}). ${B.skipped ? "Folders, then Free up space, swaps copies for the same songs in your linked folder." : "They aren't in your linked folder."}`), 2500);
     }
     if (B.after) await B.after(B);
+    setTimeout(() => syncNow(false), 500);
   }
   scheduleRender();
 }
@@ -1349,7 +1465,9 @@ async function start() {
   try { await store.init(() => { if (storeReady) { renderTree(); renderMl(); renderPl(); } }); } catch (e) {}
   storeReady = true;
   startAnalyser();
+  { const c = syncConf(); if (c && c.folder) setWriteFolder(c.folder); }
   checkAccess();
+  setTimeout(() => syncNow(false), 1500);
   refreshTags();
   renderAll();
   if (pendingPlay) { const ids = pendingPlay.filter(id => byId(id)); pendingPlay = null; if (ids.length) { Eng.ensure(); setPl(ids); playIndex(0); } }

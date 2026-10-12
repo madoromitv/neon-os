@@ -67,7 +67,7 @@ export function editDetails(tracks, { all = [], save }) {
       e.preventDefault();
       const patch = {};
       for (const k of dirty) { const v = $(`[data-k="${k}"]`).value.trim(); if (k === "title" && !v) continue; patch[k] = v; }
-      if (cover !== undefined) patch.coverBlob = cover;
+      if (cover !== undefined) { patch.coverBlob = cover; patch.coverEdited = !!cover; } // picked by hand: travels with sync
       let targets = tracks;
       const albumToo = $("#dAlbum") && $("#dAlbum").checked && (cover || (cover === undefined && first.coverBlob));
       if (!Object.keys(patch).length && !albumToo) { close(0); return; }
@@ -77,7 +77,7 @@ export function editDetails(tracks, { all = [], save }) {
       if (albumToo) { // the rest of the album (same album, same artist) gets the same cover
         const art = cover || first.coverBlob, key = (t => `${(t.album || "").toLowerCase()}|${(t.artist || "").toLowerCase()}`);
         const k = key({ ...first, ...patch });
-        for (const t of all) if (t.id !== first.id && key(t) === k) { await save(t, { coverBlob: art }); n++; }
+        for (const t of all) if (t.id !== first.id && key(t) === k) { await save(t, { coverBlob: art, coverEdited: true }); n++; }
       }
       close(n);
     });

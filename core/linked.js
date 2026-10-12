@@ -43,22 +43,25 @@ export async function removeFolder(id) { await tx("readwrite", s => s.delete(id)
 
 // The browser asks once per visit (or remembers, if the person picks "Allow on every visit").
 // ask: true may show the browser's prompt, which only works straight after a click.
-export async function hasAccess(folder, ask = false) {
+// mode "readwrite" is only asked for the folder that holds the sync file (see sync.js).
+export async function hasAccess(folder, ask = false, mode = "read") {
   const h = folder && folder.handle; if (!h || !h.queryPermission) return false;
   try {
-    if (await h.queryPermission({ mode: "read" }) === "granted") return true;
-    return ask && await h.requestPermission({ mode: "read" }) === "granted";
+    if (await h.queryPermission({ mode }) === "granted") return true;
+    return ask && await h.requestPermission({ mode }) === "granted";
   } catch (e) { return false; }
 }
+let writeFolderId = null; // the folder Neon OS may write its sync file into
+export const setWriteFolder = id => { writeFolderId = id; };
 // Folders that need the person to say yes again before their songs can play.
 export async function foldersNeedingAccess() {
   const out = [];
-  for (const f of await listFolders()) if (!(await hasAccess(f))) out.push(f);
+  for (const f of await listFolders()) if (!(await hasAccess(f, false, f.id === writeFolderId ? "readwrite" : "read"))) out.push(f);
   return out;
 }
 export async function reconnectAll() {
   let ok = true;
-  for (const f of await listFolders()) if (!(await hasAccess(f, true))) ok = false;
+  for (const f of await listFolders()) if (!(await hasAccess(f, true, f.id === writeFolderId ? "readwrite" : "read"))) ok = false;
   return ok;
 }
 
