@@ -1,0 +1,59 @@
+# Builds the Neon OS desktop app (desktop/) for Windows, macOS and Linux. Runs when a version tag is pushed
+# (for example v1.1.0), or by hand from the Actions tab. A tag also puts the installers on a GitHub Release.
+name: Desktop app
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Build
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          npm install
+          npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neon-os-${{ matrix.os }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: installers/*
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          body: |
+            Neon OS desktop app. Download the one for your computer:
+            - Windows: Neon-OS-Setup-….exe
+            - macOS: Neon-OS-…-arm64.dmg (Apple silicon) or …-x64.dmg (Intel)
+            - Linux: Neon-OS-….AppImage or .deb
+
+            The installers aren't signed yet, so Windows may say "Windows protected your PC" (choose More info, then Run anyway),
+            and macOS may say it can't check the app (right-click it, choose Open, then Open again).

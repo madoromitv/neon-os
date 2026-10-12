@@ -1049,6 +1049,24 @@ async function applyMerged(M, L, fs) {
   return n;
 }
 setInterval(() => syncNow(false), 30000);
+// songs opened from the computer's file explorer (installed app or desktop app): play them,
+// using the library's copy when the song is already there, and adding the rest
+addEventListener("neonos:open-files", async e => {
+  const files = (e.detail.files || []).filter(isAudio); if (!files.length || !storeReady) return;
+  const ids = [], B = newBatch({ dupMode: "skip" }); B.total = files.length;
+  for (const f of files) {
+    try {
+      const tags = readTags(await readHead(f)), title = tags.title || titleFromName(f.name);
+      const dup = findDup(f.size, title, tags.artist, tags.album);
+      if (dup) { ids.push(dup.id); continue; }
+      const before = B.newIds.length; await addOne(f, B);
+      if (B.newIds.length > before) ids.push(B.newIds[B.newIds.length - 1]);
+    } catch (err) {}
+  }
+  if (B.added) { notifyLibraryChange("add"); scheduleRender(); }
+  if (ids.length) { Eng.ensure(); setPl(ids); playIndex(0); }
+  else toast("Couldn't open those files.", true);
+});
 // from the desktop's search: open the Folders menu
 addEventListener("neonos:folders", () => {
   if (!S.show.ml) $("tMl").click();

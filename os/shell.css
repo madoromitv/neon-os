@@ -208,3 +208,13 @@ body.compact .notices { left: 4px; right: 4px; width: auto; }
 .snone { margin: 0; padding: 18px; text-align: center; color: var(--ink-faint); font-size: 12.5px; }
 .shint { margin: 0; text-align: right; color: var(--ink-faint); font-size: 10.5px; }
 body.compact .sscrim { padding: 8px 4px; }
+
+/* installed app with the window-controls overlay: a draggable strip where the title bar was */
+.wcobar { display: none; }
+body.wco .wcobar { display: flex; position: fixed; left: env(titlebar-area-x, 0); top: env(titlebar-area-y, 0); width: env(titlebar-area-width, 100%); height: env(titlebar-area-height, 32px);
+  z-index: 9550; align-items: center; gap: 8px; padding: 0 10px; background: linear-gradient(180deg, var(--metal-1), var(--metal-2)); border-bottom: 1px solid var(--edge); -webkit-app-region: drag; app-region: drag; }
+body.wco .wcobar i { width: 9px; height: 9px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 8px var(--ball); }
+body.wco .wcobar b { font-size: 11px; letter-spacing: .2em; color: var(--ink-dim); }
+body.wco .wcobar .wco-search { -webkit-app-region: no-drag; app-region: no-drag; margin-left: 12px; height: 22px; padding: 0 12px; border-radius: 2px; background: #000; color: var(--ink-faint); font-size: 11px; box-shadow: inset -1px -1px 0 #3a3450; min-width: 180px; text-align: left; }
+body.wco .desktop { top: var(--wco-top, 32px); }
+body.wco #wall { top: var(--wco-top, 32px); height: calc(100% - var(--wco-top, 32px)); }

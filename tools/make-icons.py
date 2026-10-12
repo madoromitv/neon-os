@@ -54,4 +54,5 @@ icon(192, rounded=False, scale=0.78).save("icons/maskable-192.png")   # safe zon
 icon(512, rounded=False, scale=0.78).save("icons/maskable-512.png")
 icon(180, rounded=False).save("icons/apple-touch-icon.png")
 icon(64).save("icons/favicon-64.png")
+icon(1024).save("icons/icon-1024.png")  # the desktop app builds its Windows, macOS and Linux icons from this
 print("icons written")

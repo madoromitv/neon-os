@@ -51,6 +51,19 @@ const tests = {
     check(!!(await p.$(".win.search")), "works from inside a framed app");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "installed-app shortcuts and opening files from the computer"() {
+    const p = await page(); await p.goto(URL + "?open=pulse"); await p.waitForTimeout(1500);
+    check(!!(await p.$('[data-wid="pulse"]')) && !(await p.url()).includes("?"), "an icon shortcut (?open=pulse) opens the app");
+    await amp(p);
+    const b64 = fs.readFileSync(FX + "loud.wav").toString("base64");
+    await p.evaluate(b64 => { const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0)); dispatchEvent(new CustomEvent("neonos:open-files", { detail: { files: [new File([bytes], "Opened song.wav", { type: "audio/wav" })] } })); }, b64);
+    await p.waitForTimeout(2500);
+    check((await p.title()).startsWith("Opened song"), "a song opened from the computer plays");
+    check((await lib(p)).songs === 1, "and joins the library");
+    const m = JSON.parse(fs.readFileSync("manifest.webmanifest", "utf8"));
+    check(m.file_handlers && m.shortcuts && m.shortcuts.length >= 3, "the manifest offers file opening and shortcuts");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "every app page loads on its own"() {
     const p = await page();
     for (const a of ["amp", "files", "pulse", "drift", "chop", "tape", "decks", "notes", "settings", "help", "about"]) { await p.goto(`${URL}apps/${a}/`); await p.waitForTimeout(500); }

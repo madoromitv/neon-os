@@ -1,7 +1,7 @@
 {
   "name": "Neon OS",
   "short_name": "Neon OS",
-  "description": "A desktop of music apps in the Neon Orbit style: player, drum machine, synth and DJ mixer.",
+  "description": "A desktop of music apps in the Neon Orbit style: player, library, drum machine, synth, sampler, arranger and DJ mixer.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
@@ -33,5 +33,95 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "audio/mpeg": [
+          ".mp3"
+        ],
+        "audio/flac": [
+          ".flac"
+        ],
+        "audio/wav": [
+          ".wav"
+        ],
+        "audio/ogg": [
+          ".ogg",
+          ".oga",
+          ".opus"
+        ],
+        "audio/mp4": [
+          ".m4a"
+        ],
+        "audio/aac": [
+          ".aac"
+        ]
+      },
+      "launch_type": "single-client"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Amp",
+      "short_name": "Amp",
+      "description": "Open the music player",
+      "url": "./?open=amp",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "short_name": "Search",
+      "description": "Search apps, songs and settings",
+      "url": "./?search=1",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Pulse",
+      "short_name": "Pulse",
+      "description": "Open the drum machine",
+      "url": "./?open=pulse",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "short_name": "Settings",
+      "description": "Colours, backup and storage",
+      "url": "./?open=settings",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "categories": [
+    "music",
+    "entertainment",
+    "utilities"
   ]
 }

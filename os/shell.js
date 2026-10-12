@@ -21,7 +21,9 @@ const appById = id => APPS.find(a => a.id === id);
 const svg = (d, cls = "i") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
 const ICON = { min: "M5 11h14v2H5z", max: "M5 5h14v14H5zm2 4v8h10V9z", restore: "M8 4h12v12h-3v3H5V8h3zm2 2v2h7v7h1V6zM7 10v7h8v-7z", close: "M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z" };
 const TASKBAR = 40, SNAP_EDGE = 6;
-const area = () => ({ w: innerWidth, h: innerHeight - TASKBAR });
+// installed with the window-controls overlay on, the window's own title bar strip sits on top (see wcoTop)
+let wcoTop = 0;
+const area = () => ({ w: innerWidth, h: innerHeight - TASKBAR - wcoTop });
 
 // ---------- state (saved per browser) ----------
 // wins: window id -> { wid, appId, x, y, w, h, z, min, snap, autoH }
@@ -915,8 +917,44 @@ initSearch({
   ],
 });
 
+// ---------- installed app: title bar strip, shortcuts, files opened from the computer ----------
+// With the window-controls overlay (the installed app's title bar folded into the page), a thin strip at the
+// top carries the name and Search and lets the window be dragged; the desktop starts below it.
+function syncWco() {
+  const o = navigator.windowControlsOverlay, on = !!(o && o.visible);
+  wcoTop = on ? Math.round(o.getTitlebarAreaRect().height) || 32 : 0;
+  document.body.classList.toggle("wco", on);
+  document.documentElement.style.setProperty("--wco-top", wcoTop + "px");
+  for (const k in wins) render(k);
+}
+if (navigator.windowControlsOverlay) navigator.windowControlsOverlay.addEventListener("geometrychange", syncWco);
+{
+  const strip = document.createElement("div"); strip.className = "wcobar"; strip.setAttribute("aria-hidden", "true");
+  strip.innerHTML = `<i></i><b>NEON OS</b><button class="wco-search" title="Search (Ctrl+K)">Search</button>`;
+  strip.querySelector("button").addEventListener("click", () => openSearch());
+  document.body.appendChild(strip);
+}
+// songs opened from the computer: double-clicked or "Open with Neon OS" in the file explorer (installed app),
+// or handed over by the desktop app. Amp plays them, adding any that aren't in the library yet.
+async function openFiles(files) {
+  files = files.filter(Boolean); if (!files.length) return;
+  await openApp("amp");
+  setTimeout(() => dispatchEvent(new CustomEvent("neonos:open-files", { detail: { files } })), 300);
+}
+if ("launchQueue" in window) launchQueue.setConsumer(async params => {
+  if (params.files && params.files.length) openFiles(await Promise.all(params.files.map(h => h.getFile().catch(() => null))));
+});
+if (window.neonOsDesktop) window.neonOsDesktop.onOpenFiles(list => openFiles(list.map(f => new File([f.data], f.name, { type: f.type || "" }))));
+// shortcuts on the installed app's icon: ?open=amp, ?search=1
+function launchShortcut() {
+  const q = new URLSearchParams(location.search), open = q.get("open");
+  if (open && appById(open)) openApp(open);
+  if (q.has("search")) setTimeout(openSearch, 200);
+  if (open || q.has("search")) history.replaceState(null, "", location.pathname);
+}
+
 // ---------- start ----------
-setCompact();
+setCompact(); syncWco();
 initNotices({ bellBtn: $("bellBtn"), stackEl: $("notices"), nameOf: id => (appById(id) || { name: id }).name, openApp: id => appById(id) && openApp(id) });
 applyTheme();
 onTheme(t => {
@@ -928,7 +966,7 @@ buildSprite(); sizeWall(); loadWall();
 (async () => {
   await runBoot();
   const saved = loadLayout();
-  if (!saved) { greet(true); return; } // first visit: just the desktop (and the welcome)
+  if (!saved) { greet(true); launchShortcut(); return; } // first visit: just the desktop (and the welcome)
   const sw = saved.wins;
   if (saved.split) split = { x: clamp(+saved.split.x || 0.5, 0.15, 0.85), y: clamp(+saved.split.y || 0.5, 0.15, 0.85) };
   const wasClosed = new Set(saved.closed || []);
@@ -943,5 +981,5 @@ buildSprite(); sizeWall(); loadWall();
   }
   const f = front(); if (f) focus(f);
   renderTasks(); saveLayout();
-  greet(false);
+  greet(false); launchShortcut();
 })();
