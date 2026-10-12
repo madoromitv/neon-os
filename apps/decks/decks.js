@@ -5,8 +5,8 @@
 import "../../core/os-link.js";
 import { applyTheme, onTheme } from "../../core/theme.js";
 import { openDb, all, put, onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
-import { buildGroups, viewSongs, viewGroups, viewTitle, isGroupView, openGroup, parentView, searchSongs, searchGroups, groupNote } from "../../core/library.js";
-import { treeHTML, treeClick, treeIcon } from "../../core/library-tree.js";
+import { buildGroups, sortSongs, listState, viewSongs, viewGroups, viewTitle, isGroupView, openGroup, parentView, searchSongs, searchGroups, groupNote } from "../../core/library.js";
+import { treeHTML, treeClick, treeIcon, wireSortHead } from "../../core/library-tree.js";
 import { vlist } from "../../style-kit/vlist.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, esc, dialog } from "../../style-kit/ui.js";
@@ -40,8 +40,20 @@ function ensure() {
   if (ctx.state !== "running") ctx.resume().catch(() => {});
   return ctx;
 }
+// the mixer, the songs on each deck and their pitch are remembered between visits (saved as you go)
+const DKEY = "neon-os:decks";
 const mix = { xfade: 0.5, master: 0.85, fader: { A: 0.85, B: 0.85 }, eq: { "A-hi": 0, "A-mid": 0, "A-low": 0, "B-hi": 0, "B-mid": 0, "B-low": 0 } };
+let saved = {}; try { saved = JSON.parse(localStorage.getItem(DKEY) || "{}") || {}; } catch (e) {}
+if (saved.mix) { Object.assign(mix, saved.mix, { fader: { ...mix.fader, ...(saved.mix.fader || {}) }, eq: { ...mix.eq, ...(saved.mix.eq || {}) } }); }
+let saveT = null;
+function saveDecks(now) {
+  clearTimeout(saveT);
+  const write = () => { try { localStorage.setItem(DKEY, JSON.stringify({ mix, decks: Object.fromEntries(["A", "B"].map(k => [k, D[k] && D[k].track ? { id: D[k].track.id, pitch: D[k].rate - 1, pos: (D[k].playing ? position(D[k]) : D[k].pos) || 0 } : null])) })); } catch (e) {} };
+  if (now) write(); else saveT = setTimeout(write, 300);
+}
+addEventListener("pagehide", () => saveDecks(true));
 function applyMix() {
+  saveDecks();
   if (!ctx) return;
   const t = ctx.currentTime, x = mix.xfade;
   D.A.xf.gain.setTargetAtTime(Math.cos(x * Math.PI / 2), t, 0.01); D.B.xf.gain.setTargetAtTime(Math.sin(x * Math.PI / 2), t, 0.01);
@@ -98,12 +110,12 @@ function play(d) {
   d.src = s; d.startCtx = ctx.currentTime; d.startPos = d.pos; d.playing = true; renderDeck(d);
 }
 function stopSrc(d) { if (d.src) { const s = d.src; d.src = null; try { s.onended = null; s.stop(); } catch (e) {} } }
-function pause(d) { d.pos = position(d); stopSrc(d); d.playing = false; renderDeck(d); }
-function seek(d, t) { t = Math.max(0, Math.min(t, d.buf.duration - 0.05)); if (d.loop && (t < d.loop.start || t > d.loop.end)) d.loop = null, renderDeck(d); if (d.playing) { d.pos = t; play(d); } else d.pos = t; drawWave(d); }
+function pause(d) { d.pos = position(d); stopSrc(d); d.playing = false; renderDeck(d); saveDecks(); }
+function seek(d, t) { t = Math.max(0, Math.min(t, d.buf.duration - 0.05)); if (d.loop && (t < d.loop.start || t > d.loop.end)) d.loop = null, renderDeck(d); if (d.playing) { d.pos = t; play(d); } else d.pos = t; drawWave(d); saveDecks(); }
 function setRate(d, r) {
   if (d.playing) { d.startPos = position(d); d.startCtx = ctx.currentTime; }
   d.rate = r; if (d.src) d.src.playbackRate.setTargetAtTime(r, ctx.currentTime, 0.01);
-  renderDeck(d);
+  renderDeck(d); saveDecks();
 }
 // beat times in the song, from Amp's analysis
 const beatIndex = (d, t) => { let lo = 0, hi = d.beats.length - 1; if (hi < 0) return -1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (d.beats[m] <= t) lo = m; else hi = m - 1; } return d.beats[lo] <= t ? lo : -1; };
@@ -128,16 +140,20 @@ function toggleLoop(d) {
   d.pos = p; if (d.playing) play(d);
   renderDeck(d);
 }
-async function load(k, t) {
+async function load(k, t, restore = null) {
   ensure(); const d = D[k];
   if (d.playing) pause(d);
   d.f("title").textContent = "LOADING…";
   try {
-    const buf = await ctx.decodeAudioData(await (await fileOf(t, true)).arrayBuffer());
+    const buf = await ctx.decodeAudioData(await (await fileOf(t, !restore)).arrayBuffer());
     const an = t.analysis || {}, off = typeof an.offset === "number" ? an.offset : 1024 / 22050;
     Object.assign(d, { track: t, buf, pos: 0, cue: 0, loop: null, rate: 1, beats: (an.beats || []).map(b => b + off), peaks: peaksFrom(an, off) });
     d.pitch.set(0); renderDeck(d); drawWave(d);
-  } catch (e) { d.f("title").textContent = "EMPTY"; toast(e && e.code === "needs_permission" ? "Neon OS needs permission to read your music folder. Load the song again and choose Allow." : `Couldn't load ${t.title}`, true); }
+    if (restore) { d.pitch.set(restore.pitch || 0); setRate(d, 1 + (restore.pitch || 0)); d.pos = Math.min(restore.pos || 0, buf.duration - 1); d.cue = d.pos; renderDeck(d); drawWave(d); }
+    saveDecks();
+  } catch (e) {
+    if (restore) { d.f("title").textContent = "EMPTY"; d.f("artist").textContent = e && e.code === "needs_permission" ? `Load ${t.title} again to reconnect your music folder` : ""; return; } // a quiet start: no toasts
+    d.f("title").textContent = "EMPTY"; toast(e && e.code === "needs_permission" ? "Neon OS needs permission to read your music folder. Load the song again and choose Allow." : `Couldn't load ${t.title}`, true); }
 }
 // waveform: the analysis' loudness per band, averaged per pixel column (bass weighs heaviest)
 function peaksFrom(an, off) {
@@ -182,9 +198,13 @@ function renderDeck(d) {
 }
 
 // ---------- mixer controls ----------
-document.querySelectorAll("[data-eq]").forEach(el => { const k = el.dataset.eq; Slider(el, { min: -12, max: 12, step: 0.5, value: 0, label: `${k} EQ (double-click to reset)`, text: v => `${v} dB`, onInput: v => { mix.eq[k] = v; applyMix(); document.querySelector(`[data-eqv="${k}"]`).textContent = v === 0 ? "0" : `${v > 0 ? "+" : ""}${v}`; } }); });
+const eqTxt = v => v === 0 ? "0" : `${v > 0 ? "+" : ""}${v}`, xfTxt = v => v < 0.48 ? `A ${Math.round((1 - v) * 100)}%` : v > 0.52 ? `B ${Math.round(v * 100)}%` : "C";
+document.querySelectorAll("[data-eqv]").forEach(el => { el.textContent = eqTxt(mix.eq[el.dataset.eqv]); });
+document.querySelectorAll("[data-fpct]").forEach(el => { el.textContent = Math.round(mix.fader[el.dataset.fpct] * 100) + "%"; });
+$("masterPct").textContent = Math.round(mix.master * 100) + "%"; $("xfPct").textContent = xfTxt(mix.xfade);
+document.querySelectorAll("[data-eq]").forEach(el => { const k = el.dataset.eq; Slider(el, { min: -12, max: 12, step: 0.5, value: mix.eq[k], label: `${k} EQ (double-click to reset)`, text: v => `${v} dB`, onInput: v => { mix.eq[k] = v; applyMix(); document.querySelector(`[data-eqv="${k}"]`).textContent = v === 0 ? "0" : `${v > 0 ? "+" : ""}${v}`; } }); });
 document.querySelectorAll("[data-fader]").forEach(el => { const k = el.dataset.fader; Slider(el, { min: 0, max: 1, step: 0.01, value: mix.fader[k], orient: "v", label: `Deck ${k} volume`, text: v => Math.round(v * 100) + "%", onInput: v => { mix.fader[k] = v; applyMix(); document.querySelector(`[data-fpct="${k}"]`).textContent = Math.round(v * 100) + "%"; } }); });
-Slider($("xfade"), { min: 0, max: 1, step: 0.005, value: 0.5, label: "Crossfader", text: v => v < 0.48 ? `${Math.round((1 - v) * 100)}% A` : v > 0.52 ? `${Math.round(v * 100)}% B` : "Centre", onInput: v => { mix.xfade = v; applyMix(); $("xfPct").textContent = v < 0.48 ? `A ${Math.round((1 - v) * 100)}%` : v > 0.52 ? `B ${Math.round(v * 100)}%` : "C"; } });
+Slider($("xfade"), { min: 0, max: 1, step: 0.005, value: mix.xfade, label: "Crossfader", text: v => v < 0.48 ? `${Math.round((1 - v) * 100)}% A` : v > 0.52 ? `${Math.round(v * 100)}% B` : "Centre", onInput: v => { mix.xfade = v; applyMix(); $("xfPct").textContent = v < 0.48 ? `A ${Math.round((1 - v) * 100)}%` : v > 0.52 ? `B ${Math.round(v * 100)}%` : "C"; } });
 Slider($("master"), { min: 0, max: 1, step: 0.01, value: mix.master, label: "Master volume", text: v => Math.round(v * 100) + "%", onInput: v => { mix.master = v; applyMix(); $("masterPct").textContent = Math.round(v * 100) + "%"; } });
 
 // record the mix as it plays
@@ -206,7 +226,8 @@ $("rec").addEventListener("click", () => {
 });
 
 // ---------- library: the same sections as Amp and Files ----------
-let tracks = [], playlists = [], groups = buildGroups([]), view = { type: "all" }, shown = [];
+const LS = listState("neon-os:decks-list");
+let tracks = [], playlists = [], groups = buildGroups([]), view = LS.view, shown = [];
 const list = vlist($("list"), $("rows"), { rowHeight: 26, head: 24, empty: () => `<div class="lempty"><b>${$("q").value.trim() ? "Nothing matches." : tracks.length ? "Nothing here yet." : "No songs yet."}</b>${$("q").value.trim() ? "Try a title, artist, album or genre." : tracks.length ? (view.type === "smart" && view.id.startsWith("b") ? "Songs appear once their tempo has been worked out." : "") : "Add songs in Amp; they appear here straight away."}</div>` });
 async function loadLibrary() {
   try { const db = await openDb(); tracks = (await all(db, "tracks")).filter(t => t.blob || t.link); playlists = await all(db, "playlists"); db.close(); } catch (e) { tracks = []; playlists = []; }
@@ -215,6 +236,8 @@ async function loadLibrary() {
   groups = buildGroups(tracks);
   if (view.type === "pl" && !playlists.some(p => p.id === view.id)) view = { type: "all" };
   renderList(true);
+  // put back the songs that were on the decks
+  if (saved.decks) { const sd = saved.decks; saved.decks = null; for (const k of ["A", "B"]) { const s = sd[k], t = s && tracks.find(x => x.id === s.id); if (t) load(k, t, s); } }
 }
 function renderList(keepScroll) {
   $("tree").innerHTML = treeHTML(view, tracks, playlists, groups);
@@ -231,14 +254,16 @@ function renderList(keepScroll) {
     return;
   }
   shown = searchSongs(viewSongs(view, tracks, playlists, groups), $("q").value);
-  if (view.type === "all") shown.sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }));
+  if (LS.sort.key) shown = sortSongs(shown, LS.sort);
+  else if (view.type === "all") shown.sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }));
   list.set(shown, t => `<div class="lrow song" role="row" data-id="${esc(t.id)}">
     <span class="star${t.fav ? " on" : ""}" data-star title="${t.fav ? "Remove from favourites" : "Add to favourites"}">${t.fav ? "★" : "☆"}</span>
     <span>${esc(t.title)}</span><span class="d">${esc(t.artist || "")}</span><span class="d">${esc(t.genre || "")}</span>
     <span class="num">${t.bpm ? Math.round(t.bpm) : ""}</span><span class="num">${fmt(t.duration)}</span>
     <button class="btn" data-load="A" data-id="${esc(t.id)}">Load A</button><button class="btn" data-load="B" data-id="${esc(t.id)}">Load B</button></div>`, { keepScroll });
 }
-const setView = v => { view = v; $("q").value = ""; renderList(false); };
+const setView = v => { view = v; LS.save({ view: v }); $("q").value = ""; renderList(false); };
+wireSortHead($("head"), LS, s => { LS.save({ sort: s }); renderList(true); });
 $("tree").addEventListener("click", e => { const v = treeClick(e); if (v) setView(v); });
 $("back").addEventListener("click", () => setView(parentView(view)));
 $("list").addEventListener("click", async e => {
@@ -269,10 +294,13 @@ function frame() {
   requestAnimationFrame(frame);
 }
 $("reset").addEventListener("click", async () => {
+  // (Reset clears the remembered mixer and decks too)
   const ok = await dialog({ title: "Reset Decks", text: rec ? "Stop the recording (it will be saved), empty both decks and put the mixer back to flat?" : "Stop and empty both decks, and put the EQ, faders, crossfader and pitch back to the start?", confirm: "Reset", danger: true });
   if (!ok) return;
-  if (rec) { rec.addEventListener("stop", () => setTimeout(() => location.reload(), 300)); rec.stop(); }
-  else location.reload();
+  clearTimeout(saveT); try { localStorage.removeItem(DKEY); localStorage.removeItem("neon-os:decks-list"); } catch (e) {}
+  const reload = () => { clearTimeout(saveT); try { localStorage.removeItem(DKEY); } catch (e) {} location.reload(); };
+  if (rec) { rec.addEventListener("stop", () => setTimeout(reload, 300)); rec.stop(); }
+  else reload();
 });
 buildDeck("A"); buildDeck("B");
 loadLibrary(); requestAnimationFrame(frame);

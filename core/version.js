@@ -7,6 +7,7 @@ export const CHANGES = [
     "Sync your library through your music folder: the same playlists, favourites and play counts on every computer (Amp: Folders, then Sync)",
     "Search everywhere (Ctrl+Space): apps, songs, artists, albums, playlists and settings",
     "A welcome for first visits, and this About window",
+    "Everything is remembered as you go: window layout and sizes, library sections and sorting in Amp, Files, Decks and Chop, and the Decks mixer with the songs on each deck",
     "Numbers on every control: balance, chaos, each EQ band, swing, and the Decks EQ and crossfader",
     "Shared effects for the Rack: reverb, tempo-synced delay and a compressor",
     "Edit details and cover art for many songs at once, and Tidy names",

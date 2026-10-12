@@ -31,3 +31,7 @@
 .star:hover { color: var(--ink); }
 .lempty { padding: 18px 14px; color: var(--ink-dim); line-height: 1.5; }
 .lempty b { color: var(--ink); display: block; }
+.lhead [data-sort] { cursor: pointer; }
+.lhead [data-sort]:hover, .lhead [data-sort]:focus-visible { color: var(--ink); outline: none; }
+.lhead [data-sort][aria-sort="ascending"], .lhead [data-sort][aria-sort="descending"] { color: var(--ball); }
+.lhead [data-sort]::after { content: attr(data-arrow); margin-left: 4px; }

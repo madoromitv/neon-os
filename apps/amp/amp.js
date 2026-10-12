@@ -214,7 +214,8 @@ async function savePlAs() {
 // ---------- media library ----------
 // Views: all songs, a playlist, a smart playlist, the artist or album lists, or one artist or album.
 // The song list only draws the rows on screen, so it stays quick with thousands of songs.
-let mlView = { type: "all" }, mlSort = { key: null, dir: 1 }, mlSearch = "", mlSel = new Set(), mlAnchor = null;
+// the library section and sort are remembered between visits (in S, saved as you go)
+let mlView = S.mlView || { type: "all" }, mlSort = S.mlSort || { key: null, dir: 1 }, mlSearch = "", mlSel = new Set(), mlAnchor = null;
 // artists, albums and genres come from core/library.js, shared with Files and Decks
 let groupsCache = null, groupsFor = -1;
 function groups() {
@@ -268,7 +269,7 @@ $("treeSmart").addEventListener("click", e => { const b = e.target.closest("[dat
 $("treeSmart").addEventListener("dblclick", e => { const b = e.target.closest("[data-smart]"); if (!b) return; const ids = smartById(b.dataset.smart).pick(library()).map(t => t.id); if (ids.length) { Eng.ensure(); setPl(ids); playIndex(S.shuffle ? Math.floor(Math.random() * ids.length) : 0); } });
 $("treeAll").addEventListener("click", () => setMlView({ type: "all" }));
 $("mlBack").addEventListener("click", () => setMlView({ type: mlView.type + "s" }));
-function setMlView(v) { mlView = v; mlSel.clear(); mlSearch = ""; $("mlSearch").value = ""; mlSort = { key: null, dir: 1 }; renderTree(); $("mlTable").scrollTop = 0; renderMl(); }
+function setMlView(v) { mlView = v; S.mlView = v; mlSel.clear(); mlSearch = ""; $("mlSearch").value = ""; renderTree(); $("mlTable").scrollTop = 0; renderMl(); save(); } // the sort stays as you switch sections
 
 // ---------- the list: only the rows in view are drawn ----------
 const ROW = 26;
@@ -426,7 +427,7 @@ $("mlRows").addEventListener("contextmenu", e => {
 document.querySelectorAll(".thead [data-sort]").forEach(b => b.addEventListener("click", () => {
   const k = b.dataset.sort;
   if (mlSort.key !== k) mlSort = { key: k, dir: 1 }; else if (mlSort.dir === 1) mlSort.dir = -1; else mlSort = { key: null, dir: 1 };
-  renderMl();
+  S.mlSort = mlSort; renderMl(); save();
 }));
 $("mlSearch").addEventListener("input", e => { mlSearch = e.target.value; $("mlTable").scrollTop = 0; renderMl(); });
 $("mlAdd").addEventListener("click", () => $("fileIn").click());
@@ -1476,6 +1477,7 @@ async function start() {
   store = st;
   try { await store.init(() => { if (storeReady) { renderTree(); renderMl(); renderPl(); } }); } catch (e) {}
   storeReady = true;
+  if (mlView.type === "pl" && !plById(mlView.id)) mlView = S.mlView = { type: "all" }; // a remembered playlist that's since gone
   startAnalyser();
   { const c = syncConf(); if (c && c.folder) setWriteFolder(c.folder); }
   checkAccess();

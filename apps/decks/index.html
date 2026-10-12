@@ -46,7 +46,7 @@
     <div class="crate-main">
       <div class="crate-top"><button class="btn" id="back" hidden>‹ Back</button><span class="lbl" id="crateTitle">All songs</span><label class="search"><input id="q" type="search" placeholder="Search" aria-label="Search the library"></label><span class="hint" id="crateHint"></span></div>
       <div class="lwell" id="list" role="grid" aria-label="Songs">
-        <div class="lhead" role="row"><span>★</span><span>Title</span><span>Artist</span><span>Genre</span><span style="text-align:right">BPM</span><span style="text-align:right">Time</span><span></span><span></span></div>
+        <div class="lhead" role="row" id="head"><span data-sort="fav">★</span><span data-sort="title">Title</span><span data-sort="artist">Artist</span><span data-sort="genre">Genre</span><span data-sort="bpm" style="text-align:right">BPM</span><span data-sort="duration" style="text-align:right">Time</span><span></span><span></span></div>
         <div id="rows"></div>
       </div>
     </div>

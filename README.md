@@ -23,6 +23,7 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Amp's player** carries every Amp window docked to it, like the classic player; drag any other Amp window to pull it free
 - **Link:** turn on Link in Pulse and Drift and they share one tempo and start/stop, playing in time in separate windows
 - **Effects:** Pulse, Drift, Chop and Tape share one effects row: reverb with room size, a delay that echoes in time with the tempo (1/4, 3/16, 1/8, 1/16) with repeats, and a compressor with a meter. Exports include the effects, and Tape plays each lane through its app's own effects, then its own on the whole track
+- **Saved as you go:** there's no Save button anywhere. Window positions and sizes, snapped layouts, library sections and column sorting (click a column header in Amp, Files, Decks or Chop), the Decks mixer and the songs on each deck, Rack patterns and settings are all remembered the moment they change
 - **Small windows:** windows keep their size and the desktop scrolls up, down, left and right to reach them; the taskbar stays put
 - **Right-click:** the desktop (open apps, tidy, change colour, restart), desktop icons, taskbar buttons and window title bars all have menus
 - **Sounds:** soft system sounds for opening, closing, minimising and snapping; the tray's speaker sets music and system volume and turns sounds off

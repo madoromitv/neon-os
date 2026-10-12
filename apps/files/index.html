@@ -40,7 +40,7 @@
       <button class="btn" id="del" disabled>Delete</button>
     </div>
     <div class="lwell" id="list" role="grid" aria-label="Files" tabindex="0">
-      <div class="lhead" role="row"><span>★</span><span>Name</span><span>Artist</span><span>Album</span><span>Genre</span><span>Type</span><span style="text-align:right">Size</span><span style="text-align:right">Added</span></div>
+      <div class="lhead" role="row" id="head"><span data-sort="fav">★</span><span data-sort="title">Name</span><span data-sort="artist">Artist</span><span data-sort="album">Album</span><span data-sort="genre">Genre</span><span data-sort="type">Type</span><span data-sort="size" style="text-align:right">Size</span><span data-sort="added" style="text-align:right">Added</span></div>
       <div id="rows"></div>
     </div>
     <div class="status" id="status"></div>
@@ -49,8 +49,8 @@
     import "../../core/os-link.js";
     import { applyTheme, onTheme } from "../../core/theme.js";
     import { openDb, all, put, del, notifyLibraryChange, onLibraryChange } from "../../core/backup.js";
-    import { buildGroups, viewSongs, viewGroups, viewTitle, isGroupView, openGroup, parentView, searchSongs, searchGroups, groupNote } from "../../core/library.js";
-    import { treeHTML, treeClick, treeIcon } from "../../core/library-tree.js";
+    import { buildGroups, sortSongs, listState, viewSongs, viewGroups, viewTitle, isGroupView, openGroup, parentView, searchSongs, searchGroups, groupNote } from "../../core/library.js";
+    import { treeHTML, treeClick, treeIcon, wireSortHead } from "../../core/library-tree.js";
     import { vlist } from "../../style-kit/vlist.js";
     import { esc, toast, dialog } from "../../style-kit/ui.js";
     import { fileOf } from "../../core/linked.js";
@@ -64,7 +64,9 @@
     const pathOf = v => v.type === "notes" ? "/DOCUMENTS/NOTES" : "/" + ({ all: "LIBRARY/SONGS", artists: "LIBRARY/ARTISTS", albums: "LIBRARY/ALBUMS", genres: "LIBRARY/GENRES", artist: "LIBRARY/ARTISTS/", album: "LIBRARY/ALBUMS/", genre: "LIBRARY/GENRES/", smart: "SMART/", pl: "PLAYLISTS/" }[v.type] || "") +
       (["artist", "album", "genre", "smart", "pl"].includes(v.type) ? viewTitle(v, playlists, groups) : "").toUpperCase();
 
-    let tracks = [], playlists = [], groups = buildGroups([]), view = { type: "all" }, sel = new Set(), anchor = null, shown = [];
+    // the section and sort are remembered between visits
+    const LS = listState("neon-os:files");
+    let tracks = [], playlists = [], groups = buildGroups([]), view = LS.view, sel = new Set(), anchor = null, shown = [];
     const list = vlist($("list"), $("rows"), { rowHeight: 26, head: 24, empty: emptyText });
     function emptyText() {
       if ($("q").value.trim()) return `<div class="lempty"><b>Nothing matches.</b>Try a title, artist, album or genre.</div>`;
@@ -109,7 +111,8 @@
         return;
       }
       shown = searchSongs(viewSongs(view, tracks, playlists, groups), $("q").value);
-      if (view.type === "all") shown.sort((a, b) => String(b.addedAt).localeCompare(String(a.addedAt)));
+      if (LS.sort.key) shown = sortSongs(shown, LS.sort);
+      else if (view.type === "all") shown.sort((a, b) => String(b.addedAt).localeCompare(String(a.addedAt)));
       list.set(shown, t => `<div class="lrow song${sel.has(t.id) ? " sel" : ""}" role="row" data-id="${esc(t.id)}" aria-selected="${sel.has(t.id)}">
         <span class="star${t.fav ? " on" : ""}" data-star title="${t.fav ? "Remove from favourites" : "Add to favourites"}">${t.fav ? "★" : "☆"}</span>
         <span>${esc(t.title)}</span><span class="d">${esc(t.artist || "")}</span><span class="d">${esc(t.album || "")}</span><span class="d">${esc(t.genre || "")}</span>
@@ -125,7 +128,8 @@
       $("status").textContent = sel.size ? `${sel.size} selected` : `${shown.length} ${shown.length === 1 ? "song" : "songs"} · ${mb(bytes)} in this browser${linked ? ` · ${linked} from your linked folder (↗)` : ""}`;
       const n = sel.size; $("play").disabled = !n; $("save").disabled = n !== 1; $("rename").disabled = !n; $("del").disabled = !n;
     }
-    const setView = v => { view = v; sel.clear(); anchor = null; $("q").value = ""; render(false); };
+    const setView = v => { view = v; LS.save({ view: v }); sel.clear(); anchor = null; $("q").value = ""; render(false); };
+    wireSortHead($("head"), LS, s => { LS.save({ sort: s }); render(true); });
 
     $("tree").addEventListener("click", e => {
       if (e.target.closest("[data-notes]")) { setView({ type: "notes" }); return; }

@@ -13,6 +13,8 @@ import { toWav, download } from "../../core/wav.js";
 import { createFx, fxOf } from "../../core/fx.js";
 import { fxPanel } from "../../style-kit/fx-panel.js";
 import { openDb, all, onLibraryChange } from "../../core/backup.js";
+import { sortSongs, listState } from "../../core/library.js";
+import { wireSortHead } from "../../core/library-tree.js";
 import { fileOf } from "../../core/linked.js";
 import { PADS, STEPS, SLOTS, PAD_KEYS, DIVS, CHOP_KEY, loadChop, beatsOf, songBpm, slicesOf, beatAt, playSlice } from "../../core/chop.js";
 applyTheme(); onTheme(applyTheme);
@@ -271,7 +273,8 @@ let tracks = [];
 const list = vlist($("list"), $("rows"), { rowHeight: 26, head: 24, empty: () => `<div class="lempty"><b>${$("q").value.trim() ? "Nothing matches." : "No songs yet."}</b>${$("q").value.trim() ? "Try a title or artist." : "Add songs in Amp; they appear here straight away."}</div>` });
 function renderList(keepScroll) {
   const q = $("q").value.trim().toLowerCase();
-  const shown = tracks.filter(t => !q || `${t.title} ${t.artist} ${t.album} ${t.genre}`.toLowerCase().includes(q)).sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }));
+  const found = tracks.filter(t => !q || `${t.title} ${t.artist} ${t.album} ${t.genre}`.toLowerCase().includes(q));
+  const shown = sortSongs(found, LS.sort.key ? LS.sort : { key: "title", dir: 1 });
   $("crateHint").textContent = tracks.length ? `${tracks.length} song${tracks.length === 1 ? "" : "s"} · double-click to load` : "";
   list.set(shown, t => `<div class="lrow song${track && t.id === track.id ? " loaded" : ""}" role="row" data-id="${esc(t.id)}"><span>${esc(t.title)}</span><span class="d">${esc(t.artist || "")}</span>
     <span class="num">${t.bpm ? Math.round(t.bpm) : ""}</span><span class="num">${fmt(t.duration)}</span><button class="btn" data-load="${esc(t.id)}">Load</button></div>`, { keepScroll });
@@ -282,6 +285,8 @@ async function loadLibrary() {
   renderList(true);
 }
 $("q").addEventListener("input", () => renderList(false));
+const LS = listState("neon-os:chop-list"); // the sort is remembered between visits
+wireSortHead($("head"), LS, s => { LS.save({ sort: s }); renderList(true); });
 $("rows").addEventListener("click", e => { const b = e.target.closest("[data-load]"); if (b) { const t = tracks.find(x => x.id === b.dataset.load); if (t) loadTrack(t, true); } });
 $("rows").addEventListener("dblclick", e => { const r = e.target.closest(".lrow.song"); if (r && !e.target.closest("button")) { const t = tracks.find(x => x.id === r.dataset.id); if (t) loadTrack(t, true); } });
 onLibraryChange(async () => { await loadLibrary(); if (track) { const t = tracks.find(x => x.id === track.id); if (t && t.analysis && !track.analysis) { track = t; beats = beatsOf(t, buffer.duration); showSong(); reslice(); } } });

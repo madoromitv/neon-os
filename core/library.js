@@ -68,3 +68,22 @@ export const searchSongs = (ts, q) => { q = q.trim().toLowerCase(); return q ? t
 export const searchGroups = (gs, q) => { q = q.trim().toLowerCase(); return q ? gs.filter(g => g.name.toLowerCase().includes(q) || (g.artist || "").toLowerCase().includes(q)) : gs; };
 // what a group row says under its name
 export const groupNote = g => g.artist && g.cover !== undefined ? g.artist : g.albums ? `${g.albums.size} album${g.albums.size === 1 ? "" : "s"}` : `${g.artists.size} artist${g.artists.size === 1 ? "" : "s"}`;
+
+// ---------- sorting and remembering where you were ----------
+// Sorts songs by a column: { key: "title" | "artist" | "album" | "genre" | "bpm" | "duration" | "size" | "added" | "type" | "fav", dir: 1 | -1 }
+export function sortSongs(list, sort) {
+  if (!sort || !sort.key) return list;
+  const k = sort.key, d = sort.dir || 1;
+  const val = t => k === "added" ? t.addedAt || "" : k === "size" ? (t.blob ? t.blob.size : t.size || 0) : k === "type" ? t.mime || "" : t[k];
+  return list.slice().sort((A, B) => {
+    if (k === "fav") return ((B.fav ? 1 : 0) - (A.fav ? 1 : 0)) * d;
+    const a = val(A), b = val(B);
+    if (typeof a === "number" || typeof b === "number") return ((a || 0) - (b || 0)) * d;
+    return String(a || "").localeCompare(String(b || ""), undefined, { sensitivity: "base", numeric: true }) * d;
+  });
+}
+// Each app's list remembers its section and sort between visits (saved as you go, no Save button).
+export function listState(key, fallback = { view: { type: "all" }, sort: { key: null, dir: 1 } }) {
+  let s = fallback; try { s = { ...fallback, ...JSON.parse(localStorage.getItem(key) || "null") }; } catch (e) {}
+  return { ...s, save(patch) { Object.assign(this, patch); try { localStorage.setItem(key, JSON.stringify({ view: this.view, sort: this.sort })); } catch (e) {} } };
+}

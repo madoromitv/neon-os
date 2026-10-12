@@ -178,6 +178,23 @@ const tests = {
     check(r.pulse === 133 && r.icons, "Rack patterns and desktop icons come back");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "remembers sections, sorting and the Decks mixer without saving"() {
+    const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
+    await p.click('.thead [data-sort="title"]'); await p.click('.thead [data-sort="title"]'); await p.click('[data-smart="recent"]'); await p.waitForTimeout(400);
+    await p.reload(); await p.waitForTimeout(2500);
+    check(await p.$eval('.thead [data-sort="title"]', e => e.getAttribute("aria-sort")) === "descending", "Amp keeps its sort after a reload");
+    check(await p.$eval('[data-smart="recent"]', e => e.getAttribute("aria-current")) === "true", "Amp keeps its library section");
+    await p.goto(`${URL}apps/files/`); await p.waitForTimeout(600);
+    await p.click('#head [data-sort="size"]'); await p.reload(); await p.waitForTimeout(600);
+    check(await p.$eval('#head [data-sort="size"]', e => e.getAttribute("aria-sort")) === "ascending", "Files keeps its sort");
+    await p.goto(`${URL}apps/decks/`); await p.waitForTimeout(800);
+    await p.focus('[data-eq="B-low"]'); await p.keyboard.press("PageDown"); await p.focus("#xfade"); await p.keyboard.press("End");
+    await p.click('#rows [data-load="A"]'); await p.waitForTimeout(1500);
+    await p.reload(); await p.waitForTimeout(2000);
+    check(await p.$eval('[data-eqv="B-low"]', e => e.textContent) === "-2.5" && await p.$eval("#xfPct", e => e.textContent) === "B 100%", "Decks keeps its EQ and crossfader");
+    check((await p.$eval('[data-deck="A"] [data-f="title"]', e => e.textContent)) !== "EMPTY", "Decks puts the song back on deck A");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "works offline after the first visit"() {
     const p = await page(); await desk(p); await p.waitForTimeout(1500);
     await p.context().setOffline(true); await p.reload(); await p.waitForTimeout(1500);

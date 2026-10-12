@@ -38,3 +38,24 @@ export function treeClick(e) {
   return { type: b.dataset.v };
 }
 export { isGroupView };
+
+// Makes a list's column header sortable: click a column to sort by it, again to reverse, a third time to clear.
+// head: the .lhead row, whose spans carry data-sort="<key>". state.sort is read and onChange(sort) gets the new one.
+export function wireSortHead(head, state, onChange) {
+  const cells = [...head.querySelectorAll("[data-sort]")];
+  const paint = () => cells.forEach(c => {
+    const on = state.sort && state.sort.key === c.dataset.sort;
+    c.setAttribute("aria-sort", on ? (state.sort.dir > 0 ? "ascending" : "descending") : "none");
+    c.dataset.arrow = on ? (state.sort.dir > 0 ? "▴" : "▾") : "";
+  });
+  cells.forEach(c => { c.setAttribute("role", "columnheader"); c.tabIndex = 0; c.title = "Sort by this column"; });
+  const go = c => {
+    const k = c.dataset.sort, s = state.sort || {};
+    const next = s.key !== k ? { key: k, dir: k === "added" || k === "fav" ? -1 : 1 } : s.dir === (k === "added" || k === "fav" ? -1 : 1) ? { key: k, dir: -s.dir } : { key: null, dir: 1 };
+    onChange(next); paint();
+  };
+  head.addEventListener("click", e => { const c = e.target.closest("[data-sort]"); if (c) go(c); });
+  head.addEventListener("keydown", e => { const c = e.target.closest("[data-sort]"); if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); go(c); } });
+  paint();
+  return { paint };
+}
