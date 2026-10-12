@@ -2,6 +2,8 @@
 
 Decisions for the game. Neon OS itself stays a clean, usable tool; none of this appears in the apps.
 
+**On hold (12 Oct 2026):** the game waits until Neon OS is a complete, installable OS. These notes stay for when it starts.
+
 ## Settled (12 Oct 2026)
 
 | Question | Decision |
