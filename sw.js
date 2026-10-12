@@ -1,5 +1,5 @@
 // Neon OS service worker: lets Neon OS open and run with no connection.
-// Every file is saved on install. Online, files come fresh from the network (so updates show straight away)
+// Every file is saved on install. Online, files are checked with the server every time (so updates show on the next reload)
 // and the saved copy is refreshed; offline, the saved copy is used. Fonts are saved the first time they load.
 // The file list below is written by tools/precache.py; run it after changing files.
 const VERSION = "951f825925";
@@ -24,7 +24,8 @@ self.addEventListener("fetch", e => {
   e.respondWith((async () => {
     const c = await caches.open(CACHE);
     try {
-      const r = await fetch(req);
+      // always check with the server (a quick "not changed" when nothing's new), so updates show on the next reload
+      const r = await fetch(req, { cache: "no-cache" });
       if (r.ok && r.type === "basic") c.put(req, r.clone());
       return r;
     } catch (err) {
