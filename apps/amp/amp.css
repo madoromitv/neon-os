@@ -162,3 +162,9 @@ body.obs .stage { background: transparent; box-shadow: none; }
 .grow .thumb { width: 20px; height: 20px; border-radius: 2px; object-fit: cover; display: block; background: linear-gradient(135deg, #2a1050, #3d0b3a); }
 .grow svg { width: 15px; height: 15px; fill: var(--ball); }
 #mlTable.groups .thead { display: none; }
+/* play modes beside the transport: compact, so Shuffle, Repeat, Level and Fade fit on one row */
+.transport .btn:not(.icon) { padding: 0 7px; gap: 5px; font-size: 10px; }
+.transport .brandmark { display: none; }
+.transport { gap: 3px; }
+.transport .btn.icon { width: 31px; min-width: 0; padding: 0; }
+.transport .spacer { min-width: 4px; }

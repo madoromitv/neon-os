@@ -10,6 +10,7 @@ import { SMART, smartById, buildGroups, albumOrder, viewSongs, viewGroups, viewT
 import { getTheme, setTheme, onTheme, applyTheme } from "../../core/theme.js";
 import { notify } from "../../core/notify.js";
 import { createGlow, createGlow2D } from "../../core/glow.js";
+import { measureLoudness, levelGain } from "../../core/loudness.js";
 import { fileOf, linkSupported, listFolders, saveFolder, removeFolder, scanFolder, foldersNeedingAccess, reconnectAll, hasAccess } from "../../core/linked.js";
 import { onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
 void closePop;
@@ -48,7 +49,7 @@ const PRESETS = {
 // ---------- settings (per viewer) ----------
 const SKEY = "neon-orbit-amp";
 let S = { color: "cyan", chaos: 0.7, vol: 0.8, bal: 0, eqOn: true, pre: 0, bands: PRESETS.Flat.slice(), shuffle: false, repeat: "off",
-  pl: [], cur: -1, pos: 0, remain: false, mini: "spec", shade: {}, show: { eq: true, pl: true, vis: true, ml: true } };
+  pl: [], cur: -1, pos: 0, remain: false, level: true, xfade: 0, mini: "spec", shade: {}, show: { eq: true, pl: true, vis: true, ml: true } };
 try { const s = JSON.parse(localStorage.getItem(SKEY) || "{}"); Object.assign(S, s); S.show = Object.assign({ eq: true, pl: true, vis: true, ml: true }, s.show || {}); } catch (e) {}
 const isHex = v => /^#[0-9a-f]{6}$/i.test(v);
 S.color = getTheme().ball; // the orb colour is shared across Neon OS
@@ -517,7 +518,7 @@ async function playIndex(i, { autoplay = true, at = 0, fromHistory = false } = {
     let buf;
     try { buf = await Eng.decode(ab); } catch (e) { throw new Error("decode"); }
     if (seq !== loadSeq) return;
-    Eng.setBuffer(buf); loadedId = t.id;
+    Eng.setBuffer(buf, levelFor(t, buf)); loadedId = t.id; pending = null; shufflePick = null;
     data = an ? normalise(an) : null; beatPtr = 0; resetViz();
     if (!an && analyser) analyser.prioritise(t.id); // not analysed yet: jump the queue; the visualiser idles until it's ready
     t.kbps = Math.round(ab.byteLength * 8 / buf.duration / 1000);
@@ -624,13 +625,67 @@ $("bPause").addEventListener("click", pause);
 $("bStop").addEventListener("click", stop);
 $("bNext").addEventListener("click", () => next(false));
 $("bEject").addEventListener("click", () => { if (store.canWrite) $("fileIn").click(); else toast("This library can't save songs here.", true); });
+// ---------- volume levelling, gapless playback and crossfade ----------
+// Each song's loudness is measured the first time it plays (core/loudness.js) and kept with the song.
+function levelFor(t, buf) {
+  if (!t || t.builtin) return 1;
+  if (t.loud == null && buf) {
+    const m = measureLoudness(buf); t.loud = m.db; t.peak = m.peak;
+    if (store.canWrite) store.updateTrack(t.id, { loud: m.db, peak: m.peak }).catch(() => {});
+  }
+  return S.level && t.loud != null ? levelGain({ db: t.loud, peak: t.peak || 1 }) : 1;
+}
+// The next song is loaded and decoded while the current one is still playing, then queued on the audio clock, so it
+// starts the instant the current one ends (or overlaps it by the crossfade).
+let pending = null, preloading = false, shufflePick = null;
+function upcoming() { // the song that plays when this one ends on its own, or -1
+  if (!pl.length || cur < 0) return -1;
+  if (S.repeat === "one") return cur;
+  if (S.shuffle && pl.length > 1) { if (shufflePick == null || shufflePick >= pl.length || shufflePick === cur) { do { shufflePick = Math.floor(Math.random() * pl.length); } while (shufflePick === cur); } return shufflePick; }
+  return cur + 1 < pl.length ? cur + 1 : S.repeat === "all" ? 0 : -1;
+}
+async function checkPreload() {
+  if (!Eng.next) pending = null;
+  if (Eng.state !== "playing" || loading || preloading || !loadedId) return;
+  const i = upcoming();
+  if (pending) { if (i === pending.i && pl[i] === pending.id && pending.xf === S.xfade && pending.lv === S.level) return; Eng.cancelNext(); pending = null; }
+  if (i < 0 || Eng.duration - Eng.time() > 25 + S.xfade) return;
+  const t = byId(pl[i]); if (!t) return;
+  preloading = true;
+  const was = loadedId;
+  try {
+    const [ab, an] = await Promise.all([trackBytes(t), getAnalysis(t)]);
+    const buf = await Eng.decode(ab);
+    if (loadedId === was && Eng.state === "playing" && pl[i] === t.id && upcoming() === i && Eng.queueNext(buf, levelFor(t, buf), S.xfade))
+      pending = { i, id: t.id, an, kbps: Math.round(ab.byteLength * 8 / buf.duration / 1000), xf: S.xfade, lv: S.level };
+  } catch (e) {} // can't load it ahead (e.g. the folder needs permission): it loads when the song ends instead
+  finally { preloading = false; }
+}
+setInterval(checkPreload, 1000);
+Eng.onAdvance = () => {
+  const p = pending; pending = null; shufflePick = null; countedId = null;
+  if (!p) return;
+  if (cur >= 0 && cur !== p.i) { history.push(cur); if (history.length > 200) history.shift(); }
+  cur = pl[p.i] === p.id ? p.i : pl.indexOf(p.id);
+  loadedId = p.id; data = p.an ? normalise(p.an) : null; beatPtr = 0; resetViz();
+  if (!p.an && analyser) analyser.prioritise(p.id);
+  const t = byId(p.id); if (t) t.kbps = p.kbps;
+  renderPl(); renderMl(); setNowPlaying(); save();
+};
+const FADES = [0, 3, 6, 9, 12];
 function renderModes() {
+  $("bLevel").setAttribute("aria-pressed", String(!!S.level));
+  $("bFade").setAttribute("aria-pressed", String(S.xfade > 0));
+  $("fadeTxt").textContent = S.xfade ? `Fade ${S.xfade}s` : "Fade";
+  $("bFade").setAttribute("aria-label", S.xfade ? `Crossfade: ${S.xfade} seconds` : "Crossfade: off, songs play back to back");
   $("bShuf").setAttribute("aria-pressed", String(S.shuffle));
   $("bRep").setAttribute("aria-pressed", String(S.repeat !== "off"));
   $("repTxt").textContent = S.repeat === "one" ? "Repeat 1" : "Repeat";
   $("bRep").setAttribute("aria-label", `Repeat: ${S.repeat === "off" ? "off" : S.repeat === "all" ? "all" : "one song"}`);
 }
-$("bShuf").addEventListener("click", () => { S.shuffle = !S.shuffle; history = []; renderModes(); save(); });
+$("bShuf").addEventListener("click", () => { S.shuffle = !S.shuffle; history = []; shufflePick = null; renderModes(); save(); });
+$("bLevel").addEventListener("click", () => { S.level = !S.level; Eng.setLevel(levelFor(curTrack(), Eng.buf)); renderModes(); save(); toast(S.level ? "Volume levelling on: songs play at the same loudness" : "Volume levelling off"); });
+$("bFade").addEventListener("click", () => { S.xfade = FADES[(FADES.indexOf(S.xfade) + 1) % FADES.length]; renderModes(); save(); toast(S.xfade ? `Crossfade: ${S.xfade} seconds` : "Crossfade off: songs play back to back with no gap"); });
 $("bRep").addEventListener("click", () => { S.repeat = S.repeat === "off" ? "all" : S.repeat === "all" ? "one" : "off"; renderModes(); save(); });
 
 const volS = Slider($("vol"), { min: 0, max: 1, step: 0.01, value: S.vol, label: "Volume", text: v => Math.round(v * 100) + "%", onInput: v => { S.vol = v; Eng.setVolume(v); showVol(); dispatchEvent(new CustomEvent("neonos:volume-changed", { detail: v })); }, onChange: save });
