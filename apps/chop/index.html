@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chop · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/library.css">
+<link rel="stylesheet" href="chop.css">
+</head>
+<body>
+  <header class="top">
+    <div class="lcd readout">
+      <div class="song"><span class="title" id="title">NO SONG LOADED</span><span class="sub" id="sub">Pick a song from the library below</span></div>
+      <span class="big" id="bpm">120</span><span class="unit">BPM</span>
+      <span class="pat" id="patLcd">A</span><span class="unit">PATTERN</span>
+      <span class="pos" id="pos">1.1</span>
+    </div>
+    <div class="transport">
+      <button class="btn icon" id="play" aria-label="Play (Space)" title="Play (Space)"></button>
+      <button class="btn icon" id="stop" aria-label="Stop" title="Stop"></button>
+      <button class="btn" id="rec" aria-pressed="false" title="While playing, pads you hit are written into the pattern"><i class="led rec"></i>Record</button>
+      <button class="btn" id="link" aria-pressed="false" title="Play in time with other linked apps"><i class="led"></i>Link</button>
+      <span class="lbl">Tempo</span><button class="btn mini" id="bpmDown" aria-label="Slower">−</button><div class="slider h" id="tempo"></div><button class="btn mini" id="bpmUp" aria-label="Faster">+</button>
+      <span class="lbl">Volume</span><div class="slider h" id="vol"></div><span class="lcd pct" id="volPct">85%</span>
+    </div>
+    <div class="tools">
+      <span class="lbl">Pattern</span><span class="seg" id="pats"></span>
+      <span class="lbl">Slice</span><span class="seg" id="divs"></span>
+      <button class="btn" id="match" aria-pressed="true" title="Speed slices up or down so the song's tempo matches yours"><i class="led"></i>Match tempo</button>
+      <button class="btn" id="choke" aria-pressed="true" title="A new pad cuts off the one before"><i class="led"></i>Choke</button>
+      <button class="btn" id="clear">Clear</button>
+      <button class="btn" id="reset" title="Back to the starting pattern and default settings">Reset</button>
+      <button class="btn" id="wav" title="Save 4 bars of this pattern as a WAV file">Export WAV</button>
+    </div>
+  </header>
+  <section class="waves" aria-label="Song and slices">
+    <canvas id="over" class="wave" title="Click to start the slices at that beat. ← and → move by a beat, Shift for a bar"></canvas>
+    <canvas id="zoom" class="wave zoom" title="The 16 slices. Click one to hear it"></canvas>
+  </section>
+  <div class="main">
+    <section class="pads" id="pads" aria-label="Pads"></section>
+    <div class="right">
+      <div class="seq" id="seq" role="grid" aria-label="Pattern"></div>
+      <p class="hint">Hit a pad (or its key), then click steps to place it; click again to clear. Right-click clears a step. Space plays.</p>
+      <section class="crate" aria-label="Library">
+        <div class="crate-top"><span class="lbl">Library</span><label class="search"><input id="q" type="search" placeholder="Search" aria-label="Search the library"></label><span class="hint" id="crateHint"></span></div>
+        <div class="lwell" id="list" role="grid" aria-label="Songs">
+          <div class="lhead" role="row"><span>Title</span><span>Artist</span><span style="text-align:right">BPM</span><span style="text-align:right">Time</span><span></span></div>
+          <div id="rows"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <script type="module" src="chop.js"></script>
+</body>
+</html>

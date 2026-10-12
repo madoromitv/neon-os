@@ -11,6 +11,7 @@ export const APPS = [
   { id: "files", name: "Files", desc: "Songs, playlists and notes", url: "apps/files/", w: 760, h: 480, icon: "M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" },
   { id: "pulse", name: "Pulse", desc: "Drum machine", url: "apps/pulse/", w: 900, h: 560, icon: "M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z" },
   { id: "drift", name: "Drift", desc: "Synth and note sequencer", url: "apps/drift/", w: 900, h: 720, icon: "M3 17h3V7h2v10h3V4h2v13h3V9h2v8h3v2H3z" },
+  { id: "chop", name: "Chop", desc: "Sampler: slice any song on the beat", url: "apps/chop/", w: 1060, h: 780, icon: "M9.6 7.6A3 3 0 1 0 8 9l2.6 1.9L8 12.9a3 3 0 1 0 1.6 1.5l2.4-1.7 7 5.3h3l-8.6-6.6L22 4h-3l-7 5.3zM6 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0 10a1 1 0 1 1 0-2 1 1 0 0 1 0 2z" },
   { id: "decks", name: "Decks", desc: "Two-deck DJ mixer", url: "apps/decks/", w: 1100, h: 700, icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4z" },
   { id: "notes", name: "Notes", desc: "Quick notes, saved here", url: "apps/notes/", w: 520, h: 460, icon: "M5 3h10l4 4v14H5zm9 1.5V8h3.5zM8 11h8v1.6H8zm0 3.5h8v1.6H8zm0 3.5h5v1.6H8z" },
   { id: "help", name: "Shortcuts", desc: "Every key and mouse move", url: "apps/help/", w: 560, h: 620, desktop: false, icon: "M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zm3 2v2h2V8zm4 0v2h2V8zm4 0v2h2V8zM6 12v2h2v-2zm4 0v2h2v-2zm4 0v2h2v-2zm-6 4v2h8v-2z" },

@@ -8,6 +8,7 @@ import { clock } from "../../core/clock.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, dialog } from "../../style-kit/ui.js";
 import { notify } from "../../core/notify.js";
+import { toWav } from "../../core/wav.js";
 applyTheme(); onTheme(applyTheme);
 
 const $ = id => document.getElementById(id);
@@ -183,16 +184,6 @@ $("wav").addEventListener("click", async () => {
   } catch (e) { toast("Couldn't render the WAV. Try again.", true); }
   btn.disabled = false; btn.textContent = "Export WAV";
 });
-function toWav(buf) {
-  const ch = buf.numberOfChannels, n = buf.length, data = new DataView(new ArrayBuffer(44 + n * ch * 2));
-  const w = (o, s) => [...s].forEach((c, i) => data.setUint8(o + i, c.charCodeAt(0)));
-  w(0, "RIFF"); data.setUint32(4, 36 + n * ch * 2, true); w(8, "WAVE"); w(12, "fmt ");
-  data.setUint32(16, 16, true); data.setUint16(20, 1, true); data.setUint16(22, ch, true); data.setUint32(24, buf.sampleRate, true);
-  data.setUint32(28, buf.sampleRate * ch * 2, true); data.setUint16(32, ch * 2, true); data.setUint16(34, 16, true); w(36, "data"); data.setUint32(40, n * ch * 2, true);
-  const chans = Array.from({ length: ch }, (_, c) => buf.getChannelData(c));
-  let o = 44; for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) { const v = Math.max(-1, Math.min(1, chans[c][i])); data.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true); o += 2; }
-  return new Blob([data], { type: "audio/wav" });
-}
 
 $("reset").addEventListener("click", async () => {
   const ok = await dialog({ title: "Reset Pulse", text: "Clear all four patterns and put tempo, swing, volumes and Link back to how they started?", confirm: "Reset", danger: true });
