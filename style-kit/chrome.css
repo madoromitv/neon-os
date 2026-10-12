@@ -114,3 +114,15 @@
 .dialog.tidy .tempty { padding: 16px; text-align: center; }
 .dialog .acts .hint { margin-right: auto; align-self: center; color: var(--ink-faint); font-size: 11.5px; }
 @media (max-width: 520px) { .dialog.details .dgrid { grid-template-columns: 1fr; } }
+
+/* effects row (style-kit/fx-panel.js) */
+.fxrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 6px 10px; background: #0a0810; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; }
+.fxrow .fxh { color: var(--ball); }
+.fxrow .fxg { display: inline-flex; align-items: center; gap: 6px; }
+.fxrow .slider { width: 90px; }
+.fxrow .pct { font-size: 15px; line-height: 18px; padding: 0 4px; min-width: 40px; text-align: center; }
+.fxrow .seg { display: inline-flex; gap: 2px; }
+.fxrow .btn.mini { min-height: 20px; padding: 0 6px; font-size: 10px; }
+.fxrow .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+.fxrow .gr { width: 36px; height: 6px; background: #000; border-radius: 1px; box-shadow: inset -1px -1px 0 #3a3450; overflow: hidden; display: inline-block; }
+.fxrow .gr b { display: block; height: 100%; width: 0; background: var(--ball); box-shadow: 0 0 6px var(--ball); }

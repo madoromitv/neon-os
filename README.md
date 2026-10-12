@@ -18,6 +18,7 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Close:** the X on Amp's player closes all of Amp and stops the music; the X on any other Amp panel closes just that panel
 - **Amp's player** carries every Amp window docked to it, like the classic player; drag any other Amp window to pull it free
 - **Link:** turn on Link in Pulse and Drift and they share one tempo and start/stop, playing in time in separate windows
+- **Effects:** Pulse, Drift, Chop and Tape share one effects row: reverb with room size, a delay that echoes in time with the tempo (1/4, 3/16, 1/8, 1/16) with repeats, and a compressor with a meter. Exports include the effects, and Tape plays each lane through its app's own effects, then its own on the whole track
 - **Small windows:** windows keep their size and the desktop scrolls up, down, left and right to reach them; the taskbar stays put
 - **Right-click:** the desktop (open apps, tidy, change colour, restart), desktop icons, taskbar buttons and window title bars all have menus
 - **Sounds:** soft system sounds for opening, closing, minimising and snapping; the tray's speaker sets music and system volume and turns sounds off
@@ -82,6 +83,7 @@ core/        shared engine, used by every app
   rack.js      plays Pulse, Drift and Chop patterns anywhere (Tape uses it)
   glow.js      the orb's glow drawn with WebGL (2D canvas where WebGL isn't available)
   wav.js       WAV export for the Rack apps
+  fx.js        the Rack's shared effects: reverb, tempo-synced delay, compressor
   details.js   the details editor (several songs at once, cover art) and Tidy names, shared by Amp and Files
   loudness.js  measures each song's loudness for volume levelling
 apps/

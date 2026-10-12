@@ -10,6 +10,8 @@ import { Slider, toast, dialog, esc } from "../../style-kit/ui.js";
 import { vlist } from "../../style-kit/vlist.js";
 import { notify } from "../../core/notify.js";
 import { toWav, download } from "../../core/wav.js";
+import { createFx, fxOf } from "../../core/fx.js";
+import { fxPanel } from "../../style-kit/fx-panel.js";
 import { openDb, all, onLibraryChange } from "../../core/backup.js";
 import { fileOf } from "../../core/linked.js";
 import { PADS, STEPS, SLOTS, PAD_KEYS, DIVS, CHOP_KEY, loadChop, beatsOf, songBpm, slicesOf, beatAt, playSlice } from "../../core/chop.js";
@@ -18,6 +20,7 @@ applyTheme(); onTheme(applyTheme);
 const $ = id => document.getElementById(id);
 const fmt = s => { s = Math.max(0, s || 0); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; };
 let S = loadChop();
+S.fx = fxOf(S);
 let saveT = null;
 const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(CHOP_KEY, JSON.stringify(S)); } catch (e) {} }, 200); };
 const pat = () => S.patterns[S.cur];
@@ -60,9 +63,12 @@ function peaksOf(buf, n) {
 }
 
 // ---------- audio ----------
-let ctx = null, out = null, stopLast = null;
+let ctx = null, out = null, stopLast = null, fx = null;
 function ensureAudio() {
-  if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); out = ctx.createGain(); out.gain.value = S.vol; out.connect(ctx.destination); }
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)(); out = ctx.createGain(); out.gain.value = S.vol;
+    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); out.connect(fx.input); fx.output.connect(ctx.destination);
+  }
   if (ctx.state !== "running") ctx.resume().catch(() => {});
   return ctx;
 }
@@ -109,6 +115,7 @@ const queue = [];
 const stepDur = () => 60 / S.bpm / 4;
 const following = () => S.link && clock.state.playing;
 function schedule() {
+  if (fx) fx.setBpm(S.bpm);
   while (nextTime < ctx.currentTime + 0.12) {
     if (following()) { const c = clock.state, ms = 60000 / c.bpm / 4; nextTime = clock.toAudio(ctx, c.origin + absStep * ms); }
     const v = pat()[nextStep];
@@ -147,6 +154,7 @@ function showNow(step) {
   $("pos").textContent = `${Math.floor(step / 4) + 1}.${step % 4 + 1}`;
 }
 function draw() {
+  if (fx) panel.meter(fx.reduction);
   if (!playing) return;
   const now = ctx.currentTime - (ctx.outputLatency || 0);
   while (queue.length > 1 && queue[1].time <= now) queue.shift();
@@ -246,8 +254,9 @@ $("wav").addEventListener("click", async () => {
   if (!buffer) { toast("Load a song first."); return; }
   const btn = $("wav"); btn.disabled = true; btn.textContent = "Rendering…";
   try {
-    const SR = 44100, bars = 4, len = bars * STEPS * stepDur() + 2;
-    const off = new OfflineAudioContext(2, Math.ceil(len * SR), SR), m = off.createGain(); m.gain.value = S.vol; m.connect(off.destination);
+    const SR = 44100, bars = 4, len = bars * STEPS * stepDur() + 2 + (S.fx.reverb ? 1 + S.fx.size * 4.5 : 0) + (S.fx.delay ? 3 : 0);
+    const off = new OfflineAudioContext(2, Math.ceil(len * SR), SR), m = off.createGain(); m.gain.value = S.vol;
+    const ofx = createFx(off, { bpm: S.bpm, params: S.fx }); m.connect(ofx.input); ofx.output.connect(off.destination);
     let last = null; const p = pat(), r = rate();
     for (let n = 0; n < bars * STEPS; n++) { const v = p[n % STEPS]; if (v < 0) continue; const t = 0.02 + n * stepDur(); if (S.choke && last) last(t); last = playSlice(off, m, buffer, slices[v], t, r, 0.9); }
     const name = `chop-${S.cur}-${Math.round(S.bpm)}bpm.wav`;
@@ -279,4 +288,5 @@ onLibraryChange(async () => { await loadLibrary(); if (track) { const t = tracks
 
 // ---------- start ----------
 renderPads(); renderSeq(); renderTransport(); showSong(); drawWaves();
+const panel = fxPanel($("fx"), S.fx, (p, done) => { if (fx) fx.set(p); if (done) save(); });
 loadLibrary().then(() => { const t = S.trackId && tracks.find(x => x.id === S.trackId); if (t) loadTrack(t); });

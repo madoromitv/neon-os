@@ -7,6 +7,8 @@ import { createSynth, PRESETS, WAVES, DEFAULTS } from "../../core/synth.js";
 import { clock } from "../../core/clock.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, openMenu, toast, dialog } from "../../style-kit/ui.js";
+import { createFx, fxOf } from "../../core/fx.js";
+import { fxPanel } from "../../style-kit/fx-panel.js";
 applyTheme(); onTheme(applyTheme);
 
 const $ = id => document.getElementById(id);
@@ -19,13 +21,19 @@ const isBlack = n => [1, 3, 6, 8, 10].includes(n % 12);
 let S = { preset: "Neon Lead", params: { ...PRESETS["Neon Lead"] }, oct: 4, sOct: 3, bpm: 120, link: false, seq: [0, null, 7, null, 12, null, 7, null, 3, null, 10, null, 7, null, 5, null] };
 try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && s.params) S = { ...S, ...s, params: { ...DEFAULTS, ...s.params } }; } catch (e) {}
 if (!Array.isArray(S.seq) || S.seq.length !== STEPS) S.seq = new Array(STEPS).fill(null);
+S.fx = fxOf(S);
+let fx = null;
 let saveT = null;
 const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }, 200); };
 
 // ---------- audio ----------
 let ctx = null, synth = null;
 function ensure() {
-  if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); synth = createSynth(ctx, ctx.destination); synth.set(S.params); }
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); fx.output.connect(ctx.destination);
+    synth = createSynth(ctx, fx.input); synth.set(S.params);
+  }
   if (ctx.state !== "running") ctx.resume().catch(() => {});
   return synth;
 }
@@ -138,6 +146,7 @@ let playing = false, timer = null, nextTime = 0, nextStep = 0, absStep = 0;
 const queue = [];
 const stepDur = () => 60 / S.bpm / 4, following = () => S.link && clock.state.playing;
 function schedule() {
+  if (fx) fx.setBpm(S.bpm);
   while (nextTime < ctx.currentTime + 0.12) {
     if (following()) { const c = clock.state; nextTime = clock.toAudio(ctx, c.origin + absStep * (60000 / c.bpm / 4)); }
     const r = S.seq[nextStep];
@@ -162,7 +171,7 @@ clock.subscribe(c => {
 });
 let shown = -1;
 function showNow(s) { if (s === shown) return; shown = s; $("roll").querySelectorAll(".now").forEach(x => x.classList.remove("now")); if (s >= 0) $("roll").querySelectorAll(`[data-s="${s}"]`).forEach(x => x.classList.add("now")); }
-function draw() { if (!playing) return; const now = ctx.currentTime - (ctx.outputLatency || 0); while (queue.length > 1 && queue[1].time <= now) queue.shift(); if (queue.length && queue[0].time <= now) showNow(queue[0].step); requestAnimationFrame(draw); }
+function draw() { if (!playing) return; if (fx) panel.meter(fx.reduction); const now = ctx.currentTime - (ctx.outputLatency || 0); while (queue.length > 1 && queue[1].time <= now) queue.shift(); if (queue.length && queue[0].time <= now) showNow(queue[0].step); requestAnimationFrame(draw); }
 function renderTransport() {
   $("play").innerHTML = icon("play"); $("stop").innerHTML = icon("stop");
   $("play").classList.toggle("down", playing); $("link").setAttribute("aria-pressed", String(!!S.link)); $("bpm").textContent = Math.round(S.bpm);
@@ -187,3 +196,4 @@ $("reset").addEventListener("click", async () => {
   stopLocal(); try { localStorage.removeItem(KEY); } catch (e) {} clearTimeout(saveT); location.reload();
 });
 buildKeys(); buildRoll(); renderTransport();
+const panel = fxPanel($("fx"), S.fx, (p, done) => { if (fx) fx.set(p); if (done) save(); });

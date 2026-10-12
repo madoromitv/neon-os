@@ -10,6 +10,8 @@ import { toWav, download } from "../../core/wav.js";
 import { openDb, all } from "../../core/backup.js";
 import { fileOf } from "../../core/linked.js";
 import { LANES, readRack, patternMarks, createRack } from "../../core/rack.js";
+import { createFx, fxOf } from "../../core/fx.js";
+import { fxPanel } from "../../style-kit/fx-panel.js";
 applyTheme(); onTheme(applyTheme);
 
 const $ = id => document.getElementById(id);
@@ -25,6 +27,7 @@ const starter = () => {
 let S = { bpm: 120, vol: 0.9, loop: false, mark: 0, bars: 32, lanes: starter(), lvol: { drums: 0.9, synth: 0.8, chop: 0.9 }, lmute: { drums: false, synth: false, chop: false } };
 try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && s.lanes) S = { ...S, ...s, lanes: { ...S.lanes, ...s.lanes }, lvol: { ...S.lvol, ...(s.lvol || {}) }, lmute: { ...S.lmute, ...(s.lmute || {}) } }; } catch (e) {}
 for (const l of LANES) { const a = S.lanes[l.id] || []; S.lanes[l.id] = Array.from({ length: S.bars }, (_, i) => a[i] || null); }
+S.fx = fxOf(S); // the whole track's effects, after each lane's own
 let saveT = null;
 const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }, 200); };
 const songBars = () => { let n = 0; for (const l of LANES) S.lanes[l.id].forEach((v, i) => { if (v) n = Math.max(n, i + 1); }); return n; };
@@ -54,16 +57,19 @@ addEventListener("storage", e => {
 });
 
 // ---------- audio ----------
-let ctx = null, master = null, engine = null;
+let ctx = null, master = null, engine = null, fx = null;
 function ensureAudio() {
-  if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); master = ctx.createGain(); master.gain.value = S.vol; master.connect(ctx.destination); }
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)(); master = ctx.createGain(); master.gain.value = S.vol;
+    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); master.connect(fx.input); fx.output.connect(ctx.destination);
+  }
   if (ctx.state !== "running") ctx.resume().catch(() => {});
   return ctx;
 }
 function laneGains(e, c) { for (const l of LANES) e.lane[l.id].gain.setValueAtTime(S.lmute[l.id] ? 0 : S.lvol[l.id], c.currentTime); }
 function buildEngine() {
   const old = engine;
-  engine = createRack(ctx, master, rack, chopSong); engine.setChop(chopSong, S.bpm); laneGains(engine, ctx);
+  engine = createRack(ctx, master, rack, chopSong, S.bpm); engine.setChop(chopSong, S.bpm); laneGains(engine, ctx);
   if (old) setTimeout(() => { for (const l of LANES) try { old.lane[l.id].disconnect(); } catch (e) {} }, 4000); // let old notes ring out
 }
 
@@ -73,6 +79,7 @@ const queue = [];
 const stepDur = () => 60 / S.bpm / 4;
 function cellsAt(bar) { const c = {}; for (const l of LANES) c[l.id] = S.lanes[l.id][bar] || null; return c; }
 function schedule() {
+  if (fx) fx.setBpm(S.bpm);
   const end = songBars() * STEPS;
   while (nextTime < ctx.currentTime + 0.12) {
     if (abs >= end) {
@@ -167,6 +174,7 @@ function showNow(a) {
 }
 function draw() {
   if (!playing) return;
+  if (fx) panel.meter(fx.reduction);
   const now = ctx.currentTime - (ctx.outputLatency || 0);
   while (queue.length > 1 && queue[1].time <= now) queue.shift();
   if (queue.length && queue[0].time <= now) showNow(queue[0].abs);
@@ -209,9 +217,10 @@ $("wav").addEventListener("click", async () => {
   const btn = $("wav"); btn.disabled = true; btn.textContent = "Rendering…";
   try {
     ensureAudio(); rack = readRack(); await loadChopSong(true);
-    const SR = 44100, len = n * barDur() + 2.5;
-    const off = new OfflineAudioContext(2, Math.ceil(len * SR), SR), m = off.createGain(); m.gain.value = S.vol; m.connect(off.destination);
-    const e = createRack(off, m, rack, chopSong); e.setChop(chopSong, S.bpm); laneGains(e, off);
+    const SR = 44100, len = n * barDur() + 2.5 + 5.5; // room for echoes and reverb to fade
+    const off = new OfflineAudioContext(2, Math.ceil(len * SR), SR), m = off.createGain(); m.gain.value = S.vol;
+    const ofx = createFx(off, { bpm: S.bpm, params: S.fx }); m.connect(ofx.input); ofx.output.connect(off.destination);
+    const e = createRack(off, m, rack, chopSong, S.bpm); e.setChop(chopSong, S.bpm); laneGains(e, off);
     for (let a = 0; a < n * STEPS; a++) e.step(cellsAt(Math.floor(a / STEPS)), a % STEPS, 0.05 + a * stepDur(), stepDur());
     const name = `tape-${Math.round(S.bpm)}bpm-${n}bars.wav`;
     download(toWav(await off.startRendering()), name);
@@ -221,3 +230,4 @@ $("wav").addEventListener("click", async () => {
 });
 
 build(); renderTransport(); showNow(-1);
+const panel = fxPanel($("fx"), S.fx, (p, done) => { if (fx) fx.set(p); if (done) save(); });

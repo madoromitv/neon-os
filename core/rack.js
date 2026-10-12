@@ -4,6 +4,7 @@
 import { VOICES, play as hit } from "./drums.js";
 import { createSynth, DEFAULTS, PRESETS } from "./synth.js";
 import { loadChop, beatsOf, songBpm, slicesOf, playSlice } from "./chop.js";
+import { createFx, fxOf } from "./fx.js";
 
 export const LANES = [
   { id: "drums", name: "Drums", app: "pulse", values: ["A", "B", "C", "D"] },
@@ -14,9 +15,9 @@ const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || "nul
 export function readRack() {
   const pulse = read("neon-os:pulse", {}), drift = read("neon-os:drift", {});
   return {
-    pulse: { patterns: pulse.patterns || {}, vol: pulse.vol || VOICES.map(() => 0.8), mute: pulse.mute || VOICES.map(() => false), swing: pulse.swing || 0, master: pulse.master == null ? 0.9 : pulse.master },
-    drift: { params: { ...DEFAULTS, ...(drift.params || PRESETS["Neon Lead"]) }, sOct: drift.sOct == null ? 3 : drift.sOct, seq: Array.isArray(drift.seq) ? drift.seq : [0, null, 7, null, 12, null, 7, null, 3, null, 10, null, 7, null, 5, null] },
-    chop: loadChop(),
+    pulse: { fx: fxOf(pulse), patterns: pulse.patterns || {}, vol: pulse.vol || VOICES.map(() => 0.8), mute: pulse.mute || VOICES.map(() => false), swing: pulse.swing || 0, master: pulse.master == null ? 0.9 : pulse.master },
+    drift: { fx: fxOf(drift), params: { ...DEFAULTS, ...(drift.params || PRESETS["Neon Lead"]) }, sOct: drift.sOct == null ? 3 : drift.sOct, seq: Array.isArray(drift.seq) ? drift.seq : [0, null, 7, null, 12, null, 7, null, 3, null, 10, null, 7, null, 5, null] },
+    chop: (c => ({ ...c, fx: fxOf(c) }))(loadChop()),
   };
 }
 // The 16 on/off marks of a pattern, for drawing a lane's cells
@@ -27,22 +28,27 @@ export function patternMarks(rack, lane, v) {
 }
 
 // chopSong: { track, buffer } for Chop's song, or null
-export function createRack(ctx, out, rack, chopSong) {
+// Each lane goes through its app's own effects, so it sounds here the way it does there.
+export function createRack(ctx, out, rack, chopSong, bpm = 120) {
   const lane = {}; for (const l of LANES) { lane[l.id] = ctx.createGain(); lane[l.id].connect(out); }
-  const pulseMaster = ctx.createGain(); pulseMaster.gain.value = rack.pulse.master; pulseMaster.connect(lane.drums);
+  const fx = { drums: createFx(ctx, { bpm, params: rack.pulse.fx }), synth: createFx(ctx, { bpm, params: rack.drift.fx }), chop: createFx(ctx, { bpm, params: rack.chop.fx }) };
+  for (const k in fx) fx[k].output.connect(lane[k]);
+  const pulseMaster = ctx.createGain(); pulseMaster.gain.value = rack.pulse.master; pulseMaster.connect(fx.drums.input);
   const buses = VOICES.map((_, i) => { const g = ctx.createGain(); g.gain.value = rack.pulse.mute[i] ? 0 : rack.pulse.vol[i]; g.connect(pulseMaster); return g; });
-  const synth = createSynth(ctx, lane.synth); synth.set(rack.drift.params);
-  const chopOut = ctx.createGain(); chopOut.gain.value = rack.chop.vol; chopOut.connect(lane.chop);
+  const synth = createSynth(ctx, fx.synth.input); synth.set(rack.drift.params);
+  const chopOut = ctx.createGain(); chopOut.gain.value = rack.chop.vol; chopOut.connect(fx.chop.input);
   let slices = [], cRate = 1, lastSlice = null;
-  const setChop = (song, bpm) => {
+  const sliceChop = (song, bpm) => {
     if (!song || !song.buffer) { slices = []; return; }
     const beats = beatsOf(song.track, song.buffer.duration);
     slices = slicesOf(beats, rack.chop.startBeat, rack.chop.div, song.buffer.duration);
     cRate = rack.chop.match ? bpm / songBpm(song.track, beats) : 1;
   };
+  const setBpm = b => { for (const k in fx) fx[k].setBpm(b); };
   return {
     lane,
-    setChop,
+    setChop: (song, b) => { sliceChop(song, b); setBpm(b); },
+    setBpm,
     // patterns playing this bar: { drums: "A", synth: "♪", chop: null }; s: step 0–15; t: when; dur: one 16th in seconds
     step(cells, s, t, dur) {
       if (cells.drums) {

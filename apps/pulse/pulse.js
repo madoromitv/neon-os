@@ -9,6 +9,8 @@ import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, dialog } from "../../style-kit/ui.js";
 import { notify } from "../../core/notify.js";
 import { toWav } from "../../core/wav.js";
+import { createFx, fxOf } from "../../core/fx.js";
+import { fxPanel } from "../../style-kit/fx-panel.js";
 applyTheme(); onTheme(applyTheme);
 
 const $ = id => document.getElementById(id);
@@ -27,16 +29,18 @@ try {
   if (s && s.patterns) S = { ...S, ...s, patterns: { ...S.patterns, ...s.patterns } };
 } catch (e) {}
 for (const k of SLOTS) if (!Array.isArray(S.patterns[k]) || S.patterns[k].length !== VOICES.length) S.patterns[k] = blank();
+S.fx = fxOf(S);
 let saveT = null;
 const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }, 200); };
 const pat = () => S.patterns[S.cur];
 
 // ---------- audio ----------
-let ctx = null, master = null, buses = [];
+let ctx = null, master = null, buses = [], fx = null;
 function ensureAudio() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
-    master = ctx.createGain(); master.gain.value = S.master; master.connect(ctx.destination);
+    master = ctx.createGain(); master.gain.value = S.master;
+    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); master.connect(fx.input); fx.output.connect(ctx.destination);
     buses = VOICES.map((_, i) => { const g = ctx.createGain(); g.gain.value = S.mute[i] ? 0 : S.vol[i]; g.connect(master); return g; });
   }
   if (ctx.state !== "running") ctx.resume().catch(() => {});
@@ -51,6 +55,7 @@ const stepDur = () => 60 / S.bpm / 4;
 function stepTime(base, step) { return base + (step % 2 ? S.swing * stepDur() * 0.5 : 0); } // swing delays every second 16th
 const following = () => S.link && clock.state.playing;
 function schedule() {
+  if (fx) fx.setBpm(S.bpm);
   while (nextTime < ctx.currentTime + 0.12) {
     if (following()) { const c = clock.state, ms = 60000 / c.bpm / 4; nextTime = clock.toAudio(ctx, c.origin + absStep * ms); } // locked to the shared clock, no drift
     const t = stepTime(nextTime, nextStep), p = pat();
@@ -126,6 +131,7 @@ function showNow(step) {
   $("pos").textContent = `${Math.floor(step / 4) + 1}.${step % 4 + 1}`;
 }
 function draw() {
+  if (fx) panel.meter(fx.reduction);
   if (!playing) return;
   const now = ctx.currentTime - (ctx.outputLatency || 0);
   while (queue.length > 1 && queue[1].time <= now) queue.shift();
@@ -172,8 +178,9 @@ addEventListener("keydown", e => {
 $("wav").addEventListener("click", async () => {
   const btn = $("wav"); btn.disabled = true; btn.textContent = "Rendering…";
   try {
-    const SR = 44100, bars = 4, len = bars * STEPS * stepDur() + 1.2;
-    const off = new OfflineAudioContext(2, Math.ceil(len * SR), SR), m = off.createGain(); m.gain.value = S.master; m.connect(off.destination);
+    const SR = 44100, bars = 4, len = bars * STEPS * stepDur() + 1.2 + (S.fx.reverb ? 1 + S.fx.size * 4.5 : 0) + (S.fx.delay ? 3 : 0);
+    const off = new OfflineAudioContext(2, Math.ceil(len * SR), SR), m = off.createGain(); m.gain.value = S.master;
+    const ofx = createFx(off, { bpm: S.bpm, params: S.fx }); m.connect(ofx.input); ofx.output.connect(off.destination);
     const bs = VOICES.map((_, i) => { const g = off.createGain(); g.gain.value = S.mute[i] ? 0 : S.vol[i]; g.connect(m); return g; });
     const p = pat();
     for (let n = 0; n < bars * STEPS; n++) { const s = n % STEPS, t = stepTime(0.02 + n * stepDur(), s); VOICES.forEach((v, i) => { if (p[i][s]) hit(off, bs[i], v.id, t, p[i][s] === 2 ? 1 : 0.62); }); }
@@ -191,3 +198,4 @@ $("reset").addEventListener("click", async () => {
   stopLocal(); try { localStorage.removeItem(KEY); } catch (e) {} clearTimeout(saveT); location.reload();
 });
 build(); renderTransport();
+const panel = fxPanel($("fx"), S.fx, (p, done) => { if (fx) fx.set(p); if (done) save(); });
