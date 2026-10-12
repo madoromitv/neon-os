@@ -25,6 +25,7 @@
   p { margin: 0; color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
   .stat { font-size: 19px; line-height: 22px; padding: 4px 10px; }
   .btn:disabled { opacity: .45; }
+  p.warn { color: var(--ink); border-left: 2px solid var(--ball); padding-left: 8px; }
   .seg .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
   .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px 10px; }
   .checks label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
@@ -67,6 +68,8 @@
   <section class="group" aria-labelledby="stLbl">
     <span class="lbl" id="stLbl">Storage and install</span>
     <div class="lcd stat" id="stStat">CHECKING STORAGE…</div>
+    <p id="stSplit"></p>
+    <p id="stLag" class="warn" hidden></p>
     <div class="row">
       <button class="btn" id="persist">Protect my library</button>
       <button class="btn" id="install" hidden>Install Neon OS</button>
@@ -124,12 +127,23 @@
     onTheme(t => { syncDesk(t); syncAx(t); }); syncDesk(getTheme()); syncAx(getTheme());
 
     // ---------- storage and install ----------
-    const gb = n => n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.max(0.1, n / 1e6).toFixed(1) + " MB";
+    const gb = n => n >= 1e12 ? (n / 1e12).toFixed(1) + " TB" : n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.max(0.1, n / 1e6).toFixed(1) + " MB";
+    let lib = null; // the library summary, filled in by the Backup section
     async function syncStorage() {
       const st = navigator.storage;
+      if (lib) {
+        const parts = [lib.linked && `${lib.linked} song${lib.linked === 1 ? " plays" : "s play"} from your linked folder and take no space here`, lib.copied && `${lib.copied} ${lib.copied === 1 ? "is" : "are"} copied into this browser (${gb(lib.copiedBytes)})`].filter(Boolean);
+        $id("stSplit").textContent = parts.length ? parts.join("; ") + "." : "No songs yet.";
+        if (lib.copied && lib.linked) $id("stSplit").textContent += " If those copies are also in your linked folder, Rescan linked folders in Amp offers to swap them for the files on disk.";
+      }
       if (!st || !st.persisted) { $id("stStat").textContent = "STORAGE INFO UNAVAILABLE"; $id("persist").hidden = true; return; }
       const [kept, est] = await Promise.all([st.persisted(), st.estimate ? st.estimate() : Promise.resolve({})]);
-      $id("stStat").textContent = `${kept ? "PROTECTED" : "NOT PROTECTED"}${est.usage != null ? ` · ${gb(est.usage)} OF ${gb(est.quota)}` : ""}`;
+      $id("stStat").textContent = `${kept ? "PROTECTED" : "NOT PROTECTED"}${est.usage != null ? ` · ${gb(est.usage)} USED` : ""}`;
+      $id("stStat").title = est.quota ? `The browser lets Neon OS use up to ${gb(est.quota)} on this computer` : "";
+      // removed copies are deleted by the browser in its own time, usually once every Neon OS window has been closed
+      const extra = lib && est.usage != null ? est.usage - lib.bytes : 0;
+      $id("stLag").hidden = !(extra > 200e6);
+      if (extra > 200e6) $id("stLag").textContent = `About ${gb(extra)} of that is space the browser hasn't given back yet from copies that were removed (for example, swapped for a linked folder). It's freed once every Neon OS tab and window is closed and opened again; if it's still there, restart the browser.`;
       $id("persist").disabled = kept; $id("persist").textContent = kept ? "Library protected" : "Protect my library";
     }
     $id("persist").addEventListener("click", async () => {
@@ -171,7 +185,11 @@
       const $ = id => document.getElementById(id), msg = t => { $("bkMsg").textContent = t; };
       const mb = n => n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.max(0.1, n / 1e6).toFixed(1) + " MB";
       const refresh = async () => {
-        try { const s = await librarySummary(); $("libStat").textContent = `${s.songs} SONG${s.songs === 1 ? "" : "S"} · ${s.playlists} PLAYLIST${s.playlists === 1 ? "" : "S"} · ${mb(s.bytes)}`; }
+        try {
+          const s = await librarySummary(); lib = s;
+          $("libStat").textContent = `${s.songs} SONG${s.songs === 1 ? "" : "S"} · ${s.playlists} PLAYLIST${s.playlists === 1 ? "" : "S"} · ${mb(s.bytes)}`;
+          syncStorage();
+        }
         catch (e) { $("libStat").textContent = "LIBRARY UNAVAILABLE"; }
       };
       $("backup").addEventListener("click", async () => {

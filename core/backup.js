@@ -16,12 +16,16 @@ export function openDb() {
 export const all = (db, store) => new Promise((res, rej) => { const rq = db.transaction(store).objectStore(store).getAll(); rq.onsuccess = () => res(rq.result || []); rq.onerror = () => rej(rq.error); });
 export const put = (db, store, rec) => new Promise((res, rej) => { const t = db.transaction(store, "readwrite"); t.objectStore(store).put(rec); t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
 
-// What's in this browser right now: song count, playlist count, bytes of audio.
+// What's in this browser right now: song count, playlist count, bytes of audio stored here,
+// and how many songs are copied in versus read from a linked folder.
 export async function librarySummary() {
   const db = await openDb();
   const tracks = await all(db, "tracks"), playlists = await all(db, "playlists");
   db.close();
-  return { songs: tracks.length, playlists: playlists.length, bytes: tracks.reduce((n, t) => n + (t.blob ? t.blob.size : 0) + (t.coverBlob ? t.coverBlob.size : 0), 0) };
+  const copied = tracks.filter(t => t.blob);
+  return { songs: tracks.length, playlists: playlists.length, copied: copied.length, linked: tracks.length - copied.length,
+    copiedBytes: copied.reduce((n, t) => n + t.blob.size, 0),
+    bytes: tracks.reduce((n, t) => n + (t.blob ? t.blob.size : 0) + (t.coverBlob ? t.coverBlob.size : 0), 0) };
 }
 
 // Builds the backup file. Returns a Blob ready to download.

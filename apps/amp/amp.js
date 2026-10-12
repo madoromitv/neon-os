@@ -899,7 +899,7 @@ async function addOne(item, B) {
       if (dup.blob) { // copied in earlier: play it from the folder instead and drop the copy
         if (!B.convertMode) B.convertMode = await (B.convertAsk || (B.convertAsk = askConvert()));
         if (B.convertMode === "link") {
-          const freed = dup.blob.size; store.audioCache.delete(dup.id); byteCache.delete(dup.id);
+          const freed = dup.blob.size, u = store.audioCache.get(dup.id); if (u) URL.revokeObjectURL(u); store.audioCache.delete(dup.id); byteCache.delete(dup.id);
           await store.updateTrack(dup.id, { blob: null, link, size: f.size });
           B.converted++; B.freed += freed; B.done++; scheduleRender(); return;
         }
