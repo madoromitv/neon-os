@@ -8,7 +8,13 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Dock:** windows pull towards the screen edges and each other when close; hold Alt to place freely
 - **Resize:** from any edge or corner; double-click a top or bottom edge for full height, a side edge for full width
 - **Shared borders:** drag the border between snapped windows to resize them together
-- **Keyboard:** Ctrl+Alt+arrows snap the front window (Left/Right for halves, then Up/Down for quarters, Up for full screen, Down to restore or minimise)
+- **Keyboard:** Ctrl+Alt+arrows snap the front window (Left/Right for halves, then Up/Down for quarters, Up for full screen, Down to restore or minimise). Press **?** anywhere for the full list
+- **Switch apps:** hold Alt and press ` to step through open apps, let go to switch. Ctrl+Alt+M minimises, Ctrl+Alt+W closes, Ctrl+Alt+D shows the desktop, Ctrl+Alt+1 to 9 open apps, Ctrl+Alt+Space opens the start menu. These work inside every app, even while typing
+- **Mini player:** while Amp has a song loaded, the taskbar shows it with previous, play/pause and next; click the title to bring Amp forward. Ctrl+Alt+P, Ctrl+Alt+. and Ctrl+Alt+, do the same from any app, and keyboard media keys work too
+- **Notifications:** finished imports, analysis, backups, restores and saved recordings show up above the tray and stay in the bell's list. Quiet keeps them in the list without popping up
+- **Desktop:** drag icons to move them (drop on another to swap); choose the wallpaper (orb, haze, plain or your own picture) and which icons show in Settings
+- **Install:** in Chrome or Edge, **Install Neon OS** in the start menu or Settings gives it its own window and icon. Installed or not, it opens and runs with no connection once it has loaded once
+- **Accessibility:** high contrast and reduce motion in Settings; every window, menu, icon and the app switcher works from the keyboard, with labels for screen readers
 - **Close:** the X on Amp's player closes all of Amp and stops the music; the X on any other Amp panel closes just that panel
 - **Amp's player** carries every Amp window docked to it, like the classic player; drag any other Amp window to pull it free
 - **Link:** turn on Link in Pulse and Drift and they share one tempo and start/stop, playing in time in separate windows
@@ -26,7 +32,8 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 | Amp | Music player with library, playlists, equalizer and the Neon Orbit visualiser; browse by artist, album and genre, smart playlists, favourites and play counts; stays quick with thousands of songs | Working |
 | Files | The same library sections as Amp (songs, artists, albums, genres, smart playlists, playlists) plus notes; play in Amp, favourite, download, edit details, delete | Working |
 | Notes | Quick notes, saved in this browser | Working |
-| Settings | Orb colour for every app at once, backup and restore, layout reset | Working |
+| Settings | Orb colour for every app at once, wallpaper and desktop icons, high contrast and reduce motion, library protection and install, backup and restore, layout reset | Working |
+| Shortcuts | Every keyboard shortcut and mouse move, searchable (press ? anywhere) | Working |
 | Pulse | 16-step drum machine: 8 synthesised drums, 4 patterns, tempo, swing, accents, WAV export | Working |
 | Drift | Synth: 2 oscillators, filter, envelope, LFO, presets; on-screen, computer or MIDI keyboard; 16-step note sequencer | Working |
 | Decks | Two-deck DJ mixer: waveforms, cue, 4-beat loop, pitch, beat sync, 3-band EQ, crossfader, mix recording; loads from the same library sections as Amp | Working |
@@ -37,7 +44,11 @@ Plain HTML, CSS and JavaScript modules. No build step, no framework: open it fro
 
 ```
 index.html   the Neon OS desktop
-os/          the shell: window manager, taskbar, start menu, wallpaper
+manifest.webmanifest  the installed app's name, colours and icons
+sw.js        offline support: keeps a copy of every file (list written by tools/precache.py)
+icons/       app icons (made by tools/make-icons.py)
+os/          the shell: window manager, taskbar, start menu, wallpaper, app switcher, mini player
+  notices.js   notifications: pop-ups and the bell's list
 style-kit/   the look, shared by every app
   tokens.css   colours, fonts, glows (change the look here)
   base.css     page defaults
@@ -53,7 +64,10 @@ core/        shared engine, used by every app
   storage.js   the library (this browser's IndexedDB)
   theme.js     the shared orb colour; every app follows it live
   backup.js    one-file backup and restore of songs, playlists, notes and settings
-  os-link.js   passes window shortcuts from framed apps to the desktop
+  os-link.js   passes desktop shortcuts from framed apps to the desktop
+  shortcuts.js the list of desktop shortcuts, shared by the desktop, every app and the Shortcuts app
+  notify.js    lets any app send a notification
+  desk.js      the wallpaper picture
   sounds.js    system sounds, made on the fly (no sound files)
   drums.js     drum sounds, made on the fly; shared by Pulse and future apps
   synth.js     the synth engine Drift plays
@@ -70,6 +84,10 @@ apps/
   decks/       DJ mixer
   notes/       notes
   settings/    settings
+  help/        the Shortcuts list
+tools/
+  precache.py  writes the offline file list into sw.js; run it after adding or changing files
+  make-icons.py  draws the app icons
 ```
 
 Every app is also a normal page on its own (for example `apps/amp/`), so it works outside the desktop too.
@@ -78,9 +96,12 @@ There are two kinds of app. **Native** apps (Amp) run inside the desktop, so eac
 
 ## Adding an app
 
-1. Make a folder in `apps/` with an `index.html` that loads the style kit
+1. Make a folder in `apps/` with an `index.html` that loads the style kit and imports `core/os-link.js` (so desktop shortcuts work inside it)
 2. Add it to `apps/registry.js`
-3. It appears on the desktop and in the start menu
+3. Run `python tools/precache.py` so it works offline
+4. It appears on the desktop and in the start menu
+
+To send a notification from an app: `import { notify } from "../../core/notify.js"` then `notify("Title", "Text", "app-id")`. It returns false when the app is open on its own page, outside the desktop, so you can show a toast instead.
 
 New apps use only style-kit parts. If an app needs a new part, it goes into the style kit first, so every app stays matched.
 
@@ -99,6 +120,8 @@ Then open http://localhost:8000.
 Songs you add are stored in your own browser and never uploaded. The repository holds no music.
 
 To add your whole library at once, drop the folder onto the desktop or use **Add folder** in Amp's library: every folder inside it is searched for music files (MP3, FLAC, WAV, OGG, M4A, AAC, Opus) and anything else is ignored. Songs are added straight away, four at a time, and are playable immediately; beats, tempo and visualiser data are worked out afterwards in background workers on spare processor cores (playing a song moves it to the front). If a song is already in your library (the same title plus the same file size, artist or album), Amp asks once per batch whether to **skip**, **replace** (the new copy keeps the old one's place in your playlists) or **keep both**.
+
+Browsers can clear stored songs when a computer runs out of space. Adding songs asks the browser to protect the library, and **Settings → Protect my library** shows whether it agreed (browsers usually agree once Neon OS is installed or used often).
 
 To keep them safe or move them, open **Settings → Back up everything**. You get one `.neonos` file with your songs, playlists, notes and settings. **Restore a backup** in any browser or on any computer brings it all back; restoring adds to what's there and never deletes songs.
 

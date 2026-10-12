@@ -7,7 +7,8 @@ import { readTags, titleFromName, shrinkCover } from "../../core/tags.js";
 import { makeLocalStore } from "../../core/storage.js";
 import { createAnalyser } from "../../core/analyser.js";
 import { SMART, smartById, buildGroups, albumOrder, viewSongs, viewGroups, viewTitle as libTitle, searchGroups, groupNote, nkey } from "../../core/library.js";
-import { getTheme, setTheme, onTheme } from "../../core/theme.js";
+import { getTheme, setTheme, onTheme, applyTheme } from "../../core/theme.js";
+import { notify } from "../../core/notify.js";
 import { onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
 void closePop;
 
@@ -581,9 +582,24 @@ function setNowPlaying() {
   $("stageNp").innerHTML = t ? `${t.coverUrl ? `<img src="${esc(t.coverUrl)}" alt="" onerror="this.remove()">` : ""}<div><b>${esc(t.title)}</b><span>${esc([t.artist, t.album].filter(Boolean).join(" · "))}</span></div>` : "";
   $("treeArt").innerHTML = t && t.coverUrl ? `<img src="${esc(t.coverUrl)}" alt="" onerror="this.remove()">` : icon("note");
   $("treeArtTxt").textContent = t ? `${t.title}${t.artist ? " · " + t.artist : ""}` : "Nothing yet";
-  document.title = t && Eng.state === "playing" ? `${t.title} · Neon Orbit Amp` : "Neon Orbit Amp";
+  const home = window.neonOsShell ? "Neon OS" : "Neon Orbit Amp";
+  document.title = t && Eng.state === "playing" ? `${t.title} · ${home}` : home;
   if ("mediaSession" in navigator && t) { try { navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist || "", album: t.album || "" }); } catch (e) {} }
+  tellOs();
 }
+// the desktop's taskbar mini player follows this
+let toldOs = "";
+function tellOs() {
+  const t = curTrack(), d = t ? { title: t.title, artist: t.artist || "", state: loading ? "loading" : Eng.state } : null, k = JSON.stringify(d);
+  if (k === toldOs) return; toldOs = k;
+  dispatchEvent(new CustomEvent("neonos:nowplaying", { detail: d }));
+}
+// the taskbar mini player and the desktop's music shortcuts
+addEventListener("neonos:transport", e => {
+  const a = e.detail;
+  if (a === "toggle") { if (Eng.state === "playing") pause(); else play(); }
+  else if (a === "next") next(false); else if (a === "prev") prev(); else if (a === "stop") stop();
+});
 $("bigTime").addEventListener("click", () => { S.remain = !S.remain; $("bigTime").setAttribute("aria-label", S.remain ? "Time remaining" : "Elapsed time"); $("bigTime").title = S.remain ? "Show elapsed time" : "Show time remaining"; save(); });
 $("bigTime").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("bigTime").click(); } });
 const MINI_MODES = ["spec", "osc", "off"];
@@ -765,7 +781,10 @@ async function processAdds() {
     if (B.added || B.replaced) notifyLibraryChange("add");
     if (B.newIds.length && B.newIds.length <= 100) enqueue(B.newIds); // big imports don't flood the playlist
     const parts = [B.added && `added ${B.added}`, B.replaced && `replaced ${B.replaced}`, B.skipped && `skipped ${B.skipped} duplicate${B.skipped === 1 ? "" : "s"}`, B.failed && `${B.failed} couldn't be read`].filter(Boolean);
-    if (parts.length) toast(parts.join(", ").replace(/^./, c => c.toUpperCase()) + "." + (B.added + B.replaced ? " Beats and tempo are worked out in the background." : ""), !B.added && !B.replaced && B.failed > 0);
+    if (parts.length) {
+      const msg = parts.join(", ").replace(/^./, c => c.toUpperCase()) + "." + (B.added + B.replaced ? " Beats and tempo are worked out in the background." : "");
+      if (B.total < 6 || !notify("Songs added", msg, "amp")) toast(msg, !B.added && !B.replaced && B.failed > 0);
+    }
   }
   scheduleRender();
 }
@@ -832,7 +851,7 @@ async function refreshTags() {
 }
 
 // ---------- background analysis ----------
-let analyser = null, analysedSinceNotice = 0;
+let analyser = null, analysedSinceNotice = 0, analysedRun = 0;
 function startAnalyser() {
   analyser = createAnalyser({
     getBlob: id => { const t = store.tracks.find(x => x.id === id); return t && t.blob; },
@@ -841,6 +860,7 @@ function startAnalyser() {
       await store.updateTrack(id, { analysis: a, bpm: a.bpm, duration: Math.round(dur) || t.duration });
       anCache.set(id, a);
       if (loadedId === id && !data) { data = normalise(a); beatPtr = 0; resetViz(); setNowPlaying(); }
+      analysedRun++;
       if (++analysedSinceNotice >= 25) { analysedSinceNotice = 0; notifyLibraryChange("edit"); }
       scheduleRender();
     },
@@ -849,7 +869,9 @@ function startAnalyser() {
       if (t) await store.updateTrack(id, { analysis: null, analysisFailed: (e && e.message) || "failed" });
       scheduleRender();
     },
-    onIdle: () => { analysedSinceNotice = 0; notifyLibraryChange("edit"); scheduleRender(); },
+    onIdle: () => {
+      if (analysedRun >= 5) notify("Analysis finished", `Beats and tempo worked out for ${analysedRun} songs. The visualiser and tempo playlists are ready.`, "amp");
+      analysedRun = 0; analysedSinceNotice = 0; notifyLibraryChange("edit"); scheduleRender(); },
   });
   analyser.enqueue(store.tracks.filter(t => !t.analysis && !t.analysisFailed).map(t => t.id)); // carries on after a reload
 }
@@ -1084,12 +1106,14 @@ function frame(now) {
     updatePlTime();
     const icn = loading ? "next" : stateIcons[Eng.state];
     if ($("stateIcon").dataset.s !== icn) { $("stateIcon").dataset.s = icn; $("stateIcon").innerHTML = icon(icn); }
+    tellOs();
   }
   requestAnimationFrame(frame);
 }
 
 // =================== start ===================
 async function start() {
+  if (!window.neonOsShell) { applyTheme(); onTheme(applyTheme); } // on its own page; on the desktop the shell does this
   onTheme(t => { if (t.ball === S.color) return; S.color = t.ball; buildSprite(); syncSwatches(); drawEqGraph(); });
   buildSprite(); syncSwatches(); renderModes(); renderWindows(); applyEq();
   renderAll(); resize();

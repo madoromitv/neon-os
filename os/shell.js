@@ -3,14 +3,17 @@
 // so each of their windows is a real desktop window that can be dragged, snapped and stacked.
 import { APPS, PLANNED } from "../apps/registry.js";
 import { esc, clamp } from "../style-kit/ui.js";
-import { getTheme, setTheme, applyTheme, onTheme, ballHex } from "../core/theme.js";
+import { getTheme, setTheme, applyTheme, onTheme, ballHex, calmOn } from "../core/theme.js";
+import { osAction } from "../core/shortcuts.js";
+import { getWallImage } from "../core/desk.js";
+import { initNotices, addNotice, toggleNotices, closeNotices } from "./notices.js";
 import { sfx } from "../core/sounds.js";
 import { Slider, openMenu as popMenu } from "../style-kit/ui.js";
 import { runBoot } from "./boot.js";
 
+window.neonOsShell = true; // apps running inside the desktop (Amp) check this
 const $ = id => document.getElementById(id);
 const desk = $("desktop");
-const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const appById = id => APPS.find(a => a.id === id);
 const svg = (d, cls = "i") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
 const ICON = { min: "M5 11h14v2H5z", max: "M5 5h14v14H5zm2 4v8h10V9z", restore: "M8 4h12v12h-3v3H5V8h3zm2 2v2h7v7h1V6zM7 10v7h8v-7z", close: "M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z" };
@@ -78,7 +81,7 @@ async function mountNative(app, savedWins) {
   const sections = [...doc.querySelectorAll("section.win[id]")];
   for (const sec of sections) {
     const node = document.adoptNode(sec);
-    node.classList.add("owin"); node.dataset.wid = `${app.id}:${sec.id}`;
+    node.classList.add("owin"); node.dataset.wid = `${app.id}:${sec.id}`; node.tabIndex = -1;
     desk.appendChild(node);
   }
   // everything else the app's page needs (file pickers, toasts, drop zone)
@@ -395,22 +398,127 @@ function snapKey(wid, key) {
   if (next !== st.snap) sfx.snap();
   st.snap = next; render(wid); saveLayout();
 }
+// ---------- desktop shortcuts (the list is in core/shortcuts.js) ----------
+function doAction(act, wid) {
+  if (act.startsWith("snap:")) { const f = wid || front(); if (f) snapKey(f, act.slice(5)); return; }
+  if (act.startsWith("open:")) { const a = APPS[+act.slice(5)]; if (a) openApp(a.id); return; }
+  const f = front();
+  switch (act) {
+    case "switch": case "switch-back": switcher(act === "switch" ? 1 : -1); break;
+    case "close": if (f) closeApp(wins[f].appId); break;
+    case "minimise": if (f) minimiseGroup(wins[f].appId); break;
+    case "desktop": showDesktop(); break;
+    case "start": if (menu) closeMenu(); else { closeNotices(); closeTray(); openMenu(); } break;
+    case "notices": closeMenu(); closeTray(); toggleNotices(); break;
+    case "help": openApp("help"); break;
+    case "toggle": case "next": case "prev": transport(act); break;
+  }
+}
 addEventListener("keydown", e => {
-  if (!(e.ctrlKey && e.altKey) || !e.key.startsWith("Arrow")) return;
-  const f = front(); if (!f) return;
-  e.preventDefault(); e.stopPropagation(); snapKey(f, e.key);
+  if (sw && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeSwitcher(); return; }
+  if (sw && (e.key === "Enter")) { e.preventDefault(); e.stopPropagation(); commitSwitch(); return; }
+  const act = osAction(e); if (!act) return;
+  e.preventDefault(); e.stopPropagation(); doAction(act);
 }, true);
+addEventListener("keyup", e => { if (e.key === "Alt" && sw) { e.preventDefault(); commitSwitch(); } }, true);
 addEventListener("message", async e => {
   if (e.origin !== location.origin || !e.data) return;
-  if (e.data.neonOs === "play" && Array.isArray(e.data.ids)) { // a framed app (Files) asks Amp to play songs
+  const d = e.data;
+  if (d.neonOs === "play" && Array.isArray(d.ids)) { // a framed app (Files) asks Amp to play songs
     await openApp("amp");
-    dispatchEvent(new CustomEvent("neonos:play", { detail: { ids: e.data.ids } }));
+    dispatchEvent(new CustomEvent("neonos:play", { detail: { ids: d.ids } }));
     return;
   }
-  if (e.data.neonOs !== "key") return;
+  if (d.neonOs === "keyup") { if (d.key === "Alt" && sw) commitSwitch(); return; }
+  if (d.neonOs === "install-state") { e.source.postMessage({ neonOsInstall: installState() }, location.origin); return; }
+  if (d.neonOs === "install") { const ok = await promptInstall(); e.source.postMessage({ neonOsInstall: { ...installState(), accepted: ok } }, location.origin); return; }
+  if (d.neonOs !== "key") return;
   const fr = [...document.querySelectorAll(".owin iframe")].find(f => f.contentWindow === e.source);
-  if (fr) snapKey(fr.closest(".owin").dataset.wid, e.data.key);
+  const wid = fr ? fr.closest(".owin").dataset.wid : null;
+  if (d.act) doAction(d.act, wid);
+  else if (wid && d.key) snapKey(wid, d.key); // older apps
 });
+
+// ---------- app switcher (Alt+`) ----------
+// Hold Alt and press ` to step through open apps, most recent first; let go of Alt to switch.
+let sw = null;
+function switchOrder() {
+  const apps = [...new Set(Object.values(wins).map(w => w.appId))].filter(k => !closed.has(k));
+  const topZ = k => Math.max(...appWins(k).map(w => wins[w].z));
+  return apps.sort((a, b) => topZ(b) - topZ(a));
+}
+function drawSwitcher() {
+  const k = sw.items[sw.i];
+  sw.el.innerHTML = `<div class="titlebar"><span class="ttl">Switch app</span></div><div class="wbody">
+    <div class="swlist" role="listbox" aria-label="Open apps" aria-activedescendant="sw-${esc(k)}">${sw.items.map((id, i) => {
+      const a = appById(id), min = appWins(id).every(w => wins[w].min);
+      return `<div class="swi${i === sw.i ? " sel" : ""}" role="option" id="sw-${esc(id)}" aria-selected="${i === sw.i}" data-i="${i}"><span class="tile">${svg(a.icon)}</span><b>${esc(a.name)}</b>${min ? "<small>minimised</small>" : ""}</div>`;
+    }).join("")}</div>
+    <p class="swhint">Let go of Alt to switch · Esc to cancel</p></div>`;
+  $("srSay").textContent = appById(k).name;
+}
+function switcher(dir) {
+  if (!sw) {
+    const items = switchOrder(); if (!items.length) return;
+    const el = document.createElement("div");
+    el.className = "win lit switcher"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Switch app");
+    document.body.appendChild(el);
+    sw = { el, items, i: 0 };
+    el.addEventListener("pointerdown", e => { const b = e.target.closest("[data-i]"); if (b) { e.preventDefault(); sw.i = +b.dataset.i; commitSwitch(); } });
+  }
+  sw.i = (sw.i + dir + sw.items.length) % sw.items.length;
+  drawSwitcher();
+}
+function closeSwitcher() { if (!sw) return; sw.el.remove(); sw = null; }
+function commitSwitch() {
+  if (!sw) return;
+  const k = sw.items[sw.i]; closeSwitcher();
+  if (appWins(k).some(w => wins[w].min)) sfx.restore();
+  restoreGroup(k); focusInside(front());
+}
+// move keyboard focus into a window, so typing goes to the app straight away
+function focusInside(wid) {
+  const el = wid && els[wid]; if (!el) return;
+  const fr = el.querySelector("iframe");
+  try { (fr || el).focus({ preventScroll: true }); } catch (e) {}
+}
+document.addEventListener("pointerdown", e => { if (sw && !sw.el.contains(e.target)) closeSwitcher(); });
+
+// Ctrl+Alt+D: minimise everything to show the desktop; press again to bring it all back
+let deskHidden = null;
+function showDesktop() {
+  const vis = [...new Set(Object.keys(wins).filter(visible).map(k => wins[k].appId))];
+  if (vis.length) {
+    deskHidden = vis; sfx.minimise();
+    for (const k in wins) if (vis.includes(wins[k].appId)) { wins[k].min = true; render(k); }
+    renderTasks(); saveLayout();
+  } else if (deskHidden) { sfx.restore(); deskHidden.filter(k => appWins(k).length && !closed.has(k)).forEach(restoreGroup); deskHidden = null; focusInside(front()); }
+}
+
+// ---------- music: the taskbar mini player and Ctrl+Alt+P / . / , ----------
+// Amp tells the desktop what's playing (neonos:nowplaying); the desktop sends it play, pause, next and previous.
+async function transport(act) {
+  if (!mounted.has("amp") || closed.has("amp")) { if (act !== "toggle") return; await openApp("amp"); }
+  dispatchEvent(new CustomEvent("neonos:transport", { detail: act }));
+}
+const MP = { prev: "M6 6h2v12H6zm3.5 6 8.5 6V6z", next: "M16 6h2v12h-2zM6 18l8.5-6L6 6z", play: "M8 5v14l11-7z", pause: "M6 5h4v14H6zm8 0h4v14h-4z" };
+let nowPlaying = null, miniBuilt = false;
+addEventListener("neonos:nowplaying", e => { nowPlaying = e.detail; renderMini(); });
+function renderMini() {
+  const el = $("miniPlayer"), show = !!nowPlaying && mounted.has("amp") && !closed.has("amp");
+  el.hidden = !show; if (!show) return;
+  if (!miniBuilt) {
+    miniBuilt = true;
+    el.innerHTML = `<button class="btn icon" data-t="prev" aria-label="Previous song" title="Previous song (Ctrl+Alt+,)">${svg(MP.prev)}</button><button class="btn icon" data-t="toggle"></button><button class="btn icon" data-t="next" aria-label="Next song" title="Next song (Ctrl+Alt+.)">${svg(MP.next)}</button><button class="lcd mp-title" data-t="show" title="Show Amp"><span></span></button>`;
+    el.addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (!b) return; if (b.dataset.t === "show") { restoreGroup("amp"); } else transport(b.dataset.t); });
+  }
+  const playing = nowPlaying.state === "playing" || nowPlaying.state === "loading", tb = el.querySelector('[data-t="toggle"]');
+  if (tb.dataset.s !== String(playing)) { tb.dataset.s = String(playing); tb.innerHTML = svg(playing ? MP.pause : MP.play); }
+  tb.setAttribute("aria-label", playing ? "Pause" : "Play"); tb.title = (playing ? "Pause" : "Play") + " (Ctrl+Alt+P)";
+  const txt = nowPlaying.title + (nowPlaying.artist ? " · " + nowPlaying.artist : "");
+  const t = el.querySelector(".mp-title"); t.firstChild.textContent = txt; t.setAttribute("aria-label", `Now playing: ${txt}. Show Amp`);
+  t.classList.toggle("paused", !playing);
+}
 
 // clicks inside a framed app don't reach the shell, so watch where focus goes instead
 addEventListener("blur", () => setTimeout(() => {
@@ -418,7 +526,7 @@ addEventListener("blur", () => setTimeout(() => {
   if (f && f.tagName === "IFRAME") { const w = f.closest(".owin"); if (w) focus(w.dataset.wid); }
 }, 0));
 desk.addEventListener("scroll", () => { for (const k in wins) if (wins[k].snap) render(k); }, { passive: true });
-addEventListener("resize", () => { for (const k in wins) { keepInView(wins[k], els[k]); render(k); } sizeWall(); });
+addEventListener("resize", () => { for (const k in wins) { keepInView(wins[k], els[k]); render(k); } sizeWall(); startWall(); if (iconRows() + "" !== iconsKey.slice(iconsKey.lastIndexOf("]") + 1)) renderIcons(); });
 
 // ---------- taskbar: one button per app ----------
 function renderTasks() {
@@ -426,8 +534,9 @@ function renderTasks() {
   const apps = [...new Set(Object.values(wins).map(w => w.appId))].filter(k => !closed.has(k));
   $("tasks").innerHTML = apps.map(k => {
     const a = appById(k);
-    return `<button class="btn task${k === fApp ? " front" : ""}" data-app="${esc(k)}" title="${esc(a.name)}">${svg(a.icon)}<span>${esc(a.name)}</span></button>`;
+    return `<button class="btn task${k === fApp ? " front" : ""}" data-app="${esc(k)}" title="${esc(a.name)}" aria-pressed="${k === fApp}">${svg(a.icon)}<span>${esc(a.name)}</span></button>`;
   }).join("");
+  renderMini();
 }
 $("tasks").addEventListener("click", e => {
   const b = e.target.closest("[data-app]"); if (!b) return;
@@ -478,6 +587,7 @@ function openMenu() {
     ${PLANNED.length ? `<div class="sm-sep"></div>${PLANNED.map(p => `<div class="sm-item soon" aria-disabled="true"><span><b>${esc(p.name)}</b><small>${esc(p.desc)}, coming</small></span></div>`).join("")}` : ""}
     <div class="sm-sep"></div>
     <button class="sm-item" role="menuitem" data-act="tidy"><span><b>Tidy windows</b><small>Put open windows back in neat places</small></span></button>
+    ${installEvt ? `<button class="sm-item" role="menuitem" data-act="install"><span><b>Install Neon OS</b><small>Its own window and icon; works offline</small></span></button>` : ""}
   </div>`;
   document.body.appendChild(menu);
   $("startBtn").setAttribute("aria-expanded", "true");
@@ -487,6 +597,7 @@ function openMenu() {
     closeMenu();
     if (b.dataset.app) openApp(b.dataset.app);
     else if (b.dataset.act === "tidy") tidy();
+    else if (b.dataset.act === "install") promptInstall();
   });
 }
 function tidy() {
@@ -514,13 +625,72 @@ document.addEventListener("keydown", e => {
 }, true);
 
 // ---------- desktop icons ----------
-$("icons").innerHTML = APPS.map(a => `<button class="dicon" data-app="${esc(a.id)}" title="Open ${esc(a.name)}"><span class="tile">${svg(a.icon)}</span>${esc(a.name)}</button>`).join("");
+// Icons sit on a grid. Drag one to move it (dropping on another swaps them); positions are saved.
+// Settings chooses which apps have an icon (theme.deskHide); apps marked desktop: false start hidden.
+const IKEY = "neon-os:icons", CW = 90, CH = 90, IP = 12;
+let iconPos = {};
+try { iconPos = JSON.parse(localStorage.getItem(IKEY) || "{}") || {}; } catch (e) {}
+const saveIcons = () => { try { localStorage.setItem(IKEY, JSON.stringify(iconPos)); } catch (e) {} };
+const hiddenIcons = () => { const h = getTheme().deskHide; return new Set(Array.isArray(h) ? h : APPS.filter(a => a.desktop === false).map(a => a.id)); };
+const deskApps = () => { const h = hiddenIcons(); return APPS.filter(a => !h.has(a.id)); };
+const iconRows = () => Math.max(1, Math.floor((area().h - IP * 2 + 4) / CH));
+function layoutIcons() {
+  const rows = iconRows(), apps = deskApps(), taken = new Set(), place = {};
+  for (const a of apps) { const p = iconPos[a.id]; if (p && p.c >= 0 && p.r >= 0 && p.r < rows && !taken.has(p.c + "," + p.r)) { place[a.id] = { c: p.c, r: p.r }; taken.add(p.c + "," + p.r); } }
+  let c = 0, r = 0;
+  for (const a of apps) if (!place[a.id]) {
+    while (taken.has(c + "," + r)) { if (++r >= rows) { r = 0; c++; } }
+    place[a.id] = { c, r }; taken.add(c + "," + r);
+  }
+  return place;
+}
+let iconsKey = "";
+function renderIcons() {
+  const place = layoutIcons();
+  iconsKey = JSON.stringify([...hiddenIcons()]) + iconRows();
+  $("icons").innerHTML = deskApps().map(a => `<button class="dicon" data-app="${esc(a.id)}" title="Open ${esc(a.name)}" style="left:${IP + place[a.id].c * CW}px;top:${IP + place[a.id].r * CH}px"><span class="tile">${svg(a.icon)}</span>${esc(a.name)}</button>`).join("");
+}
+function hideIcon(id) { const h = hiddenIcons(); h.add(id); setTheme({ deskHide: [...h] }); renderIcons(); }
+function arrangeIcons() { iconPos = {}; saveIcons(); renderIcons(); }
+let iconDragged = false;
+$("icons").addEventListener("pointerdown", e => {
+  const b = e.target.closest(".dicon"); if (!b || e.button !== 0) return;
+  const sx = e.clientX, sy = e.clientY, x0 = b.offsetLeft, y0 = b.offsetTop; let moving = false;
+  const move = ev => {
+    if (!moving) { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return; moving = true; b.classList.add("lifting"); document.body.classList.add("dragging"); }
+    b.style.left = Math.max(0, x0 + ev.clientX - sx) + "px"; b.style.top = Math.max(0, y0 + ev.clientY - sy) + "px";
+  };
+  const up = () => {
+    removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up);
+    if (!moving) return;
+    iconDragged = true; setTimeout(() => { iconDragged = false; }, 300);
+    b.classList.remove("lifting"); document.body.classList.remove("dragging");
+    const place = layoutIcons(), id = b.dataset.app;
+    const c = Math.max(0, Math.round((b.offsetLeft - IP) / CW)), r = clamp(Math.round((b.offsetTop - IP) / CH), 0, iconRows() - 1);
+    const other = Object.keys(place).find(k => k !== id && place[k].c === c && place[k].r === r);
+    iconPos = { ...place }; if (other) iconPos[other] = place[id]; iconPos[id] = { c, r };
+    saveIcons(); renderIcons(); sfx.tick();
+    const nb = $("icons").querySelector(`[data-app="${CSS.escape(id)}"]`); if (nb) { nb.classList.add("sel"); nb.focus({ preventScroll: true }); }
+  };
+  addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", up);
+});
+renderIcons();
 $("icons").addEventListener("click", e => {
-  const b = e.target.closest(".dicon"); if (!b) return;
+  const b = e.target.closest(".dicon"); if (!b || iconDragged) return;
   document.querySelectorAll(".dicon").forEach(x => x.classList.toggle("sel", x === b));
   if (e.detail >= 2 || matchMedia("(pointer: coarse)").matches) openApp(b.dataset.app);
 });
-$("icons").addEventListener("keydown", e => { const b = e.target.closest(".dicon"); if (b && e.key === "Enter") { e.preventDefault(); e.stopPropagation(); openApp(b.dataset.app); } });
+$("icons").addEventListener("keydown", e => {
+  const b = e.target.closest(".dicon"); if (!b) return;
+  if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); openApp(b.dataset.app); return; }
+  const d = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
+  if (!d || e.ctrlKey || e.altKey) return;
+  e.preventDefault();
+  const place = layoutIcons(), p = place[b.dataset.app], best = Object.keys(place).filter(k => {
+    const q = place[k]; return d[0] ? q.r === p.r && Math.sign(q.c - p.c) === d[0] : q.c === p.c && Math.sign(q.r - p.r) === d[1];
+  }).sort((x, y) => Math.abs(place[x].c - p.c) + Math.abs(place[x].r - p.r) - Math.abs(place[y].c - p.c) - Math.abs(place[y].r - p.r))[0];
+  if (best) { const nb = $("icons").querySelector(`[data-app="${CSS.escape(best)}"]`); document.querySelectorAll(".dicon").forEach(x => x.classList.toggle("sel", x === nb)); nb.focus(); }
+});
 
 // ---------- right-click menus ----------
 function closeApp(appId) { const app = appById(appId); if (!app) return; if (app.native) closeNative(appId); else if (wins[appId]) closeFramed(appId); }
@@ -545,7 +715,7 @@ addEventListener("contextmenu", e => {
   const icon = e.target.closest(".dicon"), task = e.target.closest(".task"), tb = e.target.closest(".owin > .titlebar");
   if (icon) {
     e.preventDefault(); const a = appById(icon.dataset.app);
-    popMenu(null, [{ text: `Open ${a.name}`, key: "Enter", run: () => openApp(a.id) }, { label: a.desc }], at);
+    popMenu(null, [{ text: `Open ${a.name}`, key: "Enter", run: () => openApp(a.id) }, { text: "Remove from desktop", run: () => hideIcon(a.id) }, "-", { label: a.desc }], at);
   } else if (task) {
     e.preventDefault(); const k = task.dataset.app, a = appById(k), anyMin = appWins(k).some(w => wins[w].min);
     popMenu(null, [
@@ -556,22 +726,26 @@ addEventListener("contextmenu", e => {
     ], at);
   } else if (tb && !e.target.closest("button")) {
     e.preventDefault(); windowMenu(tb.parentElement.dataset.wid, at);
-  } else if (!e.target.closest(".owin, .taskbar, .pop, .startmenu, .traypop, .scrim")) {
+  } else if (!e.target.closest(".owin, .taskbar, .pop, .startmenu, .traypop, .scrim, .notices, .switcher")) {
     e.preventDefault();
     popMenu(null, [
       { label: "Open" },
       ...APPS.map(a => ({ text: a.name, run: () => openApp(a.id) })),
       "-",
       { text: "Tidy windows", run: tidy },
-      { text: "Change colour…", run: () => openApp("settings") },
+      { text: "Arrange icons", run: arrangeIcons },
+      { text: "Desktop and colour…", run: () => openApp("settings") },
+      { text: "Keyboard shortcuts", key: "?", run: () => openApp("help") },
       { text: "Restart Neon OS", run: () => location.reload() },
     ], at);
   }
 });
 
-// ---------- wallpaper: the orb, idling ----------
+// ---------- wallpaper ----------
+// orb: the orb idling (still when reduced motion is on). fog: the colour haze without the orb.
+// plain: the desk colour. image: a picture chosen in Settings (kept in core/desk.js).
 const wall = $("wall"), wctx = wall.getContext("2d");
-let sprite = null, WW = 0, WH = 0;
+let sprite = null, WW = 0, WH = 0, wallMode = "orb", wallImg = null, wallRaf = 0, wallKey = "";
 function buildSprite() {
   const hex = ballHex(getTheme().ball), r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
   const N = 128, c = document.createElement("canvas"); c.width = c.height = N;
@@ -581,13 +755,22 @@ function buildSprite() {
   x.fillStyle = grd; x.fillRect(0, 0, N, N); sprite = c;
 }
 function sizeWall() { const d = Math.min(2, devicePixelRatio || 1); WW = innerWidth; WH = innerHeight; wall.width = WW * d; wall.height = WH * d; wctx.setTransform(d, 0, 0, d, 0, 0); }
+const wallMoves = () => wallMode === "orb" && !calmOn();
 function drawWall(now) {
+  wallRaf = 0;
   const t = now / 1000;
-  wctx.globalCompositeOperation = "source-over"; wctx.clearRect(0, 0, WW, WH);
+  wctx.globalCompositeOperation = "source-over"; wctx.globalAlpha = 1;
+  wctx.fillStyle = "#07050c"; wctx.fillRect(0, 0, WW, WH);
+  if (wallMode === "plain") return;
+  if (wallMode === "image" && wallImg) { // fill the screen, cropping the edges if needed
+    const s = Math.max(WW / wallImg.naturalWidth, WH / wallImg.naturalHeight), w = wallImg.naturalWidth * s, h = wallImg.naturalHeight * s;
+    wctx.drawImage(wallImg, (WW - w) / 2, (WH - h) / 2, w, h); return;
+  }
   const g1 = wctx.createRadialGradient(WW * 0.2, WH * 0.15, 0, WW * 0.2, WH * 0.15, Math.max(WW, WH) * 0.7);
   g1.addColorStop(0, "rgba(42,16,80,0.45)"); g1.addColorStop(1, "rgba(7,5,12,0)"); wctx.fillStyle = g1; wctx.fillRect(0, 0, WW, WH);
   const g2 = wctx.createRadialGradient(WW * 0.85, WH * 0.85, 0, WW * 0.85, WH * 0.85, Math.max(WW, WH) * 0.6);
   g2.addColorStop(0, "rgba(61,11,58,0.4)"); g2.addColorStop(1, "rgba(7,5,12,0)"); wctx.fillStyle = g2; wctx.fillRect(0, 0, WW, WH);
+  if (wallMode === "fog") return;
   const cx = WW / 2, cy = (WH - TASKBAR) / 2, R = Math.min(WW, WH) * 0.2, n = 12;
   wctx.globalCompositeOperation = "lighter";
   for (let i = 0; i < n; i++) {
@@ -598,14 +781,53 @@ function drawWall(now) {
     wctx.drawImage(sprite, cx + x - s * 2, cy + y - s * 2, s * 4, s * 4);
   }
   wctx.globalAlpha = 1;
-  if (!reduced && !document.hidden) requestAnimationFrame(drawWall);
+  if (wallMoves() && !document.hidden) wallRaf = requestAnimationFrame(drawWall);
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden && !reduced) requestAnimationFrame(drawWall); });
+function startWall() { cancelAnimationFrame(wallRaf); wallRaf = requestAnimationFrame(drawWall); }
+async function loadWall() {
+  const t = getTheme();
+  wallKey = `${t.wall}|${t.wallStamp}`;
+  wallMode = ["orb", "fog", "plain", "image"].includes(t.wall) ? t.wall : "orb";
+  if (wallMode === "image") {
+    const blob = await getWallImage();
+    if (blob) {
+      const img = new Image(), url = URL.createObjectURL(blob); img.src = url;
+      try { await img.decode(); if (wallImg) URL.revokeObjectURL(wallImg.src); wallImg = img; } catch (e) { URL.revokeObjectURL(url); wallMode = "fog"; }
+    } else wallMode = "fog";
+  }
+  startWall();
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && wallMoves()) startWall(); });
+
+// ---------- installing and working offline ----------
+// The service worker (sw.js) keeps a copy of every file, so Neon OS opens with no connection.
+// Browsers that can install it as an app offer it through the start menu and Settings.
+let installEvt = null;
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; });
+addEventListener("appinstalled", () => { installEvt = null; addNotice({ title: "Neon OS installed", text: "Open it from your apps like any other program. It has its own window and works offline." }); });
+const isInstalled = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const installState = () => ({ can: !!installEvt, installed: isInstalled() });
+async function promptInstall() {
+  if (!installEvt) return false;
+  const ev = installEvt; installEvt = null;
+  try { ev.prompt(); return (await ev.userChoice).outcome === "accepted"; } catch (e) { return false; }
+}
+if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+  navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(() => {
+    let told = false; try { told = localStorage.getItem("neon-os:offline") === "1"; localStorage.setItem("neon-os:offline", "1"); } catch (e) {}
+    if (!told) addNotice({ title: "Ready to work offline", text: "Neon OS and its apps now open with no connection. Your music was already stored in this browser." });
+  }).catch(() => {});
+}
 
 // ---------- start ----------
+initNotices({ bellBtn: $("bellBtn"), stackEl: $("notices"), nameOf: id => (appById(id) || { name: id }).name, openApp: id => appById(id) && openApp(id) });
 applyTheme();
-onTheme(t => { applyTheme(t); buildSprite(); if (reduced) drawWall(performance.now()); });
-buildSprite(); sizeWall(); requestAnimationFrame(drawWall);
+onTheme(t => {
+  applyTheme(t); buildSprite();
+  if (`${t.wall}|${t.wallStamp}` !== wallKey) loadWall(); else startWall();
+  if (JSON.stringify([...hiddenIcons()]) + iconRows() !== iconsKey) renderIcons();
+});
+buildSprite(); sizeWall(); loadWall();
 (async () => {
   await runBoot();
   const saved = loadLayout();

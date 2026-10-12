@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shortcuts · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<style>
+  body { padding: 14px; display: grid; gap: 14px; align-content: start; overflow: auto; height: 100%; }
+  .search { display: flex; align-items: center; height: 28px; padding: 0 10px; background: #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; }
+  .search input { background: none; border: 0; outline: none; width: 100%; font-size: 13px; }
+  .search:focus-within { box-shadow: 0 0 0 1px var(--ball); }
+  section { display: grid; gap: 6px; }
+  dl { margin: 0; display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 0; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; padding: 4px 0; }
+  dt, dd { margin: 0; padding: 5px 10px; font-size: 12.5px; line-height: 1.45; }
+  dt { white-space: nowrap; }
+  dd { color: var(--ink-dim); }
+  kbd { font: 18px/1 var(--font-lcd); color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .empty { color: var(--ink-faint); font-size: 12px; text-align: center; padding: 20px; }
+  p { margin: 0; color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <label class="search"><input id="q" type="search" placeholder="Search shortcuts" aria-label="Search shortcuts"></label>
+  <div id="list"></div>
+  <p>Shortcuts with Ctrl+Alt work in every app, even while you're typing. Mouse: drag a window to an edge to snap it, double-click a window edge to stretch it, drag the border between snapped windows to resize them together, and right-click almost anything for more.</p>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { SHORTCUTS } from "../../core/shortcuts.js";
+    import { esc } from "../../style-kit/ui.js";
+    applyTheme(); onTheme(applyTheme);
+    const keys = k => k.split(/( \/ | … | or | \+ drag)/).map(p => /^( \/ | … | or | \+ drag)$/.test(p) ? esc(p) : `<kbd>${esc(p)}</kbd>`).join("");
+    const draw = q => {
+      q = q.trim().toLowerCase();
+      const html = SHORTCUTS.map(g => {
+        const items = g.items.filter(([k, d]) => !q || (k + " " + d + " " + g.group).toLowerCase().includes(q));
+        if (!items.length) return "";
+        return `<section aria-label="${esc(g.group)}"><span class="lbl">${esc(g.group)}</span><dl>${items.map(([k, d]) => `<dt>${keys(k)}</dt><dd>${esc(d)}</dd>`).join("")}</dl></section>`;
+      }).join("");
+      document.getElementById("list").innerHTML = html || `<div class="empty">No shortcuts match.</div>`;
+      document.getElementById("list").style.display = "grid"; document.getElementById("list").style.gap = "14px";
+    };
+    document.getElementById("q").addEventListener("input", e => draw(e.target.value));
+    draw("");
+  </script>
+</body>
+</html>

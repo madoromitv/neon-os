@@ -10,6 +10,7 @@ import { treeHTML, treeClick, treeIcon } from "../../core/library-tree.js";
 import { vlist } from "../../style-kit/vlist.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, esc, dialog } from "../../style-kit/ui.js";
+import { notify } from "../../core/notify.js";
 applyTheme(); onTheme(applyTheme);
 
 const $ = id => document.getElementById(id);
@@ -198,7 +199,7 @@ $("rec").addEventListener("click", () => {
     const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" }), a = document.createElement("a"), stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
     a.href = URL.createObjectURL(blob); a.download = `decks-mix-${stamp}.${(rec.mimeType || "").includes("ogg") ? "ogg" : "webm"}`;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-    toast(`Saved ${a.download}`); rec = null; $("rec").setAttribute("aria-pressed", "false"); $("recTime").textContent = "0:00";
+    if (!notify("Mix saved", `${a.download} is in your downloads folder.`, "decks")) toast(`Saved ${a.download}`); rec = null; $("rec").setAttribute("aria-pressed", "false"); $("recTime").textContent = "0:00";
   };
   rec.start(1000); recStart = performance.now(); $("rec").setAttribute("aria-pressed", "true");
 });

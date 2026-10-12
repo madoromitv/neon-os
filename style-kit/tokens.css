@@ -34,3 +34,23 @@
 
   color-scheme: dark;
 }
+
+/* High contrast (Settings → Accessibility): brighter text, clearer edges, stronger focus */
+html.hc {
+  --ink: #ffffff;
+  --ink-dim: #e4e0f2;
+  --ink-faint: #b9b2d4;
+  --metal-hi: #a49cc6;
+  --edge: #000000;
+  --sel: #4a3a9c;
+  --ball-dim: color-mix(in srgb, var(--ball) 55%, transparent);
+}
+html.hc .btn, html.hc .win, html.hc .lcd, html.hc .slider { outline: 1px solid #8a82ad; outline-offset: -1px; }
+html.hc :focus-visible { outline: 3px solid #fff !important; outline-offset: 2px; box-shadow: 0 0 0 5px var(--ball) !important; }
+html.hc .lbl, html.hc .hint, html.hc small, html.hc p { color: var(--ink-dim); }
+
+/* Reduce motion (Settings → Accessibility, or the system setting): no slides, fades or blinking */
+html.calm *, html.calm *::before, html.calm *::after { animation-duration: 0.001s !important; animation-iteration-count: 1 !important; transition-duration: 0.001s !important; scroll-behavior: auto !important; }
+
+/* text only screen readers hear */
+.sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -20,9 +20,16 @@ export function setTheme(patch) {
   return t;
 }
 
-// Paints the ball colour into the page's CSS so every LCD, LED and glow follows it.
+// Reduce motion: the person's own choice in Settings, or their system setting if they haven't chosen.
+export const calmOn = (t = getTheme()) => t.calm != null ? !!t.calm : matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Paints the ball colour into the page's CSS so every LCD, LED and glow follows it,
+// and switches high contrast (html.hc) and reduced motion (html.calm) on or off.
 export function applyTheme(t = getTheme()) {
-  document.documentElement.style.setProperty("--ball", ballHex(t.ball));
+  const r = document.documentElement;
+  r.style.setProperty("--ball", ballHex(t.ball));
+  r.classList.toggle("hc", !!t.contrast);
+  r.classList.toggle("calm", calmOn(t));
 }
 
 // Calls fn(theme) whenever any app or window changes the theme.

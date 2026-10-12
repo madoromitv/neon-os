@@ -7,6 +7,7 @@ import { VOICES, play as hit } from "../../core/drums.js";
 import { clock } from "../../core/clock.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, dialog } from "../../style-kit/ui.js";
+import { notify } from "../../core/notify.js";
 applyTheme(); onTheme(applyTheme);
 
 const $ = id => document.getElementById(id);
@@ -178,7 +179,7 @@ $("wav").addEventListener("click", async () => {
     const buf = await off.startRendering(), wav = toWav(buf);
     const a = document.createElement("a"); a.href = URL.createObjectURL(wav); a.download = `pulse-${S.cur}-${Math.round(S.bpm)}bpm.wav`;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
-    toast(`Saved ${a.download}`);
+    if (!notify("Pattern saved", `${a.download} is in your downloads folder.`, "pulse")) toast(`Saved ${a.download}`);
   } catch (e) { toast("Couldn't render the WAV. Try again.", true); }
   btn.disabled = false; btn.textContent = "Export WAV";
 });

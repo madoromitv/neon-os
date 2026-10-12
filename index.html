@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Neon OS</title>
+<meta name="theme-color" content="#07050c">
+<meta name="description" content="A desktop of music apps in the Neon Orbit style.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-64.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
 <link rel="stylesheet" href="style-kit/tokens.css">
@@ -19,8 +24,11 @@
   <footer class="taskbar">
     <button class="btn start" id="startBtn" aria-haspopup="menu" aria-expanded="false"><i aria-hidden="true"></i>Neon</button>
     <div class="tasks" id="tasks" role="toolbar" aria-label="Open windows"></div>
-    <div class="tray"><button class="btn icon" id="volBtn" aria-label="Volume" title="Volume" aria-haspopup="dialog" aria-expanded="false"></button><span class="lcd clock" id="clock">00:00</span></div>
+    <div class="miniplayer" id="miniPlayer" role="group" aria-label="Now playing" hidden></div>
+    <div class="tray"><button class="btn icon" id="bellBtn" aria-label="Notifications" title="Notifications" aria-haspopup="dialog" aria-expanded="false"></button><button class="btn icon" id="volBtn" aria-label="Volume" title="Volume" aria-haspopup="dialog" aria-expanded="false"></button><span class="lcd clock" id="clock">00:00</span></div>
   </footer>
+  <div class="notices" id="notices" role="status" aria-live="polite"></div>
+  <span class="sr-only" id="srSay" aria-live="assertive"></span>
   <script type="module" src="os/shell.js"></script>
 </body>
 </html>

@@ -25,6 +25,10 @@
   p { margin: 0; color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
   .stat { font-size: 19px; line-height: 22px; padding: 4px 10px; }
   .btn:disabled { opacity: .45; }
+  .seg .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px 10px; }
+  .checks label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
+  .checks input { accent-color: var(--ball); width: 15px; height: 15px; }
 </style>
 </head>
 <body>
@@ -38,6 +42,36 @@
       <label class="picker" id="picker" title="Pick any colour"><input type="color" id="custom" aria-label="Custom colour" value="#3ff2ff"></label>
     </div>
     <p>Every Neon OS app and window follows this colour straight away.</p>
+  </section>
+  <section class="group" aria-labelledby="dkLbl">
+    <span class="lbl" id="dkLbl">Desktop</span>
+    <div class="row seg" role="group" aria-label="Wallpaper">
+      <button class="btn" data-wall="orb" aria-pressed="false">Orb</button>
+      <button class="btn" data-wall="fog" aria-pressed="false">Haze</button>
+      <button class="btn" data-wall="plain" aria-pressed="false">Plain</button>
+      <button class="btn" data-wall="image" aria-pressed="false">Picture…</button>
+      <input type="file" id="wallIn" accept="image/*" hidden>
+    </div>
+    <span class="lbl">Icons on the desktop</span>
+    <div class="checks" id="deskApps"></div>
+    <p>Drag icons on the desktop to move them; right-click the desktop and pick Arrange icons to put them back in order.</p>
+  </section>
+  <section class="group" aria-labelledby="axLbl">
+    <span class="lbl" id="axLbl">Accessibility</span>
+    <div class="row">
+      <button class="btn" id="hcT" aria-pressed="false"><i class="led"></i>High contrast</button>
+      <button class="btn" id="calmT" aria-pressed="false"><i class="led"></i>Reduce motion</button>
+    </div>
+    <p>High contrast makes text brighter and edges and keyboard focus easier to see. Reduce motion stops the wallpaper moving and turns off slides and fades (it starts on if your system asks for less motion). Press ? anywhere for every keyboard shortcut.</p>
+  </section>
+  <section class="group" aria-labelledby="stLbl">
+    <span class="lbl" id="stLbl">Storage and install</span>
+    <div class="lcd stat" id="stStat">CHECKING STORAGE…</div>
+    <div class="row">
+      <button class="btn" id="persist">Protect my library</button>
+      <button class="btn" id="install" hidden>Install Neon OS</button>
+    </div>
+    <p id="stMsg">Browsers can clear stored songs when a computer runs low on space. A protected library is only cleared if you clear it yourself.</p>
   </section>
   <section class="group" aria-labelledby="bkLbl">
     <span class="lbl" id="bkLbl">Backup</span>
@@ -59,7 +93,58 @@
   </section>
   <script type="module">
     import "../../core/os-link.js";
-    import { getTheme, setTheme, applyTheme, onTheme, isHex } from "../../core/theme.js";
+    import { getTheme, setTheme, applyTheme, onTheme, isHex, calmOn } from "../../core/theme.js";
+    import { APPS } from "../registry.js";
+    import { setWallImage } from "../../core/desk.js";
+    import { notify } from "../../core/notify.js";
+    const $id = id => document.getElementById(id);
+
+    // ---------- desktop ----------
+    const syncDesk = t => {
+      const wall = ["orb", "fog", "plain", "image"].includes(t.wall) ? t.wall : "orb";
+      document.querySelectorAll("[data-wall]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.wall === wall)));
+      const hide = new Set(Array.isArray(t.deskHide) ? t.deskHide : APPS.filter(a => a.desktop === false).map(a => a.id));
+      document.querySelectorAll("#deskApps input").forEach(i => { i.checked = !hide.has(i.value); });
+    };
+    $id("deskApps").innerHTML = APPS.map(a => `<label><input type="checkbox" value="${a.id}">${a.name}</label>`).join("");
+    $id("deskApps").addEventListener("change", () => setTheme({ deskHide: [...document.querySelectorAll("#deskApps input")].filter(i => !i.checked).map(i => i.value) }));
+    document.querySelectorAll("[data-wall]").forEach(b => b.addEventListener("click", () => {
+      if (b.dataset.wall === "image") $id("wallIn").click(); else syncDesk(setTheme({ wall: b.dataset.wall }));
+    }));
+    $id("wallIn").addEventListener("change", async e => {
+      const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+      try { await setWallImage(f); syncDesk(setTheme({ wall: "image", wallStamp: Date.now() })); }
+      catch (err) { $id("stMsg").textContent = "Couldn't save that picture. Try a smaller one."; }
+    });
+
+    // ---------- accessibility ----------
+    const syncAx = t => { $id("hcT").setAttribute("aria-pressed", String(!!t.contrast)); $id("calmT").setAttribute("aria-pressed", String(calmOn(t))); };
+    $id("hcT").addEventListener("click", () => syncAx(setTheme({ contrast: !getTheme().contrast })));
+    $id("calmT").addEventListener("click", () => syncAx(setTheme({ calm: !calmOn() })));
+    onTheme(t => { syncDesk(t); syncAx(t); }); syncDesk(getTheme()); syncAx(getTheme());
+
+    // ---------- storage and install ----------
+    const gb = n => n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.max(0.1, n / 1e6).toFixed(1) + " MB";
+    async function syncStorage() {
+      const st = navigator.storage;
+      if (!st || !st.persisted) { $id("stStat").textContent = "STORAGE INFO UNAVAILABLE"; $id("persist").hidden = true; return; }
+      const [kept, est] = await Promise.all([st.persisted(), st.estimate ? st.estimate() : Promise.resolve({})]);
+      $id("stStat").textContent = `${kept ? "PROTECTED" : "NOT PROTECTED"}${est.usage != null ? ` · ${gb(est.usage)} OF ${gb(est.quota)}` : ""}`;
+      $id("persist").disabled = kept; $id("persist").textContent = kept ? "Library protected" : "Protect my library";
+    }
+    $id("persist").addEventListener("click", async () => {
+      const ok = await navigator.storage.persist().catch(() => false);
+      $id("stMsg").textContent = ok ? "Your library is protected. The browser won't clear it to free up space."
+        : "The browser said no for now. Browsers usually agree once Neon OS is installed, bookmarked or used often; try again later, and keep a backup either way.";
+      syncStorage();
+    });
+    const inOs = window.parent !== window;
+    const showInstall = st => { $id("install").hidden = !st || st.installed || !st.can; if (st && st.installed) $id("stMsg").textContent += " Neon OS is installed on this device."; };
+    addEventListener("message", e => { if (e.origin === location.origin && e.data && e.data.neonOsInstall) showInstall(e.data.neonOsInstall); });
+    if (inOs) parent.postMessage({ neonOs: "install-state" }, location.origin);
+    $id("install").addEventListener("click", () => parent.postMessage({ neonOs: "install" }, location.origin));
+    syncStorage();
+
     const sync = t => {
       applyTheme(t);
       document.querySelectorAll(".sw").forEach(s => s.setAttribute("aria-pressed", String(s.dataset.c === t.ball)));
@@ -96,6 +181,7 @@
           a.href = URL.createObjectURL(blob); a.download = `neon-os-backup-${new Date().toISOString().slice(0, 10)}.neonos`;
           document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
           msg(`Backup saved (${mb(blob.size)}). Check your downloads folder.`);
+          notify("Backup saved", `${a.download} (${mb(blob.size)}) is in your downloads folder.`, "settings");
         } catch (e) { msg("Couldn't make the backup. Try again."); }
         $("backup").disabled = false;
       });
@@ -106,6 +192,7 @@
         try {
           const r = await importBackup(f, v => msg(`Restoring… ${Math.round(v * 100)}%`));
           msg(`Restored ${r.songs} song${r.songs === 1 ? "" : "s"} and ${r.playlists} playlist${r.playlists === 1 ? "" : "s"}. Open apps update straight away; reload Neon OS to pick up restored notes and settings.`);
+          notify("Restore finished", `${r.songs} song${r.songs === 1 ? "" : "s"} and ${r.playlists} playlist${r.playlists === 1 ? "" : "s"} restored.`, "settings");
           refresh();
         } catch (err) {
           msg(err && err.message === "not_backup" ? "That file isn't a Neon OS backup." : err && err.name === "QuotaExceededError" ? "This browser is out of storage space for that backup." : "Couldn't restore that backup. Try again.");

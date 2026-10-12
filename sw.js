@@ -1,0 +1,34 @@
+// Neon OS service worker: lets Neon OS open and run with no connection.
+// Every file is saved on install. Online, files come fresh from the network (so updates show straight away)
+// and the saved copy is refreshed; offline, the saved copy is used. Fonts are saved the first time they load.
+// The file list below is written by tools/precache.py; run it after changing files.
+const VERSION = "390da5bb27";
+const FILES = [ "./", "index.html", "manifest.webmanifest", "apps/registry.js", "apps/amp/amp.css", "apps/amp/amp.js", "apps/amp/", "apps/decks/decks.css", "apps/decks/decks.js", "apps/decks/", "apps/drift/drift.css", "apps/drift/drift.js", "apps/drift/", "apps/files/", "apps/help/", "apps/notes/", "apps/pulse/", "apps/pulse/pulse.css", "apps/pulse/pulse.js", "apps/settings/", "core/analyser.js", "core/analysis-worker.js", "core/analysis.js", "core/backup.js", "core/clock.js", "core/desk.js", "core/drums.js", "core/engine.js", "core/library-tree.js", "core/library.js", "core/notify.js", "core/os-link.js", "core/shortcuts.js", "core/sounds.js", "core/storage.js", "core/synth.js", "core/tags.js", "core/theme.js", "icons/apple-touch-icon.png", "icons/favicon-64.png", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-192.png", "icons/maskable-512.png", "os/boot.js", "os/notices.js", "os/shell.css", "os/shell.js", "style-kit/base.css", "style-kit/chrome.css", "style-kit/icons.js", "style-kit/library.css", "style-kit/tokens.css", "style-kit/ui.js", "style-kit/vlist.js" ];
+const CACHE = "neon-os-" + VERSION, FONTS = "neon-os-fonts";
+
+self.addEventListener("install", e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+});
+self.addEventListener("activate", e => {
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith("neon-os-") && k !== CACHE && k !== FONTS).map(k => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+self.addEventListener("fetch", e => {
+  const req = e.request; if (req.method !== "GET") return;
+  const url = new URL(req.url);
+  if (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") {
+    e.respondWith(caches.open(FONTS).then(async c => (await c.match(req)) || fetch(req).then(r => { if (r.ok || r.type === "opaque") c.put(req, r.clone()); return r; })));
+    return;
+  }
+  if (url.origin !== location.origin || req.headers.has("range")) return;
+  e.respondWith((async () => {
+    const c = await caches.open(CACHE);
+    try {
+      const r = await fetch(req);
+      if (r.ok && r.type === "basic") c.put(req, r.clone());
+      return r;
+    } catch (err) {
+      return (await c.match(req, { ignoreSearch: true })) || (req.mode === "navigate" && await c.match("./")) || Response.error();
+    }
+  })());
+});
