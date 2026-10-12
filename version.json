@@ -1,9 +1,9 @@
 {
 "files": {
 "apps/about/index.html": "b797ac57aafa",
-"apps/amp/amp.css": "b2ac179304bb",
-"apps/amp/amp.js": "f43ede7108ee",
-"apps/amp/index.html": "24bb26e29eff",
+"apps/amp/amp.css": "2ee394f26b27",
+"apps/amp/amp.js": "e607beb3de0f",
+"apps/amp/index.html": "149f2d424ae6",
 "apps/bin/index.html": "51e3f8274171",
 "apps/calculator/index.html": "b8338b23d42d",
 "apps/calendar/index.html": "e1ce87accda2",
@@ -46,6 +46,7 @@
 "core/library-tree.js": "3bedf330b3b0",
 "core/library.js": "e813ac56631e",
 "core/linked.js": "6a63769710f6",
+"core/live.js": "d7a1d2e76188",
 "core/loudness.js": "82581a61b1c9",
 "core/notebook.js": "a5c2f167ca44",
 "core/notify.js": "cc00dcb5226e",
@@ -62,7 +63,7 @@
 "core/tags.js": "b7b239d83d07",
 "core/theme.js": "b2d74ad8c9e7",
 "core/thumb-worker.js": "fbb86a84fca8",
-"core/version.js": "486d30494523",
+"core/version.js": "9eeacd72e92b",
 "core/wav.js": "d68352af64ec",
 "icons/apple-touch-icon.png": "923c068ad26e",
 "icons/favicon-64.png": "324a764fc6fe",
@@ -89,5 +90,5 @@
 "style-kit/ui.js": "193664f60e07",
 "style-kit/vlist.js": "32be7a331f52"
 },
-"version": "f373e18582"
+"version": "89e73c2a57"
 }

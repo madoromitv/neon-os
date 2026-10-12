@@ -10,6 +10,7 @@ import { SMART, smartById, buildGroups, albumOrder, viewSongs, viewGroups, viewT
 import { getTheme, setTheme, onTheme, applyTheme } from "../../core/theme.js";
 import { notify } from "../../core/notify.js";
 import { createGlow, createGlow2D } from "../../core/glow.js";
+import { createLive, listInputs } from "../../core/live.js";
 import { measureLoudness, levelGain } from "../../core/loudness.js";
 import { editDetails, tidyNames } from "../../core/details.js";
 import { binPut } from "../../core/bin.js";
@@ -56,6 +57,9 @@ const SKEY = "neon-orbit-amp";
 let S = { color: "cyan", chaos: 0.7, vol: 0.8, bal: 0, eqOn: true, pre: 0, bands: PRESETS.Flat.slice(), shuffle: false, repeat: "off",
   pl: [], cur: -1, pos: 0, remain: false, level: true, xfade: 0, mini: "spec", shade: {}, show: { eq: true, pl: true, vis: true, ml: true } };
 try { const s = JSON.parse(localStorage.getItem(SKEY) || "{}"); Object.assign(S, s); S.show = Object.assign({ eq: true, pl: true, vis: true, ml: true }, s.show || {}); } catch (e) {}
+// the look (S.look): how many balls, and how long their trails, how big, how much glow and how fast they spin
+const LOOK = { balls: 12, trail: 1, size: 1, glow: 1, spin: 1 };
+const look = () => Object.assign({}, LOOK, S.look || {});
 const isHex = v => /^#[0-9a-f]{6}$/i.test(v);
 S.color = getTheme().ball; // the orb colour is shared across Neon OS
 if (!COLORS[S.color] && !isHex(S.color)) S.color = "cyan";
@@ -623,7 +627,7 @@ function setNowPlaying() {
   if (!loading) setMarquee(t ? `${cur + 1}. ${t.artist ? t.artist + " - " : ""}${t.title} (${fmt(t.duration)})`.toUpperCase() : "NEON ORBIT · DOUBLE-CLICK A SONG IN THE LIBRARY TO START");
   $("kbps").textContent = t && t.kbps ? t.kbps : " ";
   $("bpmBox").textContent = t && t.bpm ? Math.round(t.bpm) : " ";
-  $("stageNp").innerHTML = t ? `${t.coverUrl ? `<img src="${esc(t.coverUrl)}" alt="" onerror="this.remove()">` : ""}<div><b>${esc(t.title)}</b><span>${esc([t.artist, t.album].filter(Boolean).join(" · "))}</span></div>` : "";
+  if (!$("stageNp").dataset.live) $("stageNp").innerHTML = t ? `${t.coverUrl ? `<img src="${esc(t.coverUrl)}" alt="" onerror="this.remove()">` : ""}<div><b>${esc(t.title)}</b><span>${esc([t.artist, t.album].filter(Boolean).join(" · "))}</span></div>` : "";
   $("treeArt").innerHTML = t && t.coverUrl ? `<img src="${esc(t.coverUrl)}" alt="" onerror="this.remove()">` : icon("note");
   $("treeArtTxt").textContent = t ? `${t.title}${t.artist ? " · " + t.artist : ""}` : "Nothing yet";
   const home = window.neonOsShell ? "Neon OS" : "Neon Orbit Amp";
@@ -806,6 +810,107 @@ function toggleFs() {
 $("fsBtn").addEventListener("click", toggleFs);
 $("stage").addEventListener("dblclick", toggleFs);
 document.addEventListener("fullscreenchange", () => setTimeout(resize, 50));
+// ---------- the orb's look: presets and settings (S.look, S.lookName, S.lookPresets) ----------
+const LOOKS = [
+  { name: "Orbit", chaos: 0.7, look: { balls: 12, trail: 1, size: 1, glow: 1, spin: 1 } },
+  { name: "Calm", chaos: 0.25, look: { balls: 8, trail: 1.5, size: 1.1, glow: 1.2, spin: 0.5 } },
+  { name: "Storm", chaos: 1, look: { balls: 16, trail: 0.7, size: 1, glow: 0.9, spin: 1.8 } },
+  { name: "Halo", chaos: 0.4, look: { balls: 24, trail: 0.8, size: 0.7, glow: 1.5, spin: 0.8 } },
+  { name: "Comet", chaos: 0.6, look: { balls: 6, trail: 2.4, size: 1.3, glow: 1.1, spin: 1.3 } },
+];
+const lookSliders = {};
+const pctT = v => Math.round(v * 100) + "%";
+const LK = [["balls", "lkBalls", 4, 24, 1, v => String(v)], ["trail", "lkTrail", 0.3, 2.5, 0.05, pctT], ["size", "lkSize", 0.5, 2, 0.05, pctT], ["glow", "lkGlow", 0.4, 2, 0.05, pctT], ["spin", "lkSpin", 0, 3, 0.05, pctT]];
+const allLooks = () => [...LOOKS, ...(S.lookPresets || [])];
+function drawLookPresets() {
+  const mine = S.lookPresets || [], cur = S.lookName || "";
+  $("lookPreset").innerHTML = (cur ? "" : `<option value="">Custom</option>`) + `<optgroup label="Built in">${LOOKS.map(p => `<option>${esc(p.name)}</option>`).join("")}</optgroup>` + (mine.length ? `<optgroup label="Yours">${mine.map(p => `<option>${esc(p.name)}</option>`).join("")}</optgroup>` : "");
+  $("lookPreset").value = cur; $("lookDel").hidden = !mine.some(p => p.name === cur);
+}
+function syncLook() { const L = look(); for (const [k, id, , , , txt] of LK) { lookSliders[k].set(L[k]); $(id + "V").textContent = txt(L[k]); } drawLookPresets(); }
+for (const [k, id, min, max, step, txt] of LK) lookSliders[k] = Slider($(id), { min, max, step, value: look()[k], label: $(id).previousElementSibling.textContent, text: txt,
+  onInput: v => { S.look = { ...look(), [k]: v }; S.lookName = ""; $(id + "V").textContent = txt(v); if (k === "balls") resetViz(); drawLookPresets(); }, onChange: save });
+function applyLook(p) { S.look = { ...LOOK, ...p.look }; S.chaos = p.chaos; S.lookName = p.name; chaosS.set(S.chaos); $("chaosPct").textContent = Math.round(S.chaos * 100) + "%"; resetViz(); syncLook(); save(); }
+$("lookPreset").addEventListener("change", () => { const p = allLooks().find(x => x.name === $("lookPreset").value); if (p) applyLook(p); });
+$("lookSave").addEventListener("click", async () => {
+  const r = await dialog({ title: "Save this look", fields: [{ label: "Name", value: S.lookName && !LOOKS.some(p => p.name === S.lookName) ? S.lookName : "" }], confirm: "Save" });
+  const name = r && r[0]; if (!name) return;
+  if (LOOKS.some(p => p.name.toLowerCase() === name.toLowerCase())) { toast("That's a built-in preset's name. Pick another.", true); return; }
+  S.lookPresets = [...(S.lookPresets || []).filter(p => p.name !== name), { name, chaos: S.chaos, look: look() }];
+  S.lookName = name; drawLookPresets(); save(); toast(`Saved ${name}`);
+});
+$("lookDel").addEventListener("click", async () => {
+  const name = S.lookName; if (!(await dialog({ title: "Delete preset", text: `${name} is removed. The orb keeps its look.`, confirm: "Delete", danger: true }))) return;
+  S.lookPresets = (S.lookPresets || []).filter(p => p.name !== name); S.lookName = ""; drawLookPresets(); save();
+});
+$("lookReset").addEventListener("click", () => applyLook(LOOKS[0]));
+const showLook = on => { $("visLook").hidden = !on; $("lookBtn").setAttribute("aria-expanded", String(on)); S.lookOpen = on; save(); };
+$("lookBtn").addEventListener("click", () => showLook($("visLook").hidden));
+$("lookX").addEventListener("click", () => showLook(false));
+if (S.lookName === undefined) S.lookName = "Orbit";
+syncLook(); if (S.lookOpen) showLook(true);
+// the Chaos slider changes the look too
+$("chaos").addEventListener("pointerdown", () => { if (S.lookName) { S.lookName = ""; drawLookPresets(); } });
+
+// ---------- live: the orb dances to a microphone, line-in or mixer (core/live.js) ----------
+let live = null, liveBusy = false, lastBpmShown = 0;
+function liveBpm(f) { if (performance.now() - lastBpmShown > 500) { lastBpmShown = performance.now(); $("liveBpm").textContent = `${Math.round(f.bpm)} BPM`; } }
+async function startLive(deviceId) {
+  if (liveBusy) return; liveBusy = true;
+  try {
+    if (!Eng.ensure()) throw new Error("no audio");
+    stopLive(true);
+    live = await createLive(Eng.ctx, deviceId || S.liveInput || undefined);
+    S.liveInput = deviceId || S.liveInput || ""; save();
+    resetViz(); $("liveBtn").setAttribute("aria-pressed", "true"); $("liveBpm").hidden = false;
+    $("stageNp").dataset.live = "1"; $("stageNp").innerHTML = `<div><b>LIVE</b><span>${esc(live.label || "Live input")}</span></div>`;
+  } catch (e) {
+    live = null; $("liveBtn").setAttribute("aria-pressed", "false");
+    toast(e && e.name === "NotAllowedError" ? "Neon OS needs permission to use the microphone or input. Allow it in the address bar, then try again." : e && e.name === "NotFoundError" ? "No microphone or line-in found." : "Couldn't open the live input.", true);
+  } finally { liveBusy = false; }
+}
+function stopLive(quiet) {
+  if (!live) return;
+  live.stop(); live = null; resetViz();
+  $("liveBtn").setAttribute("aria-pressed", "false"); $("liveBpm").hidden = true;
+  delete $("stageNp").dataset.live; if (!quiet) setNowPlaying();
+}
+$("liveBtn").addEventListener("click", () => live ? stopLive() : startLive());
+$("liveBtn").addEventListener("contextmenu", async e => {
+  e.preventDefault();
+  const ins = await listInputs();
+  openMenu(e.currentTarget, [{ label: "Listen to" }, ...(ins.length ? ins.map((d, i) => ({ text: d.label || `Input ${i + 1}`, run: () => startLive(d.deviceId) })) : [{ text: "The default input", run: () => startLive() }]), ...(live ? ["-", { text: "Stop listening", run: () => stopLive() }] : [])]);
+});
+
+// ---------- record the visualiser and its sound as a video ----------
+let rec = null;
+function recType() { for (const t of ["video/mp4;codecs=avc1,mp4a.40.2", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]) if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t; return ""; }
+async function startRec() {
+  const type = recType(); if (!type || !canvas.captureStream) { toast("This browser can't record video.", true); return; }
+  const vs = canvas.captureStream(60), tracks = [...vs.getVideoTracks()];
+  let tap = null;
+  if (live) tracks.push(...live.stream.getAudioTracks());
+  else if (Eng.ensure()) { tap = Eng.ctx.createMediaStreamDestination(); Eng.nodes.an.connect(tap); tracks.push(...tap.stream.getAudioTracks()); }
+  const mr = new MediaRecorder(new MediaStream(tracks), { mimeType: type, videoBitsPerSecond: 8e6 });
+  const chunks = []; mr.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  rec = { mr, chunks, tap, type, at: Date.now(), title: live ? "Live" : (curTrack() ? curTrack().title : "Neon Orbit"), timer: setInterval(() => { $("recTxt").textContent = fmt((Date.now() - rec.at) / 1000); }, 250) };
+  mr.start(1000);
+  $("recBtn").setAttribute("aria-pressed", "true"); $("recTxt").textContent = "0:00";
+}
+async function stopRec() {
+  if (!rec) return;
+  const r = rec; rec = null; clearInterval(r.timer);
+  $("recBtn").setAttribute("aria-pressed", "false"); $("recTxt").textContent = "Rec";
+  const done = new Promise(res => { r.mr.onstop = res; }); r.mr.stop(); await done;
+  if (r.tap) { try { Eng.nodes.an.disconnect(r.tap); } catch (e) {} }
+  const ext = r.type.startsWith("video/mp4") ? "mp4" : "webm", blob = new Blob(r.chunks, { type: r.type.split(";")[0] });
+  const d = new Date(), name = `Neon Orbit - ${r.title.replace(/[\\/:*?"<>|]+/g, "").slice(0, 60)} - ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.${ext}`;
+  const { saveAs } = await import("../../core/picker.js");
+  const t = await saveAs(blob, name, { description: "Video", accept: { [r.type.split(";")[0]]: ["." + ext] } });
+  if (t && !notify("Video saved", `${t.name} · ${fmt((Date.now() - r.at) / 1000)}`, "amp")) toast(`Saved ${t.name}`);
+}
+$("recBtn").addEventListener("click", () => rec ? stopRec() : startRec());
+
 $("obsBtn").addEventListener("click", () => {
   const n = playlistsSorted().length;
   dialog({ title: "OBS browser source", text: `Add #obs to the end of this page's address for a transparent visualiser that plays your whole library on repeat. Add #obs-3 to start at song 3${n ? ", or #obs-pl-1 to play your first playlist" : ""}. OBS keeps its own browser storage, so add your songs once from inside OBS (right-click the source, Interact).`, confirm: "Got it", cancel: "" });
@@ -1353,11 +1458,11 @@ function pose(bp) {
   const k = f < seg - ml ? 0 : ease((f - (seg - ml)) / ml);
   return [lerp(A[0], B[0], k), lerp(A[1], B[1], k), lerp(A[2], B[2], k)];
 }
-const PER_BAND = 2, BALLS = 12;
 let hist = [], phys = [], shake = { x: 0, y: 0, vx: 0, vy: 0 }, spin = 0, lastSpinBp = null;
 function resetViz() {
-  hist = Array.from({ length: BALLS }, () => []);
-  phys = Array.from({ length: BALLS }, () => ({ r: 0, vr: 0, a: 0, va: 0, z: 0, vz: 0 }));
+  const N = look().balls;
+  hist = Array.from({ length: N }, () => []);
+  phys = Array.from({ length: N }, () => ({ r: 0, vr: 0, a: 0, va: 0, z: 0, vz: 0 }));
   shake = { x: 0, y: 0, vx: 0, vy: 0 }; lastSpinBp = null;
   if (data) data.bands.forEach(b => { b.fired = -1; });
 }
@@ -1408,30 +1513,32 @@ function frame(now) {
   const playing = !!data && Eng.state === "playing";
   const t = Math.max(0, Eng.time() - (playing ? Eng.latency() : 0));
   if (!playing) idleT += dt;
-  const chaos = S.chaos;
+  const chaos = S.chaos, L = look(), liveF = live ? live.frame(dt) : null;
+  if (liveF) liveBpm(liveF);
 
   // marquee
   const mq = $("marqueeText");
   if (!reduced && mq) { const half = mq.scrollWidth / 2; if (half > $("marquee").clientWidth - 12) { marqueeX = (marqueeX + dt * 42) % half; mq.style.transform = `translateX(${-marqueeX}px)`; } else mq.style.transform = ""; }
 
   glow.begin(reduced ? 0 : now / 1000, reduced ? 0 : lastLoud);
-  const nb = 6, n = 12;
-  let bp, envs, pulses;
-  if (data && (playing || t > 0.05)) { bp = beatPos(t); envs = data.bands.map(b => envAt(b, t)); pulses = data.bands.map(b => pulseAt(b, t)); }
+  const nb = 6, n = hist.length;
+  let bp, envs, pulses, fires = [];
+  if (liveF) { bp = liveF.bp; envs = liveF.envs; pulses = liveF.pulses; fires = liveF.fires; }
+  else if (data && (playing || t > 0.05)) {
+    bp = beatPos(t); envs = data.bands.map(b => envAt(b, t)); pulses = data.bands.map(b => pulseAt(b, t));
+    if (playing) data.bands.forEach((b, i) => { const on = b.onsets, j = b.ptr; if (j !== b.fired && on[j] <= t && t - on[j] < 0.1) { b.fired = j; fires.push({ band: i, strength: b.strength[j] }); } });
+  }
   else { bp = idleT * ((data ? data.bpm : 110) / 60) * 0.5; envs = BAND_NAMES.map((_, i) => 0.35 + 0.15 * Math.sin(idleT * 1.3 + i)); pulses = BAND_NAMES.map(() => 0); }
-  if (data && !playing && t > 0.05) bp += Math.sin(idleT * 0.8) * 0.05;
+  if (!liveF && data && !playing && t > 0.05) bp += Math.sin(idleT * 0.8) * 0.05;
   const bi = Math.floor(bp), bf = bp - bi;
   const spinPos = 0.55 * bp + 0.45 * (bi + (reduced ? bf : easeOut(Math.min(1, bf * 1.6))));
-  if (lastSpinBp !== null) { let d = spinPos - lastSpinBp; if (Math.abs(d) > 2) d = 0; const dir = chaos > 0.35 && Math.floor(bp / 16) % 2 ? -1 : 1; spin += d * dir * (Math.PI * 2 / lerp(8, 3.5, chaos)); }
+  if (lastSpinBp !== null) { let d = spinPos - lastSpinBp; if (Math.abs(d) > 2) d = 0; const dir = chaos > 0.35 && Math.floor(bp / 16) % 2 ? -1 : 1; spin += d * dir * (Math.PI * 2 / lerp(8, 3.5, chaos)) * L.spin; }
   lastSpinBp = spinPos;
-  if (playing && !reduced) data.bands.forEach((b, i) => {
-    const on = b.onsets, j = b.ptr;
-    if (j !== b.fired && on[j] <= t && t - on[j] < 0.1) {
-      b.fired = j; const st = b.strength[j] * chaos;
-      for (let c = 0; c < PER_BAND; c++) { const ph = phys[i + c * nb]; ph.vr += sgn() * st * rnd(2.5, 5.5); ph.va += sgn() * st * rnd(2, 5); ph.vz += sgn() * st * rnd(2, 5); }
-      if (i === 0 && st > 0.25) { shake.vx += sgn() * st * rnd(120, 260); shake.vy += sgn() * st * rnd(120, 260); }
-    }
-  });
+  if (!reduced) for (const f of fires) { // a hit in a band kicks the balls that follow that band
+    const st = f.strength * chaos;
+    for (let j = f.band; j < n; j += nb) { const ph = phys[j]; ph.vr += sgn() * st * rnd(2.5, 5.5); ph.va += sgn() * st * rnd(2, 5); ph.vz += sgn() * st * rnd(2, 5); }
+    if (f.band === 0 && st > 0.25) { shake.vx += sgn() * st * rnd(120, 260); shake.vy += sgn() * st * rnd(120, 260); }
+  }
   const h2 = Math.min(dt, 0.033);
   phys.forEach(ph => { ph.vr += (-90 * ph.r - 9 * ph.vr) * h2; ph.r += ph.vr * h2; ph.va += (-40 * ph.a - 5 * ph.va) * h2; ph.a += ph.va * h2; ph.vz += (-70 * ph.z - 8 * ph.vz) * h2; ph.z += ph.vz * h2; });
   shake.vx += (-400 * shake.x - 28 * shake.vx) * h2; shake.x += shake.vx * h2; shake.vy += (-400 * shake.y - 28 * shake.vy) * h2; shake.y += shake.vy * h2;
@@ -1441,8 +1548,8 @@ function frame(now) {
   const cx = W / 2 + shake.x, cy = H / 2 + shake.y;
   const yaw = chaos * 0.7 * Math.sin(bp * 0.37) + chaos * 0.3 * Math.sin(bp * 0.91);
   const cY = Math.cos(yaw), sY = Math.sin(yaw), cT = Math.cos(tilt), sT = Math.sin(tilt), cR = Math.cos(roll), sR = Math.sin(roll), FOV = 3.2;
-  const TRAIL = Math.round(lerp(22, 40, chaos)), sc = Math.min(1.15, Math.max(0.6, H / 520));
-  lastLoud = playing ? loud : 0;
+  const TRAIL = Math.max(2, Math.round(lerp(22, 40, chaos) * L.trail)), sc = Math.min(1.15, Math.max(0.6, H / 520)) * L.size * Math.sqrt(12 / Math.max(4, n));
+  lastLoud = playing || liveF ? loud : 0;
   const STEP = glow.gl ? 2 : 4, MAXS = glow.gl ? 12 : 6; // WebGL has room for smoother trails
   for (let i = 0; i < n; i++) {
     const ph = phys[i], e = envs[i % nb], pu = pulses[i % nb];
@@ -1461,7 +1568,7 @@ function frame(now) {
       const al = Math.min(1, q1.b * fade * fade * 0.3) * even;
       for (let s = 0; s < steps; s++) { const u = s / steps, sz = lerp(q0.s, q1.s, u) * (0.35 + 0.5 * fade) * 2.2; glow.dot(lerp(q0.x, q1.x, u), lerp(q0.y, q1.y, u), sz, al); }
     }
-    glow.dot(px, py, size * 5.5, Math.min(1, bright * 0.75));
+    glow.dot(px, py, size * 5.5 * L.glow, Math.min(1, bright * 0.75 * Math.min(1.4, L.glow)));
     glow.dot(px, py, size * 1.6, Math.min(1, 0.35 + bright));
   }
   glow.end();

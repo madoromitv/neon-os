@@ -8,7 +8,7 @@ const PORT = 8765, URL = `http://localhost:${PORT}/`, FX = "tests/.fixtures/";
 const VERSION = fs.readFileSync("core/version.js", "utf8").match(/VERSION = "([^"]+)"/)[1];
 const server = spawn("python3", ["-m", "http.server", String(PORT)], { stdio: "ignore" });
 await new Promise(r => setTimeout(r, 800));
-const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
+const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required", "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] });
 let failed = 0, passed = 0;
 const check = (ok, what) => { if (ok) { passed++; console.log("  ok   " + what); } else { failed++; console.log("  FAIL " + what); } };
 async function page(opts = {}, { fresh = false } = {}) {
@@ -140,6 +140,33 @@ const tests = {
     check((await p.$$eval(".pic", e => e.length)) === 1 && await p.evaluate(async () => (await (await import("/core/photos.js")).allThumbs()).size === 1), "Photos keeps a small preview");
     await p.click("#vDel"); await p.waitForTimeout(600);
     check((await p.$$eval(".pic", e => e.length)) === 0 && (await p.evaluate(async () => (await (await import("/core/bin.js")).binList()).some(i => i.kind === "photo"))), "a removed picture goes to the Bin");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
+  async "the orb: presets, live input and recording video"() {
+    const p = await page({ permissions: ["microphone"] }); await desk(p); await amp(p, ["song.wav"]);
+    await p.click("#lookBtn"); await p.waitForTimeout(200);
+    check(!(await p.$eval("#visLook", e => e.hidden)), "Look opens its panel");
+    await p.selectOption("#lookPreset", "Halo"); await p.waitForTimeout(500);
+    const st = () => p.evaluate(() => JSON.parse(localStorage.getItem("neon-orbit-amp") || "{}"));
+    let S = await st();
+    check(S.look.balls === 24 && Math.abs(S.chaos - 0.4) < 1e-6 && (await p.$eval("#lkBallsV", e => e.textContent)) === "24" && (await p.$eval("#chaosPct", e => e.textContent)) === "40%", "a preset sets balls, chaos and their numbers");
+    await p.focus("#lkTrail"); await p.keyboard.press("ArrowRight"); await p.waitForTimeout(400);
+    S = await st(); check(S.lookName === "" && (await p.$eval("#lookPreset", e => e.value)) === "", "changing a setting turns it into Custom");
+    await p.click("#lookSave"); await p.waitForSelector(".dialog input"); await p.fill(".dialog input", "Mine"); await p.keyboard.press("Enter"); await p.waitForTimeout(300);
+    S = await st(); check(S.lookPresets.some(x => x.name === "Mine") && S.lookName === "Mine", "Save as keeps your own preset");
+    await p.click("#lookX"); check(await p.$eval("#visLook", e => e.hidden), "the Look panel's X closes it");
+    // live input (the test browser's fake microphone beeps)
+    await p.click("#liveBtn"); await p.waitForTimeout(3500);
+    check(await p.$eval("#liveBtn", e => e.getAttribute("aria-pressed")) === "true" && /BPM/.test(await p.$eval("#liveBpm", e => e.textContent)) && /LIVE/.test(await p.$eval("#stageNp", e => e.textContent)), "Live listens to the input and shows a tempo");
+    await p.click("#liveBtn"); await p.waitForTimeout(200);
+    check(await p.$eval("#liveBtn", e => e.getAttribute("aria-pressed")) === "false", "Live turns off");
+    // record a video of a playing song
+    await p.click("#bPlay"); await p.waitForTimeout(800);
+    await p.click("#recBtn"); await p.waitForTimeout(2600);
+    check(/^0:0[1-9]$/.test(await p.$eval("#recTxt", e => e.textContent)), "Rec shows how long it's been recording");
+    const dl = p.waitForEvent("download"); await p.click("#recBtn"); const d = await dl;
+    const f = await d.path(), size = fs.statSync(f).size;
+    check(/^Neon Orbit - .+\.(mp4|webm)$/.test(d.suggestedFilename()) && size > 20000, `Rec saves a video (${d.suggestedFilename()}, ${Math.round(size / 1024)} KB)`);
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
   async "desktop app updates (with a stand-in for the desktop app)"() {
@@ -350,7 +377,9 @@ const tests = {
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
   async "works offline after the first visit"() {
-    const p = await page(); await desk(p); await p.waitForTimeout(1500);
+    const p = await page(); await desk(p);
+    await p.evaluate(() => navigator.serviceWorker.ready); // every file saved (the worker is active once they are)
+    await p.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 }).catch(() => {}); await p.waitForTimeout(300);
     await p.context().setOffline(true); await p.reload(); await p.waitForTimeout(1500);
     check(await p.$$eval(".dicon", e => e.length) >= 8, "desktop opens offline");
     await p.keyboard.press("Control+Alt+Digit3"); await p.waitForTimeout(1200);
