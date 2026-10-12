@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  body.app { padding: 0; gap: 0; }
+  .tabs-row { display: flex; align-items: flex-end; gap: 2px; padding: 6px 6px 0; overflow-x: auto; scrollbar-width: none; flex: none; }
+  .tab { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 200px; flex: 0 1 200px; padding: 6px 6px 6px 10px; border-radius: 3px 3px 0 0; background: #0d0b14; border: 1px solid #000; border-bottom: 0; font-size: 12px; color: var(--ink-dim); cursor: pointer; }
+  .tab[aria-selected="true"] { background: linear-gradient(180deg, #2a2537, #1a1724); color: var(--ink); box-shadow: inset 0 2px 0 var(--ball); }
+  .tab span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tab button { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 2px; color: var(--ink-faint); font-size: 12px; line-height: 1; }
+  .tab button:hover { background: #ffffff14; color: var(--ink); }
+  .newtab { min-height: 26px; padding: 0 10px; margin-bottom: 2px; flex: none; }
+  .bar { display: flex; align-items: center; gap: 4px; padding: 6px; background: linear-gradient(180deg, #1a1724, #12101a); border-bottom: 1px solid #000; flex: none; }
+  .bar .btn.icon svg { width: 16px; height: 16px; fill: currentColor; }
+  .addr { flex: 1; min-width: 80px; font-size: 13px !important; padding: 6px 10px !important; }
+  .star[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .marks { display: flex; gap: 2px; padding: 3px 6px; border-bottom: 1px solid #000; overflow-x: auto; scrollbar-width: none; flex: none; }
+  .marks:empty { display: none; }
+  .marks button { font-size: 11.5px; color: var(--ink-dim); padding: 3px 8px; border-radius: 2px; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+  .marks button:hover { background: #ffffff10; color: var(--ink); }
+  .note { display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: 11.5px; color: var(--ink-dim); background: #0c0a12; border-bottom: 1px solid #000; flex: none; }
+  .note[hidden] { display: none; }
+  .note .btn { margin-left: auto; }
+  .pages { position: relative; flex: 1; min-height: 0; background: #fff; }
+  .pages iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+  .pages iframe[hidden] { display: none; }
+  .start { position: absolute; inset: 0; background: #07050c; overflow: auto; display: grid; align-content: start; justify-items: center; gap: 22px; padding: 12vh 20px 40px; }
+  .start[hidden] { display: none; }
+  .start b.logo { font: 54px/1 var(--font-lcd); letter-spacing: 4px; color: var(--ball); text-shadow: 0 0 14px var(--ball-dim); }
+  .start form { display: flex; gap: 6px; width: min(560px, 100%); }
+  .start input { flex: 1; font-size: 15px !important; padding: 10px 14px !important; }
+  .dial { display: grid; grid-template-columns: repeat(auto-fill, 120px); gap: 10px; width: min(680px, 100%); justify-content: center; }
+  .dial a { display: grid; justify-items: center; gap: 8px; padding: 14px 8px; border-radius: 3px; background: #0d0b14; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; color: var(--ink); text-decoration: none; font-size: 12px; text-align: center; overflow: hidden; }
+  .dial a:hover { border-color: var(--ball); box-shadow: 0 0 10px var(--ball-dim); }
+  .dial a i { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font: 22px/1 var(--font-lcd); font-style: normal; color: #000; background: var(--ball); box-shadow: 0 0 10px var(--ball-dim); }
+  .dial a span { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .start .row { justify-content: center; }
+</style>
+</head>
+<body class="app">
+  <div class="tabs-row" id="tabs" role="tablist" aria-label="Tabs"></div>
+  <div class="bar">
+    <button class="btn icon" id="back" aria-label="Back" title="Back (Alt+←)"><svg viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg></button>
+    <button class="btn icon" id="fwd" aria-label="Forward" title="Forward (Alt+→)"><svg viewBox="0 0 24 24"><path d="M4 11h12.2l-5.6-5.6L12 4l8 8-8 8-1.4-1.4 5.6-5.6H4z"/></svg></button>
+    <button class="btn icon" id="reload" aria-label="Reload" title="Reload (F5)"><svg viewBox="0 0 24 24"><path d="M17.6 6.4A8 8 0 1 0 19.7 14h-2.1a6 6 0 1 1-1.4-6.2L13 11h7V4z"/></svg></button>
+    <button class="btn icon" id="home" aria-label="New tab page" title="Start page"><svg viewBox="0 0 24 24"><path d="M12 3 2 12h3v8h5v-6h4v6h5v-8h3z"/></svg></button>
+    <input type="text" class="addr" id="addr" placeholder="Search or type an address" aria-label="Address" spellcheck="false" autocomplete="off">
+    <button class="btn star" id="star" aria-pressed="false" title="Bookmark this page (Ctrl+D)">★</button>
+    <button class="btn" id="ext" title="Open this page in your usual browser">Open outside</button>
+  </div>
+  <div class="marks" id="marks" aria-label="Bookmarks"></div>
+  <div class="note" id="note" hidden><span>Some sites won't show inside another page and stay blank here. The Neon OS desktop app shows them all.</span><button class="btn mini" id="noteExt">Open it outside</button><button class="btn mini" id="noteX" aria-label="Hide this note">✕</button></div>
+  <div class="pages" id="pages">
+    <div class="start" id="start">
+      <b class="logo">NEON WEB</b>
+      <form id="startForm"><input type="text" id="startQ" placeholder="Search the web or type an address" aria-label="Search or address" autocomplete="off"><button class="btn" type="submit">Go</button></form>
+      <div class="dial" id="dial"></div>
+      <div class="row"><span class="lbl">Search with</span><select id="engine" aria-label="Search engine"></select></div>
+    </div>
+  </div>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { esc, toast, dialog, openMenu } from "../../style-kit/ui.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id), KEY = "neon-os:browser";
+    // the desktop app's bridge lives on the desktop page (this app is framed inside it)
+    let desk = null; try { desk = window.neonOsDesktop || (parent !== window && parent.neonOsDesktop) || null; } catch (e) {}
+    const full = !!(desk && desk.browser);
+    const ENGINES = { duckduckgo: ["DuckDuckGo", "https://duckduckgo.com/?q="], google: ["Google", "https://www.google.com/search?q="], bing: ["Bing", "https://www.bing.com/search?q="], startpage: ["Startpage", "https://www.startpage.com/do/search?q="], wikipedia: ["Wikipedia", "https://en.wikipedia.org/w/index.php?search="] };
+    const START_MARKS = [{ title: "Wikipedia", url: "https://en.wikipedia.org/" }, { title: "Neon OS on GitHub", url: "https://github.com/madoromitv/neon-os" }, { title: "OpenStreetMap", url: "https://www.openstreetmap.org/" }];
+    let S = { tabs: [{ id: "t1", url: "" }], cur: "t1", marks: START_MARKS, engine: "duckduckgo", noteHidden: false };
+    try { S = { ...S, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) {}
+    if (!S.tabs.length) S.tabs = [{ id: "t1", url: "" }];
+    if (!S.tabs.some(t => t.id === S.cur)) S.cur = S.tabs[0].id;
+    let saveT = 0; const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify({ ...S, tabs: S.tabs.map(({ id, url, title }) => ({ id, url, title })) })); } catch (e) {} }, 200); };
+    const tab = () => S.tabs.find(t => t.id === S.cur);
+    const host = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return u; } };
+    // what's typed: an address (with or without https://) or something to search for
+    function toUrl(q) {
+      q = q.trim(); if (!q) return "";
+      if (/^https?:\/\//i.test(q)) return q;
+      if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/\S*)?$/i.test(q)) return "http://" + q; // your own computer
+      if (/^(localhost|[\w-]+(\.[\w-]+)+)(:\d+)?(\/\S*)?$/i.test(q) && !/\s/.test(q)) return "https://" + q;
+      return ENGINES[S.engine][1] + encodeURIComponent(q);
+    }
+
+    // ---------- tabs: each is a frame named nob-<id> (the desktop app follows them by that name) ----------
+    const frames = new Map();
+    function frameOf(t, make) {
+      let f = frames.get(t.id);
+      if (!f && make) {
+        f = document.createElement("iframe"); f.name = "nob-" + t.id; f.title = "Page";
+        f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-presentation allow-pointer-lock");
+        f.setAttribute("allow", "fullscreen; autoplay; clipboard-read; clipboard-write; encrypted-media; picture-in-picture; geolocation; microphone; camera");
+        f.referrerPolicy = "strict-origin-when-cross-origin";
+        $("pages").appendChild(f); frames.set(t.id, f);
+      }
+      return f;
+    }
+    function go(url, t = tab()) {
+      if (!url) return;
+      t.hist = (t.hist || []).slice(0, (t.at ?? -1) + 1); t.hist.push(url); t.at = t.hist.length - 1;
+      t.url = url; t.title = host(url); frameOf(t, true).src = url;
+      if (!full && !S.noteHidden) $("note").hidden = false;
+      draw(); save();
+    }
+    function newTab(url = "") { const t = { id: "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), url: "" }; S.tabs.push(t); S.cur = t.id; if (url) go(url, t); draw(); save(); if (!url) setTimeout(() => $("startQ").focus(), 0); }
+    function closeTab(id) {
+      const i = S.tabs.findIndex(t => t.id === id); if (i < 0) return;
+      const f = frames.get(id); if (f) { f.remove(); frames.delete(id); }
+      S.tabs.splice(i, 1); if (!S.tabs.length) S.tabs.push({ id: "t" + Date.now().toString(36), url: "" });
+      if (S.cur === id) S.cur = (S.tabs[i] || S.tabs[i - 1]).id; draw(); save();
+    }
+    function draw() {
+      const t = tab();
+      $("tabs").innerHTML = S.tabs.map(x => `<div class="tab" role="tab" aria-selected="${x.id === S.cur}" data-id="${x.id}" title="${esc(x.title || x.url || "New tab")}"><span>${esc(x.title || (x.url ? host(x.url) : "New tab"))}</span><button data-x="${x.id}" aria-label="Close tab" title="Close tab (Ctrl+W)">✕</button></div>`).join("") + `<button class="btn newtab" id="newtab" title="New tab (Ctrl+T)">+</button>`;
+      for (const [id, f] of frames) f.hidden = id !== S.cur || !t.url;
+      if (t.url && !frames.get(t.id)) { frameOf(t, true).src = t.url; } // a tab from last time opens its page when first shown
+      $("start").hidden = !!t.url;
+      if (document.activeElement !== $("addr")) $("addr").value = t.url || "";
+      $("star").setAttribute("aria-pressed", String(!!t.url && S.marks.some(m => m.url === t.url)));
+      $("back").disabled = full ? !t.url : !(t.at > 0); $("fwd").disabled = full ? !t.url : !(t.hist && t.at < t.hist.length - 1);
+      $("ext").disabled = !t.url; $("reload").disabled = !t.url;
+      $("marks").innerHTML = S.marks.map((m, i) => `<button data-m="${i}" title="${esc(m.url)}">${esc(m.title || host(m.url))}</button>`).join("");
+      $("dial").innerHTML = S.marks.map((m, i) => `<a href="${esc(m.url)}" data-m="${i}"><i>${esc((m.title || host(m.url)).trim().charAt(0).toUpperCase())}</i><span>${esc(m.title || host(m.url))}</span></a>`).join("");
+      document.title = (t.title || "New tab") + " · Browser";
+    }
+    $("tabs").addEventListener("click", e => {
+      if (e.target.closest("#newtab")) { newTab(); return; }
+      const x = e.target.closest("[data-x]"); if (x) { e.stopPropagation(); closeTab(x.dataset.x); return; }
+      const t = e.target.closest("[data-id]"); if (t) { S.cur = t.dataset.id; draw(); save(); }
+    });
+    $("tabs").addEventListener("auxclick", e => { const t = e.target.closest("[data-id]"); if (t && e.button === 1) closeTab(t.dataset.id); });
+    $("addr").addEventListener("keydown", e => { if (e.key === "Enter") { const u = toUrl($("addr").value); if (u) { go(u); $("addr").blur(); } } else if (e.key === "Escape") { $("addr").value = tab().url || ""; $("addr").blur(); } });
+    $("addr").addEventListener("focus", () => $("addr").select());
+    $("startForm").addEventListener("submit", e => { e.preventDefault(); const u = toUrl($("startQ").value); if (u) { $("startQ").value = ""; go(u); } });
+    $("home").addEventListener("click", () => { const t = tab(); t.url = ""; t.title = ""; const f = frames.get(t.id); if (f) f.src = "about:blank"; draw(); save(); $("startQ").focus(); });
+    $("reload").addEventListener("click", () => { const f = frames.get(S.cur); if (f && tab().url) f.src = tab().url; });
+    async function step(n) {
+      const t = tab();
+      if (full) { await desk.frameGo("nob-" + t.id, n); return; } // the real page history, in the desktop app
+      const i = (t.at ?? 0) + n; if (!t.hist || i < 0 || i >= t.hist.length) return;
+      t.at = i; t.url = t.hist[i]; t.title = host(t.url); frameOf(t, true).src = t.url; draw(); save();
+    }
+    $("back").addEventListener("click", () => step(-1)); $("fwd").addEventListener("click", () => step(1));
+    const outside = url => { if (!url) return; if (desk && desk.openExternal) desk.openExternal(url); else window.open(url, "_blank", "noopener"); };
+    $("ext").addEventListener("click", () => outside(tab().url)); $("noteExt").addEventListener("click", () => outside(tab().url));
+    $("noteX").addEventListener("click", () => { S.noteHidden = true; $("note").hidden = true; save(); });
+    // bookmarks: ★ adds or removes; right-click one to rename or remove it
+    $("star").addEventListener("click", async () => {
+      const t = tab(); if (!t.url) return;
+      if (S.marks.some(m => m.url === t.url)) S.marks = S.marks.filter(m => m.url !== t.url);
+      else { const r = await dialog({ title: "Bookmark", fields: [{ label: "Name", value: t.title || host(t.url) }], confirm: "Add" }); if (!r) return; S.marks.push({ title: r[0] || host(t.url), url: t.url }); }
+      draw(); save();
+    });
+    const markClick = e => { const b = e.target.closest("[data-m]"); if (!b) return; e.preventDefault(); const m = S.marks[+b.dataset.m]; (e.ctrlKey || e.metaKey || e.button === 1) ? newTab(m.url) : go(m.url); };
+    $("marks").addEventListener("click", markClick); $("dial").addEventListener("click", markClick);
+    const markMenu = e => {
+      const b = e.target.closest("[data-m]"); if (!b) return; e.preventDefault(); const i = +b.dataset.m, m = S.marks[i];
+      openMenu(null, [{ text: "Open in a new tab", run: () => newTab(m.url) }, { text: "Rename", run: async () => { const r = await dialog({ title: "Rename bookmark", fields: [{ label: "Name", value: m.title }], confirm: "Save" }); if (r && r[0]) { m.title = r[0]; draw(); save(); } } }, "-", { text: "Remove", danger: true, run: () => { S.marks.splice(i, 1); draw(); save(); } }], { x: e.clientX, y: e.clientY });
+    };
+    $("marks").addEventListener("contextmenu", markMenu); $("dial").addEventListener("contextmenu", markMenu);
+    $("engine").innerHTML = Object.entries(ENGINES).map(([k, [n]]) => `<option value="${k}">${n}</option>`).join(""); $("engine").value = S.engine;
+    $("engine").addEventListener("change", () => { S.engine = $("engine").value; save(); });
+    addEventListener("keydown", e => {
+      const c = e.ctrlKey || e.metaKey;
+      if (c && e.code === "KeyT") { e.preventDefault(); newTab(); }
+      else if (c && e.code === "KeyW" && !e.altKey) { e.preventDefault(); closeTab(S.cur); }
+      else if (c && e.code === "KeyL") { e.preventDefault(); $("addr").focus(); }
+      else if (c && e.code === "KeyD") { e.preventDefault(); $("star").click(); }
+      else if (e.key === "F5" || (c && e.code === "KeyR")) { e.preventDefault(); $("reload").click(); }
+      else if (e.altKey && e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
+      else if (e.altKey && e.key === "ArrowRight") { e.preventDefault(); step(1); }
+      else if (c && e.key === "Tab") { e.preventDefault(); const i = S.tabs.findIndex(t => t.id === S.cur), n = S.tabs[(i + (e.shiftKey ? -1 : 1) + S.tabs.length) % S.tabs.length]; S.cur = n.id; draw(); save(); }
+    });
+    // from the desktop: where a tab got to (desktop app), and links that should open as a new tab
+    addEventListener("message", e => {
+      if (e.origin !== location.origin || !e.data) return;
+      const d = e.data;
+      if (d.neonOsFrameNav) { const t = S.tabs.find(x => "nob-" + x.id === d.neonOsFrameNav.name); if (!t) return; const { url, title } = d.neonOsFrameNav; if (url && /^https?:/.test(url)) t.url = url; if (title) t.title = title; else if (url) t.title = host(url); if (t.id === S.cur) draw(); else draw(); save(); }
+      if (d.neonOsBrowserOpen) newTab(d.neonOsBrowserOpen);
+    });
+    draw();
+    if (parent !== window) parent.postMessage({ neonOs: "ready", app: "browser" }, location.origin);
+  </script>
+</body>
+</html>

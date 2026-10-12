@@ -27,17 +27,48 @@
   .pic:hover .nm, .pic:focus-visible .nm { opacity: 1; }
   .warn { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--ball); border-radius: 2px; font-size: 12px; }
   .warn[hidden] { display: none; }
-  .viewer { position: fixed; inset: 0; z-index: 50; background: #050409f2; display: grid; grid-template-rows: auto 1fr auto; }
+  .viewer { position: fixed; inset: 0; z-index: 20; background: #050409f2; display: grid; grid-template-rows: auto 1fr auto; }
   .viewer[hidden] { display: none; }
   .viewer .top, .viewer .bottom { display: flex; align-items: center; gap: 6px; padding: 8px 10px; flex-wrap: wrap; }
   .viewer .top strong { font-size: 13px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .viewer .stage { position: relative; min-height: 0; display: grid; place-items: center; overflow: hidden; }
-  .viewer .stage img { max-width: 100%; max-height: 100%; object-fit: contain; transition: opacity .35s; }
+  .viewer .stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transition: opacity .35s; } /* the whole picture, however big the window */
   .viewer .nav { position: absolute; top: 50%; transform: translateY(-50%); min-width: 40px; min-height: 64px; font-size: 22px; }
   .viewer .nav.l { left: 8px; } .viewer .nav.r { right: 8px; }
   .viewer .bottom .lcd { font-size: 18px; line-height: 24px; padding: 0 8px; }
   .viewer .bottom .spacer { flex: 1; }
   #empty { flex: 1; }
+  /* the editor (editor.js) */
+  .editor { position: fixed; inset: 0; z-index: 25; background: #07050c; display: grid; grid-template-rows: auto 1fr; }
+  .ed-top { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid #000; box-shadow: 0 1px 0 #3a3450; }
+  .ed-top strong { font-size: 13px; margin-right: 8px; max-width: 30%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ed-top .ed-sp { flex: 1; }
+  .ed-main { display: grid; grid-template-columns: minmax(0, 1fr) 280px; min-height: 0; }
+  .ed-stage { position: relative; display: grid; place-items: center; min-height: 0; overflow: hidden; background: repeating-conic-gradient(#0c0a12 0 25%, #100d18 0 50%) 0 0 / 24px 24px; }
+  .ed-cv { display: block; box-shadow: 0 0 0 1px #000, 0 10px 40px #000a; }
+  .ed-busy { position: absolute; color: var(--ink-faint); font-size: 12px; }
+  .ed-crop { position: absolute; border: 1px solid var(--ball); box-shadow: 0 0 0 9999px #000a, 0 0 12px var(--ball-dim); cursor: move; touch-action: none;
+    background-image: linear-gradient(#ffffff30, #ffffff30), linear-gradient(#ffffff30, #ffffff30), linear-gradient(#ffffff30, #ffffff30), linear-gradient(#ffffff30, #ffffff30);
+    background-size: 1px 100%, 1px 100%, 100% 1px, 100% 1px; background-position: 33.33% 0, 66.66% 0, 0 33.33%, 0 66.66%; background-repeat: no-repeat; }
+  .ed-crop i { position: absolute; width: 14px; height: 14px; background: var(--ball); border: 2px solid #000; border-radius: 2px; }
+  .ed-crop i[data-h="nw"] { left: -7px; top: -7px; cursor: nwse-resize; } .ed-crop i[data-h="ne"] { right: -7px; top: -7px; cursor: nesw-resize; }
+  .ed-crop i[data-h="sw"] { left: -7px; bottom: -7px; cursor: nesw-resize; } .ed-crop i[data-h="se"] { right: -7px; bottom: -7px; cursor: nwse-resize; }
+  .ed-crop i[data-h="n"] { left: calc(50% - 7px); top: -7px; cursor: ns-resize; } .ed-crop i[data-h="s"] { left: calc(50% - 7px); bottom: -7px; cursor: ns-resize; }
+  .ed-crop i[data-h="w"] { top: calc(50% - 7px); left: -7px; cursor: ew-resize; } .ed-crop i[data-h="e"] { top: calc(50% - 7px); right: -7px; cursor: ew-resize; }
+  .ed-side { border-left: 1px solid #000; box-shadow: inset 1px 0 0 #3a3450; padding: 10px; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+  .ed-side section { display: grid; gap: 8px; }
+  .ed-side section[hidden] { display: none; }
+  .ed-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .ed-chips .btn[aria-pressed="true"], .ed-f[aria-pressed="true"] span { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .ed-row { display: flex; align-items: center; gap: 8px; }
+  .ed-row .lbl { width: 86px; flex: none; }
+  .ed-row .slider { flex: 1; }
+  .ed-row .pct { min-width: 56px; text-align: right; font-size: 17px; line-height: 20px; padding: 0 6px; }
+  .ed-filters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .ed-f { display: grid; gap: 4px; padding: 4px; border-radius: 2px; background: #000; border: 1px solid transparent; font-size: 11px; color: var(--ink-dim); }
+  .ed-f canvas { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; border-radius: 2px; background: #111; }
+  .ed-f[aria-pressed="true"] { border-color: var(--ball); box-shadow: 0 0 8px var(--ball-dim); }
+  @media (max-width: 700px) { .ed-main { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; } .ed-side { max-height: 45vh; border-left: 0; border-top: 1px solid #000; } }
   .drop { outline: 2px dashed var(--ball); outline-offset: -6px; }
 </style>
 </head>
@@ -64,6 +95,7 @@
       <button class="btn" id="vPlay" aria-pressed="false"><i class="led"></i>Slideshow</button>
       <span class="lbl">Every</span><select id="speed" aria-label="Seconds per picture"><option value="3">3 seconds</option><option value="5">5 seconds</option><option value="8">8 seconds</option><option value="15">15 seconds</option></select>
       <span class="spacer"></span>
+      <button class="btn" id="vEdit" title="Crop, turn, light, colour and filters">Edit</button>
       <button class="btn" id="vWall">Set as wallpaper</button>
       <button class="btn" id="vDel" style="color:var(--danger)">Remove</button>
     </div>
@@ -72,11 +104,12 @@
     import "../../core/os-link.js";
     import { applyTheme, onTheme, setTheme } from "../../core/theme.js";
     import { esc, toast, dialog, Slider } from "../../style-kit/ui.js";
-    import { listPics, addPic, removePic, listPicFolders, addPicFolder, removePicFolder, folderAccess, scanPicFolder, fileAt, getFolderIndex, setFolderIndex, allThumbs, putThumb, dropThumbs, IMAGE_EXT } from "../../core/photos.js";
+    import { listPics, addPic, putPic, removePic, listPicFolders, addPicFolder, removePicFolder, folderAccess, scanPicFolder, fileAt, getFolderIndex, setFolderIndex, allThumbs, putThumb, dropThumbs, IMAGE_EXT } from "../../core/photos.js";
     import { setWallImage } from "../../core/desk.js";
     import { binPut, onBinChange } from "../../core/bin.js";
     import { notify } from "../../core/notify.js";
     import { pickFiles } from "../../core/picker.js";
+    import { openEditor } from "./editor.js";
     applyTheme(); onTheme(applyTheme);
     const $ = id => document.getElementById(id), KEY = "neon-os:photos";
     let S = { src: "all", sort: "new", size: 1, speed: 5 };
@@ -313,11 +346,41 @@
     $("speed").value = String(S.speed);
     $("speed").addEventListener("change", () => { S.speed = +$("speed").value; save(); if (timer) play(true); });
     addEventListener("keydown", e => {
-      if ($("viewer").hidden || e.target.closest("select")) return;
+      if ($("viewer").hidden || e.target.closest("select") || document.querySelector(".editor")) return;
       if (e.key === "Escape") { e.preventDefault(); closeView(); }
       else if (e.key === "ArrowRight") { e.preventDefault(); $("vNext").click(); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); $("vPrev").click(); }
       else if (e.key === " ") { e.preventDefault(); play(!timer); }
+    });
+    // ---------- editing: the editor makes a new picture; where it goes is chosen when saving ----------
+    async function folderDir(f, path, write) { // the folder a linked picture is in, asking to write there if needed
+      if (write && await f.handle.queryPermission({ mode: "readwrite" }) !== "granted" && await f.handle.requestPermission({ mode: "readwrite" }) !== "granted") return null;
+      let dir = f.handle; for (const part of path.split("/").slice(0, -1)) dir = await dir.getDirectoryHandle(part); return dir;
+    }
+    async function freeName(dir, name) { const m = name.match(/^(.*?)(\.[^.]+)?$/); for (let i = 1; i < 999; i++) { const n = i === 1 ? name : `${m[1]} ${i}${m[2] || ""}`; try { await dir.getFileHandle(n); } catch (e) { return n; } } return name; }
+    $("vEdit").addEventListener("click", async () => {
+      const p = shown[at]; if (!p) return;
+      let blob; try { blob = await blobOf(p); } catch (e) { toast("Couldn't open that picture.", true); return; }
+      play(false);
+      await openEditor(p, {
+        blob, canReplace: p.kind === "added", canSaveToFolder: p.kind === "folder",
+        save: async (kind, out, name) => {
+          const file = new File([out], name, { type: out.type, lastModified: Date.now() });
+          if (kind === "wall") { await setWallImage(out); setTheme({ wall: "image", wallStamp: Date.now() }); return "Wallpaper changed"; }
+          if (kind === "as") { const { saveAs } = await import("../../core/picker.js"); const t = await saveAs(out, name, { description: "Picture", accept: { [out.type]: ["." + name.split(".").pop()] } }); return t ? `Saved ${t.name}` : null; }
+          if (kind === "replace" && p.kind === "added") {
+            const { kind: k, ...rec } = p; void k;
+            await binPut("photo", p.name, rec, "Photos · before editing");
+            await putPic({ ...rec, blob: file, type: out.type, size: out.size, modified: Date.now() });
+            await load(); return "Picture replaced. The original is in the Bin.";
+          }
+          if (p.kind === "folder") { // a copy beside the original, in the folder on your computer
+            const f = byFolder.get(p.folder), dir = f && await folderDir(f, p.path, true).catch(() => null);
+            if (dir) { const n = await freeName(dir, name), h = await dir.getFileHandle(n, { create: true }), w = await h.createWritable(); await w.write(out); await w.close(); await load(); return `Saved ${n} in ${f.name}`; }
+          }
+          await addPic(file); await load(); return `Saved ${name} in Photos`;
+        },
+      });
     });
     $("vWall").addEventListener("click", async () => {
       const p = shown[at]; if (!p) return;

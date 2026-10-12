@@ -16,7 +16,7 @@ async function page(opts = {}, { fresh = false } = {}) {
   const p = await ctx.newPage(); p.errors = [];
   p.on("pageerror", e => p.errors.push(e.message));
   p.on("console", m => { if (m.type() === "error" && !/fonts|ERR_|Failed to load resource/.test(m.text())) p.errors.push(m.text()); });
-  await p.addInitScript(([v, fresh]) => { if (!sessionStorage.getItem("t")) { localStorage.setItem("neon-os:theme", JSON.stringify({ ball: "cyan", boot: false })); localStorage.setItem("neon-os:ask-save", "off"); if (!fresh) localStorage.setItem("neon-os:seen-version", v); sessionStorage.setItem("t", "1"); } }, [VERSION, fresh]);
+  await p.addInitScript(([v, fresh]) => { try { if (location.protocol === "http:" && location.port === "8765" && !sessionStorage.getItem("t")) { localStorage.setItem("neon-os:theme", JSON.stringify({ ball: "cyan", boot: false })); localStorage.setItem("neon-os:ask-save", "off"); if (!fresh) localStorage.setItem("neon-os:seen-version", v); sessionStorage.setItem("t", "1"); } } catch (e) {} }, [VERSION, fresh]); // pages in the Browser's tabs (other sites, error pages) are left alone
   return p;
 }
 const lib = p => p.evaluate(() => import("./core/backup.js").then(m => m.librarySummary()));
@@ -142,6 +142,57 @@ const tests = {
     check((await p.$$eval(".pic", e => e.length)) === 0 && (await p.evaluate(async () => (await (await import("/core/bin.js")).binList()).some(i => i.kind === "photo"))), "a removed picture goes to the Bin");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "Photos viewer and editor, Video, Browser, and selecting desktop icons"() {
+    const p = await page({ viewport: { width: 1200, height: 800 } });
+    // a tall picture fits the viewer whole
+    await p.goto(URL + "apps/photos/"); await p.waitForTimeout(400);
+    await p.evaluate(async () => { const c = new OffscreenCanvas(600, 1800), g = c.getContext("2d"); g.fillStyle = "#3366aa"; g.fillRect(0, 0, 600, 1800); g.fillStyle = "#ff5533"; g.fillRect(100, 700, 400, 400);
+      const b = await c.convertToBlob({ type: "image/jpeg" }); await (await import("/core/photos.js")).addPic(new File([b], "tall.jpg", { type: "image/jpeg" })); });
+    await p.reload(); await p.waitForTimeout(1200); await p.click(".pic"); await p.waitForTimeout(800);
+    const fit = await p.$eval("#vImg", i => { const r = i.getBoundingClientRect(), st = i.parentElement.getBoundingClientRect(); return { r: r.height <= st.height + 1 && r.width <= st.width + 1, natural: i.naturalHeight }; });
+    check(fit.r && fit.natural === 1800, "the viewer shows the whole picture");
+    // the editor: square crop, turn, a filter, save a copy
+    await p.click("#vEdit"); await p.waitForSelector(".editor .ed-cv"); await p.waitForTimeout(600);
+    await p.click('[data-aspect="1"]'); await p.click('[data-a="rotR"]'); await p.click('[data-tab="filters"]'); await p.click('[data-filter="mono"]'); await p.waitForTimeout(300);
+    await p.click('[data-a="undo"]'); await p.click('[data-a="redo"]');
+    await p.click('[data-a="save"]'); await p.click('.pop .mi:has-text("Save a copy")'); await p.waitForTimeout(1500);
+    const saved = await p.evaluate(async () => { const pics = await (await import("/core/photos.js")).listPics(); const e = pics.find(x => /edited/.test(x.name)); if (!e) return null; const b = await createImageBitmap(e.blob); return { name: e.name, w: b.width, h: b.height }; });
+    check(!!saved && saved.w === saved.h && saved.w === 600 && !(await p.$(".editor")), `the editor saves a cropped copy (${saved && saved.name}, ${saved && saved.w}×${saved && saved.h})`);
+    // Video: open a clip, play, and it remembers where it got to
+    await p.goto(URL + "apps/about/");
+    const b64 = await p.evaluate(async () => {
+      const c = document.createElement("canvas"); c.width = 320; c.height = 180; const g = c.getContext("2d"); let n = 0; const tick = setInterval(() => { g.fillStyle = `hsl(${n++ * 9},70%,50%)`; g.fillRect(0, 0, 320, 180); }, 33);
+      const ac = new AudioContext(), o = ac.createOscillator(), d = ac.createMediaStreamDestination(); o.connect(d); o.start();
+      const mr = new MediaRecorder(new MediaStream([...c.captureStream(30).getVideoTracks(), ...d.stream.getAudioTracks()]), { mimeType: "video/webm" }), parts = [];
+      mr.ondataavailable = e => parts.push(e.data); mr.start(); await new Promise(r => setTimeout(r, 3000)); mr.stop(); await new Promise(r => { mr.onstop = r; }); clearInterval(tick);
+      const buf = new Uint8Array(await new Blob(parts).arrayBuffer()); let s = ""; for (let i = 0; i < buf.length; i += 8192) s += String.fromCharCode(...buf.subarray(i, i + 8192)); return btoa(s);
+    });
+    fs.writeFileSync(FX + "clip.webm", Buffer.from(b64, "base64"));
+    await desk(p); await p.click("#startBtn"); await p.click('.sm-item[data-app="video"]'); await p.waitForTimeout(1200);
+    const vf = p.frame({ url: /apps\/video/ });
+    const vc = p.waitForEvent("filechooser"); await vf.click("#open"); await (await vc).setFiles(FX + "clip.webm"); await p.waitForTimeout(1500);
+    check(await vf.$eval("#v", v => !v.paused && v.currentTime > 0) && /clip\.webm/.test(await vf.$eval("#ttl", e => e.textContent)), "Video opens and plays a clip");
+    await vf.click("#v"); await p.waitForTimeout(300);
+    check(await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("neon-os:video-pos") || "{}")).some(k => k.startsWith("clip.webm"))), "Video remembers where it got to");
+    // Browser: a page in a tab, a second tab, a bookmark
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="browser"]'); await p.waitForTimeout(1200);
+    const bf = p.frame({ url: /apps\/browser/ });
+    await bf.fill("#startQ", "localhost:" + PORT + "/apps/help/"); await bf.press("#startQ", "Enter"); await p.waitForTimeout(1500);
+    check(!!p.frames().find(f => /apps\/help/.test(f.url()) && f.parentFrame() && /browser/.test(f.parentFrame().url())) && await bf.$eval("#start", e => e.hidden), "Browser opens a page in a tab");
+    check((await bf.$eval("#addr", e => e.value)).startsWith("https://localhost") || (await bf.$eval("#addr", e => e.value)).includes("localhost"), "the address bar shows the page");
+    await bf.click("#newtab"); await p.waitForTimeout(200);
+    check((await bf.$$eval(".tab", e => e.length)) === 2 && !(await bf.$eval("#start", e => e.hidden)), "a new tab shows the start page");
+    await bf.fill("#startQ", "neon orbit"); await bf.press("#startQ", "Enter"); await p.waitForTimeout(300);
+    check((await bf.$eval("#addr", e => e.value)).startsWith("https://duckduckgo.com/?q=neon%20orbit"), "words in the address bar search the web");
+    // selecting desktop icons with a box, and opening them together
+    await p.keyboard.press("Control+Alt+KeyD"); await p.waitForTimeout(400);
+    await p.mouse.move(400, 20); await p.mouse.down(); await p.mouse.move(250, 100, { steps: 4 }); await p.mouse.move(20, 190, { steps: 4 }); await p.mouse.up();
+    const sel = await p.$$eval(".dicon.sel", e => e.map(x => x.dataset.app));
+    check(sel.length >= 3, `dragging a box selects icons (${sel.join(", ")})`);
+    await p.click("#desktop", { position: { x: 600, y: 500 } }); await p.waitForTimeout(100);
+    check(!(await p.$(".dicon.sel")), "clicking the empty desktop clears the selection");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "the orb: presets, live input and recording video"() {
     const p = await page({ permissions: ["microphone"] }); await desk(p); await amp(p, ["song.wav"]);
     await p.click("#lookBtn"); await p.waitForTimeout(200);
@@ -152,7 +203,8 @@ const tests = {
     check(S.look.balls === 24 && Math.abs(S.chaos - 0.4) < 1e-6 && (await p.$eval("#lkBallsV", e => e.textContent)) === "24" && (await p.$eval("#chaosPct", e => e.textContent)) === "40%", "a preset sets balls, chaos and their numbers");
     await p.focus("#lkTrail"); await p.keyboard.press("ArrowRight"); await p.waitForTimeout(400);
     S = await st(); check(S.lookName === "" && (await p.$eval("#lookPreset", e => e.value)) === "", "changing a setting turns it into Custom");
-    await p.click("#lookSave"); await p.waitForSelector(".dialog input"); await p.fill(".dialog input", "Mine"); await p.keyboard.press("Enter"); await p.waitForTimeout(300);
+    await p.click("#lookSave"); await p.waitForSelector(".dialog input"); await p.fill(".dialog input", "Mine"); await p.keyboard.press("Enter");
+    await p.waitForFunction(() => (JSON.parse(localStorage.getItem("neon-orbit-amp") || "{}").lookPresets || []).length > 0, null, { timeout: 5000 }).catch(() => {});
     S = await st(); check(S.lookPresets.some(x => x.name === "Mine") && S.lookName === "Mine", "Save as keeps your own preset");
     await p.click("#lookX"); check(await p.$eval("#visLook", e => e.hidden), "the Look panel's X closes it");
     // live input (the test browser's fake microphone beeps)
@@ -185,7 +237,8 @@ const tests = {
     check(!(await p.$eval("#updBtn", e => e.hidden)) && /update ready/.test(await p.evaluate(() => localStorage.getItem("neon-os:notices"))), "a downloaded update shows Restart to update and a notice");
     await p.click("#updBtn"); await p.waitForTimeout(600);
     check(await p.evaluate(() => window.__restarted), "Restart to update restarts the app");
-    await p.click("#startBtn"); await p.click('.sm-item[data-app="about"]'); await p.waitForTimeout(1200);
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="about"]');
+    await p.waitForFunction(() => { const f = document.querySelector('[data-wid="about"] iframe'); return f && f.contentDocument && /DESKTOP APP/.test((f.contentDocument.getElementById("updVer") || {}).textContent || ""); }, null, { timeout: 8000 }).catch(() => {});
     const af = p.frame({ url: /about/ });
     check(!(await af.$eval("#updBox", e => e.hidden)) && /DESKTOP APP 1.1.0/.test(await af.$eval("#updVer", e => e.textContent)), "About shows the desktop app and files versions");
     await af.click("#updCheck"); await p.waitForTimeout(400);

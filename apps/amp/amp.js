@@ -647,6 +647,7 @@ addEventListener("neonos:transport", e => {
   const a = e.detail;
   if (a === "toggle") { if (Eng.state === "playing") pause(); else play(); }
   else if (a === "next") next(false); else if (a === "prev") prev(); else if (a === "stop") stop();
+  else if (a === "pause") { if (Eng.state === "playing") pause(); }
 });
 $("bigTime").addEventListener("click", () => { S.remain = !S.remain; $("bigTime").setAttribute("aria-label", S.remain ? "Time remaining" : "Elapsed time"); $("bigTime").title = S.remain ? "Show elapsed time" : "Show time remaining"; save(); });
 $("bigTime").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("bigTime").click(); } });

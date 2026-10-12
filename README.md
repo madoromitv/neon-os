@@ -15,6 +15,7 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Desktop:** drag icons to move them (drop on another to swap); choose the wallpaper (orb, haze, plain or your own picture, which fits the screen, fills it, stretches or sits in the centre) and which icons show in Settings
 - **Install:** in Chrome or Edge, **Install Neon OS** in the start menu or Settings gives it its own window and icon. Installed or not, it opens and runs with no connection once it has loaded once. Installed, it opens music files from your file explorer (Open with → Neon OS), its icon's right-click menu has shortcuts to Amp, Search, Pulse and Settings, and the title bar folds into a thin strip with Search
 - **Desktop app:** a download for Windows, macOS and Linux is on the [Releases page](https://github.com/madoromitv/neon-os/releases), built by GitHub from `desktop/`. It registers as a player for MP3, FLAC, WAV, OGG, Opus, M4A and AAC, so double-clicking a song opens it in Amp. The installers aren't signed yet, so Windows shows "More info → Run anyway" and macOS needs a right-click → Open the first time. From desktop app 1.2 on, it keeps itself up to date: Neon OS's files download from the website in the background (each checked against `version.json`) and are used the next time it starts, with a **Restart to update** button by the bell. A new installer is only needed when the desktop app itself changes; About says when one is out
+- **Selecting icons:** drag a box on the empty desktop to select several icons (Ctrl- or Shift-click adds one), then drag one of them to move them all, press Enter or right-click to open them together
 - **Several desktops:** the numbers beside the Neon button switch desktop and + adds one (up to 4). Each app sits on one desktop; Ctrl+Alt+[ and ] move between them, Ctrl+Alt+Shift+[ and ] take the front app along, and a window's right-click menu moves it to any desktop. Opening an app that's on another desktop goes there
 - **Lock screen and screensaver:** Ctrl+Alt+L (or Lock in the start menu) shows the time, the date and what's playing with its controls. Set a PIN in Settings to keep casual hands off (it isn't encryption). After a spell with no mouse or keys (Settings: never to 1 hour, 10 minutes to start), the screensaver is the orb drifting over black; waking it asks for the PIN if one is set
 - **The Bin:** songs, playlists, notes and pictures you delete wait in the Bin for 30 days; put them back (a song returns to the playlists it was in) or delete them for good
@@ -46,7 +47,9 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 | Clock | The time, world clocks, alarms that repeat on chosen days, a timer and a stopwatch with laps; alarms and timers go off with Clock closed (and as system notifications when Neon OS is in the background) | Working |
 | Calendar | A month view with events and reminders (at the time, 5 minutes to a day before); reminders go off with Calendar closed | Working |
 | Calculator | Sums worked out properly (× and ÷ before + and −, brackets, %), from the keypad or keyboard, with history; Tempo turns a BPM (or tapped tempo) into note lengths in ms and Hz for delays and reverbs | Working |
-| Photos | Add pictures or link a folder of them (read in place); thumbnails with a size %, sorting, a viewer, a slideshow, and Set as wallpaper. Quick with thousands of pictures: previews are made once in background workers and kept, and only the rows on screen are drawn | Working |
+| Video | Videos from your computer (Open videos, drop them in, or open them from your file explorer) or a linked folder; seek, volume %, speed, loop, subtitles (.vtt or .srt), pop-out and full screen; each video carries on where you stopped, and Amp pauses while one plays | Working |
+| Browser | Tabs, an address bar that also searches (DuckDuckGo, Google, Bing, Startpage or Wikipedia), back and forward, bookmarks and a start page. In the desktop app every site works and links that open a new window become tabs; on the website, only sites that allow being shown inside another page do (the rest open outside) | Working |
+| Photos | The viewer always shows the whole picture. **Edit** crops (free or a fixed shape), turns, flips, straightens, and sets light, contrast, colour, warmth and a vignette, with filters (Neon tints in the orb colour); save a copy, replace the original (it goes to the Bin), save as, or set as wallpaper. Add pictures or link a folder of them (read in place); thumbnails with a size %, sorting, a viewer, a slideshow, and Set as wallpaper. Quick with thousands of pictures: previews are made once in background workers and kept, and only the rows on screen are drawn | Working |
 | System monitor | Open apps with how long they've been open and any errors, with Show, Restart and Close; memory, storage and how quickly the desktop responds; how many songs, playlists, notes, events, alarms and pictures are stored | Working |
 | Bin | Everything deleted in the last 30 days, by kind; put back, delete for good, or empty | Working |
 | Settings | Orb colour for every app at once, wallpaper and desktop icons, high contrast and reduce motion, screensaver and lock screen PIN, library protection and install, backup and restore, layout reset, where to save | Working |
@@ -127,7 +130,9 @@ apps/
   clock/       clock, alarms, timer, stopwatch
   calendar/    calendar
   calculator/  calculator and tempo maths
-  photos/      pictures
+  photos/      pictures, and editor.js, the picture editor
+  video/       videos
+  browser/     the web browser
   monitor/     System monitor
   bin/         the Bin
   settings/    settings

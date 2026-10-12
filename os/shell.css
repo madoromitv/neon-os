@@ -19,7 +19,8 @@ body { overflow: hidden; user-select: none; }
   background: linear-gradient(180deg, #423c57, #26222f); box-shadow: inset 1px 1px 0 #6a6286, inset -1px -1px 0 #17141f, 0 6px 16px -8px #000; color: var(--ball); }
 .dicon .tile svg { width: 20px; height: 20px; filter: drop-shadow(0 0 4px var(--ball-dim)); }
 .dicon:hover, .dicon:focus-visible { background: #ffffff0d; outline: none; }
-.dicon.sel { background: var(--sel); }
+.dicon.sel { background: var(--sel); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ball) 45%, transparent); }
+.marquee { position: absolute; z-index: 4; border: 1px solid var(--ball); background: color-mix(in srgb, var(--ball) 12%, transparent); box-shadow: 0 0 10px var(--ball-dim); pointer-events: none; border-radius: 1px; }
 
 /* windows */
 .owin { position: absolute; min-width: 260px; min-height: 140px; }

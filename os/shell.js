@@ -108,7 +108,7 @@ function taskAct(appId, act) {
   if (act === "close") { closeApp(appId); return true; }
   if (act === "restart" && !app.native) {
     const fr = els[appId] && els[appId].querySelector("iframe"); if (!fr) return false;
-    taskInfo[appId] = { since: Date.now(), errors: 0 }; fr.src = app.url; return true;
+    taskInfo[appId] = { since: Date.now(), errors: 0 }; appReady.delete(appId); fr.src = app.url; return true;
   }
   return false;
 }
@@ -311,7 +311,7 @@ function restoreGroup(appId) {
   if (ks.length) focus(ks[ks.length - 1]);
 }
 function toggleMax(wid) { const st = wins[wid]; st.snap = st.snap ? null : "max"; render(wid); saveLayout(); }
-function closeFramed(wid) { sfx.close(); els[wid].remove(); delete els[wid]; delete wins[wid]; const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
+function closeFramed(wid) { appReady.delete(wid); sfx.close(); els[wid].remove(); delete els[wid]; delete wins[wid]; const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
 function keepInView(st, el) {
   // windows keep their size when the browser gets smaller: the desktop scrolls to reach anything past the edge
   void el; st.w = Math.max(260, st.w); if (!st.autoH) st.h = Math.max(140, st.h);
@@ -514,6 +514,11 @@ addEventListener("message", async e => {
   if (d.neonOs === "open" && appById(d.app)) { openApp(d.app); return; } // an app opens another (Tape's edit buttons)
   if (d.neonOs === "welcome") { showWelcome(); return; }
   if (d.neonOs === "lock") { doAction("lock"); return; }
+  if (d.neonOs === "pause-music") { if (mounted.has("amp") && !closed.has("amp")) dispatchEvent(new CustomEvent("neonos:transport", { detail: "pause" })); return; }
+  if (d.neonOs === "ready" && appById(d.app)) { // a framed app is listening: hand over anything waiting for it
+    appReady.add(d.app); const q = forApp[d.app] || []; delete forApp[d.app];
+    for (const m of q) e.source.postMessage(m, location.origin); return;
+  }
   if (d.neonOs === "saver") { closeMenu(); closeTray(); closeNotices(); lockApi.saver(); return; }
   if (d.neonOs === "tasks") { e.source.postMessage({ neonOsTasks: taskList(), lag: Math.round(lagMax), memory: performance.memory ? { used: performance.memory.usedJSHeapSize, limit: performance.memory.jsHeapSizeLimit } : null }, location.origin); return; }
   if (d.neonOs === "task" && d.app) { const ok = taskAct(d.app, d.act); e.source.postMessage({ neonOsTasks: taskList(), done: ok ? d.act : null }, location.origin); return; }
@@ -781,48 +786,97 @@ let iconsKey = "";
 function renderIcons() {
   const place = layoutIcons();
   iconsKey = JSON.stringify([...hiddenIcons()]) + iconRows();
-  $("icons").innerHTML = deskApps().map(a => `<button class="dicon" data-app="${esc(a.id)}" title="Open ${esc(a.name)}" style="left:${IP + place[a.id].c * CW}px;top:${IP + place[a.id].r * CH}px"><span class="tile">${svg(a.icon)}</span>${esc(a.name)}</button>`).join("");
+  $("icons").innerHTML = deskApps().map(a => `<button class="dicon${selIcons.has(a.id) ? " sel" : ""}" data-app="${esc(a.id)}" title="Open ${esc(a.name)}" style="left:${IP + place[a.id].c * CW}px;top:${IP + place[a.id].r * CH}px"><span class="tile">${svg(a.icon)}</span>${esc(a.name)}</button>`).join("");
 }
 function hideIcon(id) { const h = hiddenIcons(); h.add(id); setTheme({ deskHide: [...h] }); renderIcons(); }
 function arrangeIcons() { iconPos = {}; saveIcons(); renderIcons(); }
 let iconDragged = false;
+// selected icons: click one, Ctrl- or Shift-click to add, or drag a box on the empty desktop around several
+const selIcons = new Set();
+function setIconSel(ids) {
+  selIcons.clear(); for (const id of ids) selIcons.add(id);
+  document.querySelectorAll(".dicon").forEach(x => x.classList.toggle("sel", selIcons.has(x.dataset.app)));
+}
 $("icons").addEventListener("pointerdown", e => {
   const b = e.target.closest(".dicon"); if (!b || e.button !== 0) return;
-  const sx = e.clientX, sy = e.clientY, x0 = b.offsetLeft, y0 = b.offsetTop; let moving = false;
+  const id0 = b.dataset.app;
+  // dragging a selected icon carries the whole selection
+  const group = selIcons.has(id0) && selIcons.size > 1 && !e.ctrlKey && !e.metaKey && !e.shiftKey ? [...selIcons] : [id0];
+  const els0 = group.map(id => $("icons").querySelector(`[data-app="${CSS.escape(id)}"]`)).filter(Boolean);
+  const start = els0.map(el => ({ el, x: el.offsetLeft, y: el.offsetTop }));
+  const sx = e.clientX, sy = e.clientY; let moving = false;
   const move = ev => {
-    if (!moving) { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return; moving = true; b.classList.add("lifting"); document.body.classList.add("dragging"); }
-    b.style.left = Math.max(0, x0 + ev.clientX - sx) + "px"; b.style.top = Math.max(0, y0 + ev.clientY - sy) + "px";
+    if (!moving) { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return; moving = true; els0.forEach(el => el.classList.add("lifting")); document.body.classList.add("dragging"); }
+    const dx = Math.max(-Math.min(...start.map(q => q.x)), ev.clientX - sx), dy = Math.max(-Math.min(...start.map(q => q.y)), ev.clientY - sy);
+    for (const q of start) { q.el.style.left = q.x + dx + "px"; q.el.style.top = q.y + dy + "px"; }
   };
   const up = () => {
     removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up);
     if (!moving) return;
     iconDragged = true; setTimeout(() => { iconDragged = false; }, 300);
-    b.classList.remove("lifting"); document.body.classList.remove("dragging");
-    const place = layoutIcons(), id = b.dataset.app;
-    const c = Math.max(0, Math.round((b.offsetLeft - IP) / CW)), r = clamp(Math.round((b.offsetTop - IP) / CH), 0, iconRows() - 1);
-    const other = Object.keys(place).find(k => k !== id && place[k].c === c && place[k].r === r);
-    iconPos = { ...place }; if (other) iconPos[other] = place[id]; iconPos[id] = { c, r };
+    els0.forEach(el => el.classList.remove("lifting")); document.body.classList.remove("dragging");
+    const place = layoutIcons(), rows = iconRows();
+    if (group.length === 1) { // one icon: drop on another to swap
+      const c = Math.max(0, Math.round((b.offsetLeft - IP) / CW)), r = clamp(Math.round((b.offsetTop - IP) / CH), 0, rows - 1);
+      const other = Object.keys(place).find(k => k !== id0 && place[k].c === c && place[k].r === r);
+      iconPos = { ...place }; if (other) iconPos[other] = place[id0]; iconPos[id0] = { c, r };
+    } else { // several: they move together by the same number of cells; icons in the way find free cells
+      const dc = Math.round((b.offsetLeft - start.find(q => q.el === b).x) / CW), dr = Math.round((b.offsetTop - start.find(q => q.el === b).y) / CH);
+      const minC = Math.min(...group.map(k => place[k].c)), minR = Math.min(...group.map(k => place[k].r)), maxR = Math.max(...group.map(k => place[k].r));
+      const mc = Math.max(dc, -minC), mr = clamp(dr, -minR, rows - 1 - maxR);
+      const moved = {}; for (const k of group) moved[k] = { c: place[k].c + mc, r: place[k].r + mr };
+      const taken = new Set(Object.values(moved).map(q => q.c + "," + q.r));
+      iconPos = {}; for (const k in place) if (!group.includes(k) && !taken.has(place[k].c + "," + place[k].r)) iconPos[k] = place[k];
+      Object.assign(iconPos, moved);
+    }
     saveIcons(); renderIcons(); sfx.tick();
-    const nb = $("icons").querySelector(`[data-app="${CSS.escape(id)}"]`); if (nb) { nb.classList.add("sel"); nb.focus({ preventScroll: true }); }
+    setIconSel(group);
+    const nb = $("icons").querySelector(`[data-app="${CSS.escape(id0)}"]`); if (nb) nb.focus({ preventScroll: true });
   };
   addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", up);
 });
 renderIcons();
 $("icons").addEventListener("click", e => {
   const b = e.target.closest(".dicon"); if (!b || iconDragged) return;
-  document.querySelectorAll(".dicon").forEach(x => x.classList.toggle("sel", x === b));
-  if (e.detail >= 2 || matchMedia("(pointer: coarse)").matches) openApp(b.dataset.app);
+  const id = b.dataset.app;
+  if (e.ctrlKey || e.metaKey) { const s2 = new Set(selIcons); s2.has(id) ? s2.delete(id) : s2.add(id); setIconSel(s2); return; }
+  if (e.shiftKey) { setIconSel([...selIcons, id]); return; }
+  setIconSel([id]);
+  if (e.detail >= 2 || matchMedia("(pointer: coarse)").matches) openApp(id);
+});
+// a box dragged on the empty desktop selects every icon it touches (Ctrl or Shift keeps what was selected)
+desk.addEventListener("pointerdown", e => {
+  if (e.button !== 0 || compact || (e.target !== desk && e.target !== $("icons"))) return;
+  const keep = e.ctrlKey || e.metaKey || e.shiftKey ? new Set(selIcons) : new Set();
+  const r0 = desk.getBoundingClientRect(), ox = e.clientX - r0.left + desk.scrollLeft, oy = e.clientY - r0.top + desk.scrollTop;
+  let box = null;
+  const move = ev => {
+    const x = ev.clientX - r0.left + desk.scrollLeft, y = ev.clientY - r0.top + desk.scrollTop;
+    if (!box) { if (Math.hypot(x - ox, y - oy) < 5) return; box = document.createElement("div"); box.className = "marquee"; desk.appendChild(box); document.body.classList.add("dragging"); }
+    const L = Math.min(x, ox), T = Math.min(y, oy), Wd = Math.abs(x - ox), Ht = Math.abs(y - oy);
+    Object.assign(box.style, { left: L + "px", top: T + "px", width: Wd + "px", height: Ht + "px" });
+    const hit = new Set(keep);
+    document.querySelectorAll(".dicon").forEach(el => { const l = el.offsetLeft, t = el.offsetTop; if (l < L + Wd && l + el.offsetWidth > L && t < T + Ht && t + el.offsetHeight > T) hit.add(el.dataset.app); });
+    setIconSel(hit);
+  };
+  const up = () => {
+    removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up);
+    if (box) { box.remove(); document.body.classList.remove("dragging"); } else setIconSel(keep); // a plain click on the desktop clears it
+  };
+  addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", up);
 });
 $("icons").addEventListener("keydown", e => {
   const b = e.target.closest(".dicon"); if (!b) return;
-  if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); openApp(b.dataset.app); return; }
+  if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); const ids = selIcons.has(b.dataset.app) && selIcons.size > 1 ? [...selIcons] : [b.dataset.app]; ids.forEach(id => openApp(id)); return; }
+  if (e.key === "Escape") { setIconSel([]); return; }
+  if ((e.ctrlKey || e.metaKey) && e.code === "KeyA") { e.preventDefault(); setIconSel(deskApps().map(a => a.id)); return; }
   const d = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
   if (!d || e.ctrlKey || e.altKey) return;
   e.preventDefault();
   const place = layoutIcons(), p = place[b.dataset.app], best = Object.keys(place).filter(k => {
     const q = place[k]; return d[0] ? q.r === p.r && Math.sign(q.c - p.c) === d[0] : q.c === p.c && Math.sign(q.r - p.r) === d[1];
   }).sort((x, y) => Math.abs(place[x].c - p.c) + Math.abs(place[x].r - p.r) - Math.abs(place[y].c - p.c) - Math.abs(place[y].r - p.r))[0];
-  if (best) { const nb = $("icons").querySelector(`[data-app="${CSS.escape(best)}"]`); document.querySelectorAll(".dicon").forEach(x => x.classList.toggle("sel", x === nb)); nb.focus(); }
+  if (best) { const nb = $("icons").querySelector(`[data-app="${CSS.escape(best)}"]`); setIconSel(e.shiftKey ? [...selIcons, best] : [best]); nb.focus(); }
 });
 
 // ---------- right-click menus ----------
@@ -852,7 +906,10 @@ addEventListener("contextmenu", e => {
   const icon = e.target.closest(".dicon"), task = e.target.closest(".task"), tb = e.target.closest(".owin > .titlebar");
   if (icon) {
     e.preventDefault(); const a = appById(icon.dataset.app);
-    popMenu(null, [{ text: `Open ${a.name}`, key: "Enter", run: () => openApp(a.id) }, { text: "Remove from desktop", run: () => hideIcon(a.id) }, "-", { label: a.desc }], at);
+    if (selIcons.has(a.id) && selIcons.size > 1) { // several selected: act on them all
+      const ids = [...selIcons];
+      popMenu(null, [{ text: `Open ${ids.length} apps`, key: "Enter", run: () => ids.forEach(id => openApp(id)) }, { text: `Remove ${ids.length} from desktop`, run: () => { const h = hiddenIcons(); ids.forEach(id => h.add(id)); setTheme({ deskHide: [...h] }); setIconSel([]); renderIcons(); } }], at);
+    } else { setIconSel([a.id]); popMenu(null, [{ text: `Open ${a.name}`, key: "Enter", run: () => openApp(a.id) }, { text: "Remove from desktop", run: () => hideIcon(a.id) }, "-", { label: a.desc }], at); }
   } else if (task) {
     e.preventDefault(); const k = task.dataset.app, a = appById(k), anyMin = appWins(k).some(w => wins[w].min);
     popMenu(null, [
@@ -1021,6 +1078,9 @@ initSearch({
     { title: "Add an event", sub: "Calendar", words: ["event", "reminder", "appointment", "date"], run: () => openApp("calendar") },
     { title: "Tempo and note lengths", sub: "Calculator", words: ["bpm", "delay time", "ms", "tap tempo"], run: () => openApp("calculator") },
     { title: "Set a picture as the wallpaper", sub: "Photos", words: ["wallpaper", "background", "picture", "photo"], run: () => openApp("photos") },
+    { title: "Browse the web", sub: "Browser", words: ["internet", "web", "website", "browser", "google", "search the web"], run: () => openApp("browser") },
+    { title: "Watch a video", sub: "Video", words: ["video", "movie", "film", "mp4", "player", "subtitles"], run: () => openApp("video") },
+    { title: "Edit a picture", sub: "Photos", words: ["crop", "rotate", "edit photo", "filter", "photo editor"], run: () => openApp("photos") },
     { title: "Put back something deleted", sub: "Bin", words: ["undelete", "restore", "trash", "recycle", "deleted"], run: () => openApp("bin") },
     { title: "Close a stuck app", sub: "System monitor", words: ["task manager", "frozen", "not responding", "memory", "kill"], run: () => openApp("monitor") },
     { title: "Lock the screen", sub: "Ctrl+Alt+L", words: ["lock", "away", "pin", "password"], run: () => doAction("lock") },
@@ -1049,15 +1109,29 @@ if (navigator.windowControlsOverlay) navigator.windowControlsOverlay.addEventLis
 }
 // songs opened from the computer: double-clicked or "Open with Neon OS" in the file explorer (installed app),
 // or handed over by the desktop app. Amp plays them, adding any that aren't in the library yet.
+// music goes to Amp, videos to Video (handed over once Video says it's ready)
+const isVideo = f => /^video\//.test(f.type || "") || /\.(mp4|m4v|webm|mkv|mov|ogv|avi)$/i.test(f.name || "");
+const appReady = new Set(), forApp = {};
+function sendTo(appId, msg) {
+  const fr = els[appId] && els[appId].querySelector("iframe");
+  if (fr && appReady.has(appId)) fr.contentWindow.postMessage(msg, location.origin); else (forApp[appId] = forApp[appId] || []).push(msg);
+}
 async function openFiles(files) {
   files = files.filter(Boolean); if (!files.length) return;
-  await openApp("amp");
-  setTimeout(() => dispatchEvent(new CustomEvent("neonos:open-files", { detail: { files } })), 300);
+  const videos = files.filter(isVideo), songs = files.filter(f => !isVideo(f));
+  if (videos.length) { await openApp("video"); sendTo("video", { neonOsVideos: videos }); }
+  if (songs.length) { await openApp("amp"); setTimeout(() => dispatchEvent(new CustomEvent("neonos:open-files", { detail: { files: songs } })), 300); }
 }
 if ("launchQueue" in window) launchQueue.setConsumer(async params => {
   if (params.files && params.files.length) openFiles(await Promise.all(params.files.map(h => h.getFile().catch(() => null))));
 });
-if (window.neonOsDesktop) window.neonOsDesktop.onOpenFiles(list => openFiles(list.map(f => new File([f.data], f.name, { type: f.type || "" }))));
+// from the desktop app: songs arrive as their bytes, videos as a link the app serves (they can be huge)
+if (window.neonOsDesktop) window.neonOsDesktop.onOpenFiles(list => openFiles(list.map(f => f.url ? { name: f.name, type: f.type || "", size: f.size || 0, url: f.url } : new File([f.data], f.name, { type: f.type || "" }))));
+// the Browser app in the desktop app: where each tab got to, and links that open new windows (as Browser tabs)
+if (window.neonOsDesktop && window.neonOsDesktop.onFrameNav) {
+  window.neonOsDesktop.onFrameNav(d => { const fr = els.browser && els.browser.querySelector("iframe"); if (fr) fr.contentWindow.postMessage({ neonOsFrameNav: d }, location.origin); });
+  window.neonOsDesktop.onOpenUrl(async url => { await openApp("browser"); sendTo("browser", { neonOsBrowserOpen: url }); });
+}
 // desktop app updates (desktop/updater.js): new files are downloaded in the background; restarting uses them
 if (window.neonOsDesktop && window.neonOsDesktop.onUpdate) {
   let told = "";

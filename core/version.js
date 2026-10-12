@@ -1,8 +1,15 @@
 // Neon OS core: version and what's new
 // Bump VERSION and add an entry at the top of CHANGES with each update people should hear about:
 // the desktop shows "What's new" once, the next time Neon OS opens, and About lists them all.
-export const VERSION = "1.2";
+export const VERSION = "1.3";
 export const CHANGES = [
+  { v: "1.3", date: "2026-10-12", items: [
+    "Video: watch videos from your computer or a linked folder, with subtitles, speed, loop and pop-out; each one carries on where you stopped",
+    "Browser: the web with tabs, bookmarks and a start page (every site works in the desktop app; on the website, sites that allow it)",
+    "Photos: the viewer always shows the whole picture, and Edit crops, turns, flips, straightens and adjusts light and colour, with filters",
+    "Drag a box on the desktop to select icons, then move or open them together",
+    "In the desktop app, videos open from your file explorer, and links that open a new window become Browser tabs",
+  ] },
   { v: "1.2", date: "2026-10-12", items: [
     "The orb's Look: presets (Orbit, Calm, Storm, Halo, Comet) and your own, with the number of balls, trail, size, glow and spin",
     "Live: the orb dances to a microphone, line-in or mixer, following the tempo it hears (right-click Live to pick the input)",

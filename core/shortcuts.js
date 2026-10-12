@@ -12,6 +12,7 @@ export const SHORTCUTS = [
     ["Ctrl+Alt+D", "Show the desktop (press again to bring the windows back)"],
     ["Ctrl+Alt+1 … 9", "Open an app, in start menu order"],
     ["Alt + drag", "Place a window freely, without docking"],
+    ["Drag on the desktop", "Select icons with a box; Ctrl- or Shift-click adds one; drag a selected icon to move them all; Enter opens them"],
     ["Ctrl+Alt+[ / ]", "Go to the desktop before or after"],
     ["Ctrl+Alt+Shift+[ / ]", "Take the front app to the desktop before or after"],
   ] },
