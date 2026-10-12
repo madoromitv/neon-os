@@ -12,11 +12,14 @@ export const SHORTCUTS = [
     ["Ctrl+Alt+D", "Show the desktop (press again to bring the windows back)"],
     ["Ctrl+Alt+1 … 9", "Open an app, in start menu order"],
     ["Alt + drag", "Place a window freely, without docking"],
+    ["Ctrl+Alt+[ / ]", "Go to the desktop before or after"],
+    ["Ctrl+Alt+Shift+[ / ]", "Take the front app to the desktop before or after"],
   ] },
   { group: "Desktop", items: [
     ["Ctrl+K or Ctrl+Space", "Search everywhere: apps, songs, artists, albums, playlists and settings"],
     ["Ctrl+Alt+Space", "Open the start menu"],
     ["Ctrl+Alt+N", "Open notifications"],
+    ["Ctrl+Alt+L", "Lock the screen"],
     ["? or F1", "Show this list"],
     ["Esc", "Close a menu, a pop-up or the app switcher"],
   ] },
@@ -41,7 +44,7 @@ export const SHORTCUTS = [
 ];
 
 const editable = t => !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ""));
-const CODES = { KeyW: "close", KeyM: "minimise", KeyD: "desktop", Space: "start", KeyP: "toggle", Period: "next", Comma: "prev", KeyN: "notices", Slash: "help" };
+const CODES = { KeyW: "close", KeyM: "minimise", KeyD: "desktop", Space: "start", KeyP: "toggle", Period: "next", Comma: "prev", KeyN: "notices", Slash: "help", KeyL: "lock" };
 
 // The desktop action a key press asks for, or null.
 export function osAction(e) {
@@ -51,6 +54,7 @@ export function osAction(e) {
   if (e.ctrlKey && e.altKey) {
     if (e.key && e.key.startsWith("Arrow")) return "snap:" + e.key;
     if (/^Digit[1-9]$/.test(e.code)) return "open:" + (+e.code.slice(5) - 1);
+    if (e.code === "BracketLeft" || e.code === "BracketRight") return (e.shiftKey ? "move-" : "desk-") + (e.code === "BracketRight" ? "next" : "prev");
     return CODES[e.code] || null;
   }
   if (e.key === "F1") return "help";

@@ -54,7 +54,6 @@
   <div class="warn" id="warn" hidden><span id="warnTxt"></span><button class="btn mini" id="reconnect">Reconnect</button></div>
   <div class="grid" id="grid" role="list" aria-label="Pictures"></div>
   <p class="empty" id="empty" hidden></p>
-  <input type="file" id="fileIn" accept="image/*" multiple hidden>
 
   <div class="viewer" id="viewer" hidden role="dialog" aria-label="Picture">
     <div class="top"><strong id="vName"></strong><span class="lcd" id="vPos" style="font-size:18px;line-height:24px;padding:0 8px"></span><button class="btn" id="vClose" aria-label="Close">✕</button></div>
@@ -75,6 +74,7 @@
     import { setWallImage } from "../../core/desk.js";
     import { binPut, onBinChange } from "../../core/bin.js";
     import { notify } from "../../core/notify.js";
+    import { pickFiles } from "../../core/picker.js";
     applyTheme(); onTheme(applyTheme);
     const $ = id => document.getElementById(id), KEY = "neon-os:photos";
     let S = { src: "all", sort: "new", size: 1, speed: 5 };
@@ -138,14 +138,13 @@
     $("sizePct").textContent = Math.round(S.size * 100) + "%";
     $("src").addEventListener("change", () => { S.src = $("src").value; save(); drawSources(); draw(); });
     $("sort").addEventListener("change", () => { S.sort = $("sort").value; save(); draw(); });
-    $("add").addEventListener("click", () => $("fileIn").click());
+    $("add").addEventListener("click", async () => addFiles(await pickFiles({ accept: "image/*", multiple: true })));
     async function addFiles(files) {
       const imgs = [...files].filter(f => f.type.startsWith("image/") || IMAGE_EXT.test(f.name)); let n = 0;
       for (const f of imgs) { try { await addPic(f); n++; } catch (e) {} }
       if (n) { toast(n === 1 ? `Added ${imgs[0].name}` : `Added ${n} pictures`); if (S.src !== "all" && S.src !== "added") { S.src = "added"; save(); } load(); }
       else if (files.length) toast("Those aren't pictures.", true);
     }
-    $("fileIn").addEventListener("change", e => { const f = e.target.files; addFiles(f).then(() => { e.target.value = ""; }); });
     addEventListener("dragover", e => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); document.body.classList.add("drop"); } });
     addEventListener("dragleave", e => { if (!e.relatedTarget) document.body.classList.remove("drop"); });
     addEventListener("drop", e => { e.preventDefault(); document.body.classList.remove("drop"); addFiles(e.dataTransfer.files); });

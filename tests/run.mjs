@@ -104,6 +104,10 @@ const tests = {
     await p.goto(URL + "apps/notes/"); await p.waitForTimeout(400);
     await p.click("#newNote"); await p.keyboard.type("Shopping list\nmilk"); await p.waitForTimeout(500);
     check((await p.$$eval("#notes strong", e => e.map(x => x.textContent))).includes("Shopping list"), "Notes titles a note by its first line");
+    fs.writeFileSync(FX + "Ideas.txt", "one\ntwo");
+    const ch2 = p.waitForEvent("filechooser"); await p.click("#open"); await (await ch2).setFiles(FX + "Ideas.txt"); await p.waitForTimeout(500);
+    check((await p.$eval("#pad", e => e.value)) === "Ideas\none\ntwo", "Notes opens a text file as a note (the shared picker)");
+    await p.click('#notes [data-id] strong:text("Shopping list")'); await p.waitForTimeout(200);
     await p.click("#del"); await p.waitForTimeout(600);
     await p.goto(URL + "apps/bin/"); await p.waitForTimeout(600);
     check((await p.$$eval(".bin strong", e => e.map(x => x.textContent))).includes("Shopping list"), "a deleted note is in the Bin");
@@ -126,13 +130,58 @@ const tests = {
     // photos: add a picture, view it, make it the wallpaper
     await p.screenshot({ path: FX + "pic.png", clip: { x: 0, y: 0, width: 64, height: 48 } });
     await p.goto(URL + "apps/photos/"); await p.waitForTimeout(500);
-    await p.setInputFiles("#fileIn", FX + "pic.png"); await p.waitForTimeout(1200);
+    const chooser = p.waitForEvent("filechooser"); await p.click("#add"); await (await chooser).setFiles(FX + "pic.png"); await p.waitForTimeout(1200);
     check((await p.$$eval(".pic", e => e.length)) === 1, "Photos adds a picture");
     await p.click(".pic"); await p.waitForTimeout(500); check(await p.$eval("#viewer", e => !e.hidden), "Photos opens the viewer");
     await p.click("#vWall"); await p.waitForTimeout(600);
     check(await p.evaluate(async () => JSON.parse(localStorage.getItem("neon-os:theme")).wall === "image" && !!(await (await import("/core/desk.js")).getWallImage())), "Photos sets the wallpaper");
     await p.click("#vDel"); await p.waitForTimeout(600);
     check((await p.$$eval(".pic", e => e.length)) === 0 && (await p.evaluate(async () => (await (await import("/core/bin.js")).binList()).some(i => i.kind === "photo"))), "a removed picture goes to the Bin");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
+  async "several desktops, lock screen and screensaver"() {
+    const p = await page(); await desk(p);
+    await p.keyboard.press("Control+Alt+Digit2"); await p.waitForSelector('[data-wid="files"]');
+    check((await p.$$eval("#desks .dsk", e => e.map(x => x.textContent))).join() === "1,+", "one desktop to start, with +");
+    await p.click('#desks [data-desk="add"]'); await p.waitForTimeout(300);
+    check(await p.$eval('[data-wid="files"]', e => getComputedStyle(e).display === "none") && !(await p.$(".task")), "a new desktop is empty");
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="notes"]'); await p.waitForTimeout(800);
+    check((await p.$$eval(".task", e => e.map(x => x.dataset.app))).join() === "notes", "an app opens on the current desktop");
+    await p.keyboard.press("Control+Alt+BracketLeft"); await p.waitForTimeout(300);
+    check((await p.$$eval(".task", e => e.map(x => x.dataset.app))).join() === "files" && await p.$eval('[data-wid="notes"]', e => getComputedStyle(e).display === "none"), "Ctrl+Alt+[ goes back to desktop 1");
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="notes"]'); await p.waitForTimeout(400);
+    check(await p.$eval('#desks [data-desk="1"]', e => e.classList.contains("on")), "opening an app on another desktop goes there");
+    await p.click('[data-wid="notes"] .titlebar', { button: "right", position: { x: 60, y: 8 } }); await p.waitForTimeout(200);
+    await p.click('.pop .mi:has-text("Move to desktop 1")'); await p.waitForTimeout(300);
+    check(!(await p.$(".task")), "the window menu moves an app to another desktop");
+    await p.reload(); await p.waitForTimeout(1500);
+    check(await p.evaluate(() => { const d = JSON.parse(localStorage.getItem("neon-os:layout")).desks; return d.n === 2 && d.of.notes === 0; }), "desktops are remembered");
+    // lock screen: no PIN opens with Enter
+    await p.keyboard.press("Control+Alt+KeyL"); await p.waitForTimeout(400);
+    check(await p.$eval(".lockscreen", e => e.classList.contains("on") && e.dataset.mode === "lock"), "Ctrl+Alt+L locks the screen");
+    await p.keyboard.press("Enter"); await p.waitForTimeout(300);
+    check(!(await p.$(".lockscreen.on")), "Enter unlocks without a PIN");
+    // with a PIN: wrong one refused, still locked after a reload, right one opens
+    await p.evaluate(async () => { const m = await import("/os/lock.js"); m.setLockConf({ pin: await m.hashPin("1234"), saverLock: true }); });
+    await p.keyboard.press("Control+Alt+KeyL"); await p.waitForTimeout(300);
+    await p.keyboard.type("0000"); await p.keyboard.press("Enter"); await p.waitForTimeout(300);
+    check(!!(await p.$(".lockscreen.on")) && /isn't right/.test(await p.$eval("#lkMsg", e => e.textContent)), "a wrong PIN is refused");
+    await p.reload(); await p.waitForTimeout(1500);
+    check(!!(await p.$(".lockscreen.on")), "still locked after a reload");
+    await p.keyboard.press("Control+Alt+Digit2"); await p.waitForTimeout(300);
+    check(!(await p.$('[data-wid="files"]:not(.offdesk)')) || !(await p.$(".task.front")), "shortcuts do nothing while locked");
+    await p.click("#lkPin"); await p.keyboard.type("1234"); await p.keyboard.press("Enter"); await p.waitForTimeout(400);
+    check(!(await p.$(".lockscreen.on")), "the right PIN unlocks");
+    // screensaver: the orb; moving the mouse asks for the PIN
+    await p.evaluate(() => postMessage({ neonOs: "saver" }, location.origin)); await p.waitForTimeout(400);
+    check(await p.$eval(".lockscreen", e => e.classList.contains("on") && e.dataset.mode === "saver"), "the screensaver starts");
+    await p.mouse.move(100, 100); await p.mouse.move(400, 400); await p.waitForTimeout(300);
+    check(await p.$eval(".lockscreen", e => e.dataset.mode === "lock"), "waking it asks for the PIN");
+    await p.keyboard.type("1234"); await p.keyboard.press("Enter"); await p.waitForTimeout(300);
+    await p.evaluate(async () => (await import("/os/lock.js")).setLockConf({ pin: null }));
+    await p.evaluate(() => postMessage({ neonOs: "saver" }, location.origin)); await p.waitForTimeout(300);
+    await p.mouse.move(100, 100); await p.mouse.move(400, 400); await p.waitForTimeout(300);
+    check(!(await p.$(".lockscreen.on")), "with no PIN, moving the mouse ends the screensaver");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
   async "desktop, shortcuts, switcher, notifications"() {

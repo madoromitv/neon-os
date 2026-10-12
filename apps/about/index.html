@@ -31,6 +31,7 @@
   <div class="row">
     <button class="btn" id="welcome">Show the welcome</button>
     <button class="btn" id="keys">Keyboard shortcuts</button>
+    <a class="btn" id="dl" target="_blank" rel="noopener" title="Installers for Windows, macOS and Linux">Desktop app</a>
     <a class="btn" id="repo" target="_blank" rel="noopener">Source code</a>
     <a class="btn" id="issue" target="_blank" rel="noopener">Report a problem</a>
   </div>
@@ -43,7 +44,7 @@
     applyTheme(); onTheme(applyTheme);
     const $ = id => document.getElementById(id);
     $("ver").textContent = `VERSION ${VERSION}`;
-    $("repo").href = REPO; $("issue").href = `${REPO}/issues/new`;
+    $("repo").href = REPO; $("dl").href = `${REPO}/releases/latest`; if (window.neonOsDesktop) $("dl").textContent = "Desktop app updates"; $("issue").href = `${REPO}/issues/new`;
     $("changes").innerHTML = CHANGES.map(c => `<div class="rel"><h3>Version ${esc(c.v)}<small>${esc(new Date(c.date).toLocaleDateString())}</small></h3><ul>${c.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>`).join("");
     const inOs = window.parent !== window;
     $("welcome").addEventListener("click", () => inOs ? parent.postMessage({ neonOs: "welcome" }, location.origin) : (location.href = "../../"));

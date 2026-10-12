@@ -186,7 +186,7 @@
         try { blob = await fileOf(t, true); } catch (e) { toast(e.code === "needs_permission" ? "Neon OS needs permission to read your music folder. Try again and choose Allow." : `Couldn't find ${t.title} in your linked folder.`, true); return; }
         name = `${[t.artist, t.title].filter(Boolean).join(" - ").replace(/[\\/:*?"<>|]+/g, "")}.${ext(t.mime).toLowerCase()}`;
       }
-      const { saveAs } = await import("../../core/wav.js"); await saveAs(blob, name);
+      const { saveAs } = await import("../../core/picker.js"); await saveAs(blob, name);
     });
     // details, cover art and tidying names (core/details.js)
     async function saveDetails(t, patch) {

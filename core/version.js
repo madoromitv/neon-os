@@ -1,8 +1,18 @@
 // Neon OS core: version and what's new
 // Bump VERSION and add an entry at the top of CHANGES with each update people should hear about:
 // the desktop shows "What's new" once, the next time Neon OS opens, and About lists them all.
-export const VERSION = "1.0";
+export const VERSION = "1.1";
 export const CHANGES = [
+  { v: "1.1", date: "2026-10-12", items: [
+    "A desktop app for Windows, macOS and Linux (About has the link), and the installed web app opens music files from your file explorer",
+    "New everyday apps: Clock (alarms, timer, stopwatch, world clocks), Calendar with reminders, Calculator with tempo maths, Photos, System monitor and the Bin",
+    "Notes has folders, search, Open and Export",
+    "Several desktops: the numbers by the Neon button, or Ctrl+Alt+[ and ]",
+    "A lock screen (Ctrl+Alt+L) with an optional PIN, and the orb as a screensaver (Settings)",
+    "Deleted songs, playlists, notes and pictures wait in the Bin for 30 days",
+    "Every app opens and saves files the same way, and can ask where to save (Settings)",
+    "The start menu is grouped into Music, Everyday and System",
+  ] },
   { v: "1.0", date: "2026-10-12", items: [
     "Sync your library through your music folder: the same playlists, favourites and play counts on every computer (Amp: Folders, then Sync)",
     "Search everywhere (Ctrl+Space): apps, songs, artists, albums, playlists and settings",

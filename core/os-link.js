@@ -7,6 +7,10 @@ if (window.parent !== window) {
     e.preventDefault(); e.stopPropagation();
     parent.postMessage({ neonOs: "key", act, key: e.key }, location.origin);
   }, true);
+  // the desktop's screensaver waits for a spell with no mouse or keys, including in here (at most one note every 2 s)
+  let lastPing = 0;
+  const ping = () => { const t = Date.now(); if (t - lastPing > 2000) { lastPing = t; parent.postMessage({ neonOs: "active" }, location.origin); } };
+  for (const ev of ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"]) addEventListener(ev, ping, { capture: true, passive: true });
   // the app switcher picks when Alt is let go
   addEventListener("keyup", e => { if (e.key === "Alt") parent.postMessage({ neonOs: "keyup", key: "Alt" }, location.origin); }, true);
 }

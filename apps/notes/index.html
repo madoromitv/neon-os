@@ -38,6 +38,7 @@
         <select id="moveTo" aria-label="Folder for this note"></select>
         <button class="btn" id="stamp" title="Add today's date">Stamp</button>
         <button class="btn" id="copy">Copy</button>
+        <button class="btn" id="open" title="Open text files as new notes">Open</button>
         <button class="btn" id="export" title="Save this note as a text file">Export</button>
         <button class="btn" id="del" title="Move this note to the Bin">Delete</button>
         <span class="lcd" id="state">SAVED</span>
@@ -94,9 +95,21 @@
       try { await navigator.clipboard.writeText(pad.value); e.target.textContent = "Copied"; } catch (err) { pad.select(); e.target.textContent = "Ctrl+C"; }
       setTimeout(() => e.target.textContent = "Copy", 1500);
     });
+    $("open").addEventListener("click", async () => {
+      const { pickFiles } = await import("../../core/picker.js");
+      const files = await pickFiles({ accept: ".txt,.md,.markdown,.text,text/plain,text/markdown", multiple: true }); let last = null;
+      for (const f of files) {
+        if (f.size > 2e6) { toast(`${f.name} is too big for a note.`, true); continue; }
+        let text = await f.text(); const name = f.name.replace(/\.[^.]+$/, "");
+        if (!text.trim().toLowerCase().startsWith(name.toLowerCase())) text = name + "\n" + text; // the file name becomes the title
+        const n = { id: "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), text, folder: folder || "", updated: f.lastModified || Date.now() };
+        NB.notes.push(n); last = n;
+      }
+      if (last) { open(last.id); toast(files.length === 1 ? `Opened ${files[0].name}` : `Opened ${files.length} files as notes`); }
+    });
     $("export").addEventListener("click", async () => {
       const n = note(); if (!n) return;
-      const { saveAs } = await import("../../core/wav.js");
+      const { saveAs } = await import("../../core/picker.js");
       await saveAs(new Blob([n.text], { type: "text/plain" }), `${noteTitle(n).replace(/[\\/:*?"<>|]+/g, "").slice(0, 60) || "note"}.txt`, { description: "Text file", accept: { "text/plain": [".txt"] } });
     });
     $("del").addEventListener("click", async () => {

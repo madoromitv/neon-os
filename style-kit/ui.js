@@ -17,7 +17,7 @@ export function dialog({ title, text, fields = [], confirm = "OK", danger = fals
     scrim.innerHTML = `<form class="win dialog lit" role="dialog" aria-modal="true" aria-labelledby="dlgT">
       <div class="titlebar"><span class="ttl" id="dlgT">${esc(title)}</span></div>
       <div class="wbody">${text ? `<p>${esc(text)}</p>` : ""}
-      ${fields.map((f, i) => `<label for="dlgF${i}"><span class="lbl">${esc(f.label)}</span><input id="dlgF${i}" type="text" maxlength="200" value="${esc(f.value || "")}"></label>`).join("")}
+      ${fields.map((f, i) => `<label for="dlgF${i}"><span class="lbl">${esc(f.label)}</span><input id="dlgF${i}" type="${f.type === "password" ? "password" : "text"}"${f.type === "password" ? ' inputmode="numeric" autocomplete="off"' : ""} maxlength="200" value="${esc(f.value || "")}"></label>`).join("")}
       <div class="acts">${cancel ? `<button type="button" class="btn" data-x>${esc(cancel)}</button>` : ""}<button type="submit" class="btn"${danger ? ' style="color:var(--danger)"' : ""}>${esc(confirm)}</button></div></div></form>`;
     const prev = document.activeElement;
     const close = v => { scrim.remove(); document.removeEventListener("keydown", onKey, true); if (prev && prev.focus) prev.focus(); resolve(v); };

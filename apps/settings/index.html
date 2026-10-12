@@ -66,6 +66,22 @@
     </div>
     <p>High contrast makes text brighter and edges and keyboard focus easier to see. Reduce motion stops the wallpaper moving and turns off slides and fades (it starts on if your system asks for less motion). Press ? anywhere for every keyboard shortcut.</p>
   </section>
+  <section class="group" aria-labelledby="lkLbl">
+    <span class="lbl" id="lkLbl">Lock screen and screensaver</span>
+    <div class="row"><span class="lbl">Screensaver after</span>
+      <select id="saverMin" aria-label="Start the screensaver after">
+        <option value="0">Never</option><option value="1">1 minute</option><option value="2">2 minutes</option><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option>
+      </select>
+      <button class="btn" id="saverTry">Preview</button>
+    </div>
+    <div class="row">
+      <button class="btn" id="pinSet">Set a PIN</button>
+      <button class="btn" id="pinOff" hidden>Remove PIN</button>
+      <button class="btn" id="saverLockT" aria-pressed="true"><i class="led"></i>PIN after the screensaver</button>
+      <button class="btn" id="lockNow">Lock now</button>
+    </div>
+    <p id="lkMsg">Ctrl+Alt+L locks the screen; the start menu has Lock too. Music keeps playing, with its controls on the lock screen. A PIN keeps casual hands off this desktop; it isn't encryption.</p>
+  </section>
   <section class="group" aria-labelledby="stLbl">
     <span class="lbl" id="stLbl">Storage and install</span>
     <div class="lcd stat" id="stStat">CHECKING STORAGE…</div>
@@ -198,6 +214,26 @@
     const syncBoot = t => bootBtn.setAttribute("aria-pressed", String(t.boot !== false));
     bootBtn.addEventListener("click", () => syncBoot(setTheme({ boot: getTheme().boot === false })));
     onTheme(syncBoot); syncBoot(getTheme());
+    // ---------- lock screen and screensaver (os/lock.js keeps these in neon-os:lock) ----------
+    import("../../os/lock.js").then(({ lockConf, setLockConf, hashPin, LOCK_KEY }) => {
+      const $l = id => document.getElementById(id);
+      const syncLk = () => { const c = lockConf(); $l("saverMin").value = String(c.saverMin); $l("pinSet").textContent = c.pin ? "Change PIN" : "Set a PIN"; $l("pinOff").hidden = !c.pin; $l("saverLockT").hidden = !c.pin; $l("saverLockT").setAttribute("aria-pressed", String(!!c.saverLock)); };
+      $l("saverMin").addEventListener("change", () => setLockConf({ saverMin: +$l("saverMin").value }));
+      $l("saverTry").addEventListener("click", () => parent !== window ? parent.postMessage({ neonOs: "saver" }, location.origin) : null);
+      $l("lockNow").addEventListener("click", () => parent !== window ? parent.postMessage({ neonOs: "lock" }, location.origin) : null);
+      $l("saverLockT").addEventListener("click", () => { setLockConf({ saverLock: !lockConf().saverLock }); syncLk(); });
+      $l("pinOff").addEventListener("click", async () => { const { dialog } = await import("../../style-kit/ui.js"); if (await dialog({ title: "Remove PIN", text: "The lock screen will open with a click or Enter.", confirm: "Remove PIN" })) { setLockConf({ pin: null }); syncLk(); } });
+      $l("pinSet").addEventListener("click", async () => {
+        const { dialog } = await import("../../style-kit/ui.js");
+        const r = await dialog({ title: lockConf().pin ? "Change PIN" : "Set a PIN", text: "4 to 12 digits.", fields: [{ label: "PIN", type: "password" }, { label: "Again", type: "password" }], confirm: "Save PIN" });
+        if (!r) return;
+        if (!/^\d{4,12}$/.test(r[0])) { $l("lkMsg").textContent = "A PIN is 4 to 12 digits. Nothing changed."; return; }
+        if (r[0] !== r[1]) { $l("lkMsg").textContent = "The two PINs didn't match. Nothing changed."; return; }
+        setLockConf({ pin: await hashPin(r[0]) }); syncLk(); $l("lkMsg").textContent = "PIN saved. Ctrl+Alt+L locks the screen.";
+      });
+      addEventListener("storage", e => { if (e.key === LOCK_KEY) syncLk(); });
+      syncLk();
+    });
     const askBtn = document.getElementById("askSaveT");
     const syncAsk = () => { let on = true; try { on = localStorage.getItem("neon-os:ask-save") !== "off"; } catch (e) {} askBtn.setAttribute("aria-pressed", String(on)); askBtn.hidden = !("showSaveFilePicker" in window); };
     askBtn.addEventListener("click", () => { const on = askBtn.getAttribute("aria-pressed") === "true"; try { localStorage.setItem("neon-os:ask-save", on ? "off" : "on"); } catch (e) {} syncAsk(); });
@@ -218,7 +254,7 @@
         catch (e) { $("libStat").textContent = "LIBRARY UNAVAILABLE"; }
       };
       $("backup").addEventListener("click", async () => {
-        const { saveTarget } = await import("../../core/wav.js");
+        const { saveTarget } = await import("../../core/picker.js");
         const target = await saveTarget(`neon-os-backup-${new Date().toISOString().slice(0, 10)}.neonos`, { description: "Neon OS backup", accept: { "application/octet-stream": [".neonos"] } });
         if (!target) return;
         $("backup").disabled = true; msg("Packing your library…");

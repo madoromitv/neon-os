@@ -13,7 +13,12 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Mini player:** while Amp has a song loaded, the taskbar shows it with previous, play/pause and next; click the title to bring Amp forward. Ctrl+Alt+P, Ctrl+Alt+. and Ctrl+Alt+, do the same from any app, and keyboard media keys work too
 - **Notifications:** finished imports, analysis, backups, restores and saved recordings show up above the tray and stay in the bell's list. Quiet keeps them in the list without popping up
 - **Desktop:** drag icons to move them (drop on another to swap); choose the wallpaper (orb, haze, plain or your own picture) and which icons show in Settings
-- **Install:** in Chrome or Edge, **Install Neon OS** in the start menu or Settings gives it its own window and icon. Installed or not, it opens and runs with no connection once it has loaded once
+- **Install:** in Chrome or Edge, **Install Neon OS** in the start menu or Settings gives it its own window and icon. Installed or not, it opens and runs with no connection once it has loaded once. Installed, it opens music files from your file explorer (Open with → Neon OS), its icon's right-click menu has shortcuts to Amp, Search, Pulse and Settings, and the title bar folds into a thin strip with Search
+- **Desktop app:** a download for Windows, macOS and Linux is on the [Releases page](https://github.com/madoromitv/neon-os/releases), built by GitHub from `desktop/`. It registers as a player for MP3, FLAC, WAV, OGG, Opus, M4A and AAC, so double-clicking a song opens it in Amp. The installers aren't signed yet, so Windows shows "More info → Run anyway" and macOS needs a right-click → Open the first time
+- **Several desktops:** the numbers beside the Neon button switch desktop and + adds one (up to 4). Each app sits on one desktop; Ctrl+Alt+[ and ] move between them, Ctrl+Alt+Shift+[ and ] take the front app along, and a window's right-click menu moves it to any desktop. Opening an app that's on another desktop goes there
+- **Lock screen and screensaver:** Ctrl+Alt+L (or Lock in the start menu) shows the time, the date and what's playing with its controls. Set a PIN in Settings to keep casual hands off (it isn't encryption). After a spell with no mouse or keys (Settings: never to 1 hour, 10 minutes to start), the screensaver is the orb drifting over black; waking it asks for the PIN if one is set
+- **The Bin:** songs, playlists, notes and pictures you delete wait in the Bin for 30 days; put them back (a song returns to the playlists it was in) or delete them for good
+- **Opening and saving files:** every app uses the same picker: the system's open dialog to bring files in, and for exports, recordings and backups the system's save dialog when **Ask where to save** is on in Settings (Chrome and Edge), otherwise straight to Downloads
 - **Search everywhere:** Ctrl+K (or Ctrl+Space) finds apps, songs, artists, albums, genres, playlists and settings; Enter opens or plays
 - **Sync between computers:** keep your music folder in Google Drive, Dropbox or OneDrive (or on a drive you carry), then in Amp choose Folders, then Sync this library. A small file, neon-os-library.json, keeps playlists, favourites, play counts, edited covers and Rack settings the same on every computer that links the folder; no account needed
 - **Welcome and About:** a short welcome on the first visit, What's new after each update, and About for the version and the list of changes
@@ -37,8 +42,14 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 | --- | --- | --- |
 | Amp | Music player with library, playlists, equalizer and the Neon Orbit visualiser; volume levelling (Level), gapless playback and crossfades of 3 to 12 seconds (Fade); edit details and cover art for several songs at once (Ctrl+I) and Tidy names to merge artists, albums and genres spelled more than one way; browse by artist, album and genre, smart playlists, favourites and play counts; stays quick with thousands of songs | Working |
 | Files | The same library sections as Amp (songs, artists, albums, genres, smart playlists, playlists) plus notes; play in Amp, favourite, download, edit details and cover art (several songs at once), tidy names, delete | Working |
-| Notes | Quick notes, saved in this browser | Working |
-| Settings | Orb colour for every app at once, wallpaper and desktop icons, high contrast and reduce motion, library protection and install, backup and restore, layout reset | Working |
+| Notes | Notes in folders with search; the first line is the title; open text files as notes, export one as a text file, stamp the date; deleted notes go to the Bin | Working |
+| Clock | The time, world clocks, alarms that repeat on chosen days, a timer and a stopwatch with laps; alarms and timers go off with Clock closed (and as system notifications when Neon OS is in the background) | Working |
+| Calendar | A month view with events and reminders (at the time, 5 minutes to a day before); reminders go off with Calendar closed | Working |
+| Calculator | Sums worked out properly (× and ÷ before + and −, brackets, %), from the keypad or keyboard, with history; Tempo turns a BPM (or tapped tempo) into note lengths in ms and Hz for delays and reverbs | Working |
+| Photos | Add pictures or link a folder of them (read in place); thumbnails with a size %, sorting, a viewer, a slideshow, and Set as wallpaper | Working |
+| System monitor | Open apps with how long they've been open and any errors, with Show, Restart and Close; memory, storage and how quickly the desktop responds; how many songs, playlists, notes, events, alarms and pictures are stored | Working |
+| Bin | Everything deleted in the last 30 days, by kind; put back, delete for good, or empty | Working |
+| Settings | Orb colour for every app at once, wallpaper and desktop icons, high contrast and reduce motion, screensaver and lock screen PIN, library protection and install, backup and restore, layout reset, where to save | Working |
 | Shortcuts | Every keyboard shortcut and mouse move, searchable (press ? anywhere) | Working |
 | Pulse | 16-step drum machine: 8 synthesised drums, 4 patterns, tempo, swing, accents, WAV export | Working |
 | Drift | Synth: 2 oscillators, filter, envelope, LFO, presets; on-screen, computer or MIDI keyboard; 16-step note sequencer | Working |
@@ -58,12 +69,14 @@ icons/       app icons (made by tools/make-icons.py)
 os/          the shell: window manager, taskbar, start menu, wallpaper, app switcher, mini player
   notices.js   notifications: pop-ups and the bell's list
   search.js    search everywhere (Ctrl+K)
+  lock.js      the lock screen and screensaver
 style-kit/   the look, shared by every app
   tokens.css   colours, fonts, glows (change the look here)
   base.css     page defaults
   chrome.css   windows, buttons, LEDs, LCD panels, sliders, menus, dialogs
   icons.js     icon paths
   ui.js        toasts, dialogs, menus, sliders
+  apps.css     tabs, lists, cards and forms for the everyday apps
   vlist.js     lists that only draw the rows on screen
   library.css  library sidebar and rows
 core/        shared engine, used by every app
@@ -94,6 +107,11 @@ core/        shared engine, used by every app
   version.js   the version number and What's new
   details.js   the details editor (several songs at once, cover art) and Tidy names, shared by Amp and Files
   loudness.js  measures each song's loudness for volume levelling
+  picker.js    the shared file picker: open (pickFiles) and save (saveTarget, saveAs)
+  bin.js       the Bin: deleted things kept for 30 days
+  notebook.js  notes and their folders
+  reminders.js alarms, the timer and calendar reminders; the desktop checks them every second
+  photos.js    pictures added to Photos and linked picture folders
 apps/
   registry.js  the list of apps the desktop shows
   amp/         the player
@@ -104,9 +122,16 @@ apps/
   chop/        sampler
   tape/        arranger
   notes/       notes
+  clock/       clock, alarms, timer, stopwatch
+  calendar/    calendar
+  calculator/  calculator and tempo maths
+  photos/      pictures
+  monitor/     System monitor
+  bin/         the Bin
   settings/    settings
   help/        the Shortcuts list
   about/       version, what's new, links
+desktop/       the desktop app (Electron): main.js opens Neon OS in its own window; GitHub builds the installers
 tests/         browser tests (run.mjs) and the test songs they use (fixtures.py)
 tools/
   precache.py  writes the offline file list into sw.js; run it after adding or changing files
@@ -140,7 +165,7 @@ Then open http://localhost:8000.
 
 ## Tests
 
-`tests/run.mjs` opens the desktop and every app in a headless browser and checks the main things work: shortcuts and the app switcher, playing with levelling and gapless playback, linked folders, the details editor, the Rack's effects and exports, working offline and the phone layout. GitHub runs it on every push (`.github/workflows/checks.yml`), along with a check that the offline file list in `sw.js` is up to date.
+`tests/run.mjs` opens the desktop and every app in a headless browser and checks the main things work: shortcuts and the app switcher, several desktops, the lock screen and screensaver, alarms, timers and reminders, the everyday apps and the Bin, playing with levelling and gapless playback, linked folders, sync, the details editor, the Rack's effects and exports, working offline and the phone layout. GitHub runs it on every push (`.github/workflows/checks.yml`), along with a check that the offline file list in `sw.js` is up to date.
 
 To run it yourself: `npm install --no-save playwright && npx playwright install chromium`, then `python tests/fixtures.py && node tests/run.mjs`.
 
@@ -161,4 +186,5 @@ To keep them safe or move them, open **Settings → Back up everything**. You ge
 1. Foundations: split Amp into the style kit, core and app (done)
 2. Neon OS shell: desktop, window manager, launcher, settings (done)
 3. The Rack: Pulse, Drift, Chop, Tape and Decks, with Pulse, Drift and Chop on a shared clock (done)
-4. The game: set aboard a ship whose orb is a sleeping mind; story notes in [LORE.md](LORE.md). Neon OS stays a clean tool with no lore in it.
+4. A complete OS: installable everywhere (desktop app for Windows, macOS and Linux), everyday apps (Clock, Calendar, Calculator, Notes, Photos, System monitor, Bin), several desktops, lock screen and screensaver, one shared file picker (done)
+5. The game: on hold. A standalone game that plays and looks like Neon OS; its story and mechanics are still to be worked out. Neon OS stays a clean tool with no lore in it.

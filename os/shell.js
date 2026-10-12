@@ -9,12 +9,13 @@ import { getWallImage } from "../core/desk.js";
 import { createGlow, createGlow2D } from "../core/glow.js";
 import { initNotices, addNotice, toggleNotices, closeNotices } from "./notices.js";
 import { VERSION, CHANGES } from "../core/version.js";
-import { initSearch, openSearch } from "./search.js";
+import { initSearch, openSearch, closeSearch } from "./search.js";
 import { dueNow } from "../core/reminders.js";
 import { binPurge } from "../core/bin.js";
 import { sfx } from "../core/sounds.js";
 import { Slider, openMenu as popMenu } from "../style-kit/ui.js";
 import { runBoot } from "./boot.js";
+import { initLock } from "./lock.js";
 
 window.neonOsShell = true; // apps running inside the desktop (Amp) check this
 const $ = id => document.getElementById(id);
@@ -37,14 +38,21 @@ const closed = new Set();          // native apps that are closed (kept so their
 let parked = {};                   // saved windows of apps not open yet
 const els = {};
 const mounted = new Set();
+// several desktops: each open app sits on one (deskOf); only the current one's windows show
+let desks = { n: 1, cur: 0, of: {} };
+const deskOf = appId => desks.of[appId] || 0;
+const here = appId => compact || deskOf(appId) === desks.cur;
 function loadLayout() { try { const s = JSON.parse(localStorage.getItem(LKEY) || "{}"); return s && s.wins ? s : null; } catch (e) { return null; } }
 let saveT = null;
-function saveLayout() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(LKEY, JSON.stringify({ wins, split, closed: [...closed] })); } catch (e) {} }, 200); }
+function saveLayout() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(LKEY, JSON.stringify({ wins, split, closed: [...closed], desks })); } catch (e) {} }, 200); }
 const appWins = appId => Object.keys(wins).filter(k => wins[k].appId === appId);
 
 // ---------- opening apps ----------
 async function openApp(appId, savedWins) {
   const app = appById(appId); if (!app) return;
+  const open = app.native ? mounted.has(appId) && !closed.has(appId) : !!wins[appId];
+  if (open && !here(appId)) goDesk(deskOf(appId), true); // already open on another desktop: go there
+  else if (!open && !savedWins) desks.of[appId] = desks.cur;
   if (app.native) {
     if (!mounted.has(appId)) { closed.delete(appId); await mountNative(app, savedWins || parked); }
     else { const was = closed.delete(appId); if (was) taskInfo[appId] = { since: Date.now(), errors: 0 }; appWins(appId).forEach(k => els[k].classList.remove("closed")); restoreGroup(appId); renderTasks(); saveLayout(); if (was) sfx.open(); }
@@ -265,6 +273,7 @@ function applyAway() { // in compact mode only the front app shows
 }
 function render(wid) {
   const st = wins[wid], el = els[wid]; if (!st || !el) return;
+  el.classList.toggle("offdesk", !here(st.appId));
   if (compact) {
     if (appById(st.appId).native) { renderStack(st.appId); return; }
     const a = area();
@@ -281,7 +290,7 @@ function render(wid) {
   const mb = el.querySelector('[data-act="max"]');
   if (mb) { mb.innerHTML = svg(st.snap ? ICON.restore : ICON.max); mb.title = st.snap ? "Restore" : "Maximise"; }
 }
-function front() { let best = null; for (const k in wins) if (!wins[k].min && !closed.has(wins[k].appId) && !(els[k] && els[k].hidden) && (!best || wins[k].z > wins[best].z)) best = k; return best; }
+function front() { let best = null; for (const k in wins) if (!wins[k].min && !closed.has(wins[k].appId) && here(wins[k].appId) && !(els[k] && els[k].hidden) && (!best || wins[k].z > wins[best].z)) best = k; return best; }
 function raise(wid) {
   wins[wid].z = ++zTop;
   if (zTop > 5000) { // keep stacking numbers small so menus and dialogs always sit above windows
@@ -321,7 +330,7 @@ function showSnap(zone) {
   const g = geom({ snap: zone });
   Object.assign(snapEl.style, { left: g.x + 6 + "px", top: g.y + 6 + "px", width: g.w - 12 + "px", height: g.h - 12 + "px" });
 }
-const visible = k => wins[k] && !wins[k].min && !closed.has(wins[k].appId) && els[k] && !els[k].hidden;
+const visible = k => wins[k] && !wins[k].min && !closed.has(wins[k].appId) && here(wins[k].appId) && els[k] && !els[k].hidden;
 function rectOf(k) { const g = geom(wins[k]); if (wins[k].autoH || wins[k].snap) { g.h = els[k].offsetHeight; g.w = els[k].offsetWidth; } return g; }
 // the edges a moving window may dock to
 function targets(skip) {
@@ -479,11 +488,15 @@ function doAction(act, wid) {
     case "start": if (menu) closeMenu(); else { closeNotices(); closeTray(); openMenu(); } break;
     case "notices": closeMenu(); closeTray(); toggleNotices(); break;
     case "help": openApp("help"); break;
+    case "lock": closeMenu(); closeTray(); closeNotices(); lockApi.lock(); break;
     case "search": closeMenu(); closeNotices(); closeTray(); openSearch(); break;
     case "toggle": case "next": case "prev": transport(act); break;
+    case "desk-prev": case "desk-next": goDesk(desks.cur + (act === "desk-next" ? 1 : -1)); break;
+    case "move-prev": case "move-next": if (f) { const n = desks.cur + (act === "move-next" ? 1 : -1); if (n >= 0 && (n < desks.n || desks.n < DESK_MAX)) { const id = wins[f].appId; moveToDesk(id, n); goDesk(Math.min(n, desks.n - 1)); } } break;
   }
 }
 addEventListener("keydown", e => {
+  if (lockApi && lockApi.mode) return; // locked or screensaver: no desktop shortcuts
   if (sw && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeSwitcher(); return; }
   if (sw && (e.key === "Enter")) { e.preventDefault(); e.stopPropagation(); commitSwitch(); return; }
   const act = osAction(e); if (!act) return;
@@ -500,6 +513,8 @@ addEventListener("message", async e => {
   }
   if (d.neonOs === "open" && appById(d.app)) { openApp(d.app); return; } // an app opens another (Tape's edit buttons)
   if (d.neonOs === "welcome") { showWelcome(); return; }
+  if (d.neonOs === "lock") { doAction("lock"); return; }
+  if (d.neonOs === "saver") { closeMenu(); closeTray(); closeNotices(); lockApi.saver(); return; }
   if (d.neonOs === "tasks") { e.source.postMessage({ neonOsTasks: taskList(), lag: Math.round(lagMax), memory: performance.memory ? { used: performance.memory.usedJSHeapSize, limit: performance.memory.jsHeapSizeLimit } : null }, location.origin); return; }
   if (d.neonOs === "task" && d.app) { const ok = taskAct(d.app, d.act); e.source.postMessage({ neonOsTasks: taskList(), done: ok ? d.act : null }, location.origin); return; }
   if (d.neonOs === "keyup") { if (d.key === "Alt" && sw) commitSwitch(); return; }
@@ -516,7 +531,7 @@ addEventListener("message", async e => {
 // Hold Alt and press ` to step through open apps, most recent first; let go of Alt to switch.
 let sw = null;
 function switchOrder() {
-  const apps = [...new Set(Object.values(wins).map(w => w.appId))].filter(k => !closed.has(k));
+  const apps = [...new Set(Object.values(wins).map(w => w.appId))].filter(k => !closed.has(k) && here(k));
   const topZ = k => Math.max(...appWins(k).map(w => wins[w].z));
   return apps.sort((a, b) => topZ(b) - topZ(a));
 }
@@ -575,7 +590,7 @@ async function transport(act) {
   dispatchEvent(new CustomEvent("neonos:transport", { detail: act }));
 }
 const MP = { prev: "M6 6h2v12H6zm3.5 6 8.5 6V6z", next: "M16 6h2v12h-2zM6 18l8.5-6L6 6z", play: "M8 5v14l11-7z", pause: "M6 5h4v14H6zm8 0h4v14h-4z" };
-let nowPlaying = null, miniBuilt = false;
+let nowPlaying = null, miniBuilt = false, lockApi = null;
 addEventListener("neonos:nowplaying", e => { nowPlaying = e.detail; renderMini(); });
 function renderMini() {
   const el = $("miniPlayer"), show = !!nowPlaying && mounted.has("amp") && !closed.has("amp");
@@ -604,18 +619,56 @@ addEventListener("resize", () => { if (setCompact()) applyAway(); for (const k i
 // ---------- taskbar: one button per app ----------
 function renderTasks() {
   const f = front(), fApp = f ? wins[f].appId : null;
-  const apps = [...new Set(Object.values(wins).map(w => w.appId))].filter(k => !closed.has(k));
+  const apps = [...new Set(Object.values(wins).map(w => w.appId))].filter(k => !closed.has(k) && here(k));
   $("tasks").innerHTML = apps.map(k => {
     const a = appById(k);
     return `<button class="btn task${k === fApp ? " front" : ""}" data-app="${esc(k)}" title="${esc(a.name)}" aria-pressed="${k === fApp}">${svg(a.icon)}<span>${esc(a.name)}</span></button>`;
   }).join("");
-  renderMini();
+  renderMini(); renderDesks();
 }
 $("tasks").addEventListener("click", e => {
   const b = e.target.closest("[data-app]"); if (!b) return;
   const k = b.dataset.app, f = front();
   if (f && wins[f].appId === k) minimiseGroup(k); else { if (appWins(k).some(w => wins[w].min)) sfx.restore(); restoreGroup(k); }
 });
+// ---------- several desktops ----------
+// The numbered buttons switch desktop (Ctrl+Alt+[ and ]); + adds one (up to 4). Right-click a number to remove it.
+// Ctrl+Alt+Shift+[ and ] carry the front app to the desktop before or after; the window menu moves it to any.
+const DESK_MAX = 4;
+function renderDesks() {
+  const el = $("desks"); if (!el) return;
+  const count = k => [...new Set(Object.values(wins).map(w => w.appId))].filter(a => !closed.has(a) && deskOf(a) === k).length;
+  el.innerHTML = Array.from({ length: desks.n }, (_, i) => `<button class="btn dsk${i === desks.cur ? " on" : ""}" data-desk="${i}" aria-pressed="${i === desks.cur}" title="Desktop ${i + 1}${count(i) ? ` · ${count(i)} app${count(i) === 1 ? "" : "s"}` : ""} (Ctrl+Alt+[ / ])" aria-label="Desktop ${i + 1}">${i + 1}${count(i) && i !== desks.cur ? "<i></i>" : ""}</button>`).join("")
+    + (desks.n < DESK_MAX ? `<button class="btn dsk add" data-desk="add" title="Add a desktop" aria-label="Add a desktop">+</button>` : "");
+}
+function goDesk(n, quiet) {
+  n = clamp(n, 0, desks.n - 1); if (n === desks.cur) return;
+  desks.cur = n; deskHidden = null;
+  for (const k in wins) render(k);
+  if (compact) applyAway();
+  const f = front(); if (f) focus(f); else for (const k in els) els[k].classList.remove("lit");
+  renderTasks(); saveLayout(); if (!quiet) sfx.tick();
+  $("srSay").textContent = `Desktop ${n + 1}`;
+}
+function moveToDesk(appId, n) {
+  if (n >= desks.n) { if (desks.n >= DESK_MAX) return; desks.n++; n = desks.n - 1; }
+  desks.of[appId] = n; appWins(appId).forEach(render);
+  const f = front(); if (f) focus(f);
+  renderTasks(); saveLayout(); sfx.snap();
+}
+function addDesk() { if (desks.n >= DESK_MAX) return; desks.n++; goDesk(desks.n - 1); }
+function removeDesk(n) {
+  if (desks.n <= 1) return;
+  for (const a in desks.of) { if (desks.of[a] === n) desks.of[a] = Math.max(0, n - 1); else if (desks.of[a] > n) desks.of[a]--; }
+  desks.n--; const cur = desks.cur > n || desks.cur >= desks.n ? Math.max(0, desks.cur - 1) : desks.cur; desks.cur = -1; goDesk(cur, true); sfx.close();
+}
+$("desks").addEventListener("click", e => { const b = e.target.closest("[data-desk]"); if (!b) return; if (b.dataset.desk === "add") addDesk(); else goDesk(+b.dataset.desk); });
+$("desks").addEventListener("contextmenu", e => {
+  const b = e.target.closest("[data-desk]"); e.preventDefault(); if (!b || b.dataset.desk === "add") return;
+  const n = +b.dataset.desk;
+  popMenu(null, [{ text: `Go to desktop ${n + 1}`, run: () => goDesk(n) }, ...(desks.n < DESK_MAX ? [{ text: "Add a desktop", run: addDesk }] : []), ...(desks.n > 1 ? ["-", { text: `Remove desktop ${n + 1}`, danger: true, run: () => removeDesk(n) }] : [])], { x: e.clientX, y: e.clientY });
+});
+
 function tickClock() { const d = new Date(); $("clock").textContent = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; }
 tickClock(); setInterval(tickClock, 10000);
 
@@ -664,6 +717,7 @@ function openMenu() {
     ${PLANNED.length ? `<div class="sm-sep"></div>${PLANNED.map(p => `<div class="sm-item soon" aria-disabled="true"><span><b>${esc(p.name)}</b><small>${esc(p.desc)}, coming</small></span></div>`).join("")}` : ""}
     <div class="sm-sep"></div>
     <button class="sm-item" role="menuitem" data-act="tidy"><span><b>Tidy windows</b><small>Put open windows back in neat places</small></span></button>
+    <button class="sm-item" role="menuitem" data-act="lock"><span><b>Lock</b><small>The lock screen, with the time and what's playing · Ctrl+Alt+L</small></span></button>
     ${installEvt ? `<button class="sm-item" role="menuitem" data-act="install"><span><b>Install Neon OS</b><small>Its own window and icon; works offline</small></span></button>` : ""}
   </div>`;
   document.body.appendChild(menu);
@@ -674,6 +728,7 @@ function openMenu() {
     closeMenu();
     if (b.dataset.app) openApp(b.dataset.app);
     else if (b.dataset.act === "tidy") tidy();
+    else if (b.dataset.act === "lock") doAction("lock");
     else if (b.dataset.act === "install") promptInstall();
     else if (b.dataset.act === "search") openSearch();
   });
@@ -781,6 +836,10 @@ function windowMenu(wid, at) {
     items.push({ text: st.snap ? "Restore" : "Maximise", run: () => toggleMax(wid) },
       { text: "Snap left", key: "Ctrl+Alt+←", run: () => snapTo(wid, "left") },
       { text: "Snap right", key: "Ctrl+Alt+→", run: () => snapTo(wid, "right") });
+  }
+  if (!compact) {
+    const others = Array.from({ length: desks.n }, (_, i) => i).filter(i => i !== deskOf(st.appId));
+    if (others.length || desks.n < DESK_MAX) items.push("-", ...others.map(i => ({ text: `Move to desktop ${i + 1}`, run: () => moveToDesk(st.appId, i) })), ...(desks.n < DESK_MAX ? [{ text: "Move to a new desktop", run: () => moveToDesk(st.appId, desks.n) }] : []));
   }
   items.push("-");
   if (native && !isMain && panelToggle) items.push({ text: "Close panel", run: () => { const t = document.getElementById(panelToggle); if (t && t.getAttribute("aria-pressed") === "true") t.click(); } });
@@ -955,6 +1014,9 @@ initSearch({
     { title: "Set a picture as the wallpaper", sub: "Photos", words: ["wallpaper", "background", "picture", "photo"], run: () => openApp("photos") },
     { title: "Put back something deleted", sub: "Bin", words: ["undelete", "restore", "trash", "recycle", "deleted"], run: () => openApp("bin") },
     { title: "Close a stuck app", sub: "System monitor", words: ["task manager", "frozen", "not responding", "memory", "kill"], run: () => openApp("monitor") },
+    { title: "Lock the screen", sub: "Ctrl+Alt+L", words: ["lock", "away", "pin", "password"], run: () => doAction("lock") },
+    { title: "Screensaver and PIN", sub: "Settings", words: ["screensaver", "idle", "pin", "lock screen"], run: () => openSettingsAt("lkLbl") },
+    { title: "Add a desktop", sub: "Several desktops · Ctrl+Alt+[ / ]", words: ["desktop", "workspace", "virtual desktop", "space"], run: () => addDesk() },
     { title: "Restart Neon OS", sub: "Reload the desktop", words: ["reload", "restart", "refresh"], run: () => location.reload() },
   ],
 });
@@ -1010,6 +1072,7 @@ binPurge().catch(() => {}); setInterval(() => binPurge().catch(() => {}), 4 * 36
 // ---------- start ----------
 setCompact(); syncWco();
 initNotices({ bellBtn: $("bellBtn"), stackEl: $("notices"), nameOf: id => (appById(id) || { name: id }).name, openApp: id => appById(id) && openApp(id) });
+lockApi = initLock({ nowPlaying: () => mounted.has("amp") && !closed.has("amp") ? nowPlaying : null, transport, sfx, onChange: m => { if (m) { closeMenu(); closeTray(); closeNotices(); closeSearch(); } } });
 applyTheme();
 onTheme(t => {
   applyTheme(t); buildSprite();
@@ -1024,6 +1087,7 @@ buildSprite(); sizeWall(); loadWall();
   const sw = saved.wins;
   if (saved.split) split = { x: clamp(+saved.split.x || 0.5, 0.15, 0.85), y: clamp(+saved.split.y || 0.5, 0.15, 0.85) };
   const wasClosed = new Set(saved.closed || []);
+  if (saved.desks) { const n = clamp(+saved.desks.n || 1, 1, DESK_MAX); desks = { n, cur: clamp(+saved.desks.cur || 0, 0, n - 1), of: saved.desks.of || {} }; }
   parked = sw;
   const apps = [...new Set(Object.values(sw).map(w => w.appId).filter(appById))];
   apps.sort((a, b) => Math.max(...Object.values(sw).filter(w => w.appId === a).map(w => w.z)) - Math.max(...Object.values(sw).filter(w => w.appId === b).map(w => w.z)));
