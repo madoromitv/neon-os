@@ -38,6 +38,7 @@ export function openMenu(anchor, items, at) {
   const el = document.createElement("div"); el.className = "pop"; el.setAttribute("role", "menu");
   items.forEach(it => {
     if (it === "-") { const s = document.createElement("div"); s.className = "sep"; el.appendChild(s); return; }
+    if (it.note) { const s = document.createElement("div"); s.className = "sub note"; s.textContent = it.note; el.appendChild(s); return; } // a sentence of explanation
     if (it.label && !it.run && !it.sub) { const s = document.createElement("div"); s.className = "sub lbl"; s.textContent = it.label; el.appendChild(s); return; }
     const b = document.createElement("button"); b.className = "mi" + (it.danger ? " danger" : ""); b.setAttribute("role", "menuitem");
     b.disabled = !!it.disabled;

@@ -18,7 +18,9 @@ void closePop;
 const $ = id => document.getElementById(id);
 const body = document.body;
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const fmt = s => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+// m:ss, or h:mm:ss from an hour up (a long playlist's total)
+const fmt = s => { s = Math.max(0, Math.floor(s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = String(s % 60).padStart(2, "0"); return h ? `${h}:${String(m).padStart(2, "0")}:${x}` : `${m}:${x}`; };
+const fmtLong = s => { const m = Math.round((s || 0) / 60), h = Math.floor(m / 60); return h ? `${h.toLocaleString()} h ${m % 60} min` : `${m} min`; };
 const fmt2 = s => { s = Math.max(0, Math.floor(s || 0)); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
 function decode(b64) { const s = atob(b64), a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
 
@@ -281,7 +283,7 @@ function renderMl() {
   vRows = grp ? groupsVisible() : mlVisible();
   drawRows();
   const n = mlIds().length, tot = mlIds().reduce((s, id) => s + (byId(id).duration || 0), 0);
-  const what = grp ? `${vRows.length} ${mlView.type.slice(0, -1)}${vRows.length === 1 ? "" : "s"}` : `${n} ${n === 1 ? "song" : "songs"}, ${Math.round(tot / 60)} min.`;
+  const what = grp ? `${vRows.length} ${mlView.type.slice(0, -1)}${vRows.length === 1 ? "" : "s"}` : `${n.toLocaleString()} ${n === 1 ? "song" : "songs"}, ${fmtLong(tot)}.`;
   if (!adding) setStatus(`${what} ${analyser && analyser.pending ? `Finding beats: ${analyser.pending} to go. ` : ""}${storeNote()}`);
 }
 function songRow(id, curId) {
@@ -418,8 +420,12 @@ document.querySelectorAll(".thead [data-sort]").forEach(b => b.addEventListener(
 }));
 $("mlSearch").addEventListener("input", e => { mlSearch = e.target.value; $("mlTable").scrollTop = 0; renderMl(); });
 $("mlAdd").addEventListener("click", () => $("fileIn").click());
-$("mlAddFolder").addEventListener("click", e => { if (linkSupported) folderMenu(e.currentTarget); else $("folderIn").click(); });
-if (linkSupported) { $("mlAddFolder").textContent = "Folders ▾"; $("mlAddFolder").title = "Link a music folder, rescan it, or copy a folder in"; $("mlAddFolder").setAttribute("aria-haspopup", "menu"); }
+$("mlAddFolder").addEventListener("click", e => folderMenu(e.currentTarget));
+$("mlAddFolder").textContent = "Folders ▾"; $("mlAddFolder").title = "Link a music folder, rescan it, free up space, or copy a folder in"; $("mlAddFolder").setAttribute("aria-haspopup", "menu");
+// why linking isn't on offer, in this browser's own words
+const noLinkWhy = () => navigator.brave ? "Brave switches folder linking off. To turn it on, open brave://flags, search for File System Access API, set it to Enabled and relaunch Brave."
+  : /Android|iPhone|iPad/i.test(navigator.userAgent) ? "Linking a folder needs Chrome or Edge on a computer."
+  : "This browser can't link folders. Open Neon OS in Chrome or Edge to link your music folder; your library and settings in this browser stay here.";
 $("treeNew").addEventListener("click", () => { $("newPlForm").hidden = false; $("newPlName").value = ""; $("newPlName").focus(); });
 $("newPlName").addEventListener("keydown", e => { if (e.key === "Escape") $("newPlForm").hidden = true; });
 $("newPlForm").addEventListener("submit", async e => {
@@ -885,6 +891,10 @@ async function freeUpSpace() {
   await rescan(fs, { convert: "link" });
 }
 async function folderMenu(at) {
+  if (!linkSupported) {
+    openMenu(at, [{ text: "Copy a folder in…", disabled: !store.canWrite, run: () => $("folderIn").click() }, { text: "Link a music folder…", disabled: true }, "-", { note: noLinkWhy() }]);
+    return;
+  }
   const fs = await listFolders(true), copies = store.tracks.filter(t => t.blob), bytes = copies.reduce((n, t) => n + t.blob.size, 0);
   openMenu(at, [
     { text: "Link a music folder…", run: () => linkFolder() },
@@ -892,7 +902,7 @@ async function folderMenu(at) {
     { text: copies.length ? `Free up space (${mbs(bytes)} of copies)` : "Free up space", disabled: !copies.length, run: freeUpSpace },
     { text: "Copy a folder in…", run: () => $("folderIn").click() },
     ...(fs.length ? ["-", { label: "Linked folders" }, ...fs.map(f => ({ text: `Stop linking ${f.name}`, run: () => unlinkFolder(f) }))] : []),
-    "-", { label: "Linked songs play from your disk and use no space. Copied songs live in the browser." },
+    "-", { note: "Linked songs play from your disk and use no space. Copied songs live in the browser." },
   ]);
 }
 function enqueueFiles(files, from = "files") {

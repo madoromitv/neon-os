@@ -134,7 +134,8 @@
       if (lib) {
         const parts = [lib.linked && `${lib.linked} song${lib.linked === 1 ? " plays" : "s play"} from your linked folder and take no space here`, lib.copied && `${lib.copied} ${lib.copied === 1 ? "is" : "are"} copied into this browser (${gb(lib.copiedBytes)})`].filter(Boolean);
         $id("stSplit").textContent = parts.length ? parts.join("; ") + "." : "No songs yet.";
-        if (lib.copied) $id("stSplit").textContent += " To free that space, open Amp's library and choose Folders, then Free up space: copies are swapped for the same songs in your music folder, keeping playlists, favourites and play counts.";
+        if (lib.copied && "showDirectoryPicker" in window) $id("stSplit").textContent += " To free that space, open Amp's library and choose Folders, then Free up space: copies are swapped for the same songs in your music folder, keeping playlists, favourites and play counts.";
+        else if (lib.copied) $id("stSplit").textContent += navigator.brave ? " Brave switches off folder linking, which would free that space. To turn it on, open brave://flags, search for File System Access API, set it to Enabled and relaunch Brave; then use Folders, then Free up space in Amp." : " Linking your music folder would free that space, but this browser can't do it. In Chrome or Edge, use Folders, then Free up space in Amp.";
       }
       if (!st || !st.persisted) { $id("stStat").textContent = "STORAGE INFO UNAVAILABLE"; $id("persist").hidden = true; return; }
       const [kept, est] = await Promise.all([st.persisted(), st.estimate ? st.estimate() : Promise.resolve({})]);
