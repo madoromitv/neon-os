@@ -134,7 +134,7 @@
       if (lib) {
         const parts = [lib.linked && `${lib.linked} song${lib.linked === 1 ? " plays" : "s play"} from your linked folder and take no space here`, lib.copied && `${lib.copied} ${lib.copied === 1 ? "is" : "are"} copied into this browser (${gb(lib.copiedBytes)})`].filter(Boolean);
         $id("stSplit").textContent = parts.length ? parts.join("; ") + "." : "No songs yet.";
-        if (lib.copied && lib.linked) $id("stSplit").textContent += " If those copies are also in your linked folder, Rescan linked folders in Amp offers to swap them for the files on disk.";
+        if (lib.copied) $id("stSplit").textContent += " To free that space, open Amp's library and choose Folders, then Free up space: copies are swapped for the same songs in your music folder, keeping playlists, favourites and play counts.";
       }
       if (!st || !st.persisted) { $id("stStat").textContent = "STORAGE INFO UNAVAILABLE"; $id("persist").hidden = true; return; }
       const [kept, est] = await Promise.all([st.persisted(), st.estimate ? st.estimate() : Promise.resolve({})]);
@@ -142,8 +142,10 @@
       $id("stStat").title = est.quota ? `The browser lets Neon OS use up to ${gb(est.quota)} on this computer` : "";
       // removed copies are deleted by the browser in its own time, usually once every Neon OS window has been closed
       const extra = lib && est.usage != null ? est.usage - lib.bytes : 0;
-      $id("stLag").hidden = !(extra > 200e6);
-      if (extra > 200e6) $id("stLag").textContent = `About ${gb(extra)} of that is space the browser hasn't given back yet from copies that were removed (for example, swapped for a linked folder). It's freed once every Neon OS tab and window is closed and opened again; if it's still there, restart the browser.`;
+      // a few hundred MB is normal (beat analysis, cover art, the database itself); only a big gap means space is still to come back
+      const lag = extra > 1e9 && extra > est.usage * 0.15;
+      $id("stLag").hidden = !lag;
+      if (lag) $id("stLag").textContent = `About ${gb(extra)} of that is space the browser hasn't given back yet from copies that were removed (for example, swapped for a linked folder). It's freed once every Neon OS tab and window is closed and opened again; if it's still there, restart the browser.`;
       $id("persist").disabled = kept; $id("persist").textContent = kept ? "Library protected" : "Protect my library";
     }
     $id("persist").addEventListener("click", async () => {

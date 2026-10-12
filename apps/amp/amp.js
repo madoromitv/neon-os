@@ -816,7 +816,7 @@ async function linkFolder(handle) {
   const folder = await saveFolder(handle);
   await rescan([folder]);
 }
-async function rescan(list) {
+async function rescan(list, opts = {}) {
   list = list || await listFolders(true);
   if (!list.length) { toast("No linked folders yet. Use Folders, then Link a music folder."); return; }
   if (batch) { toast("Wait for the songs being added to finish, then rescan."); return; }
@@ -833,7 +833,7 @@ async function rescan(list) {
     for (const x of found) if (!known.has(x.path)) items.push({ handle: x.handle, link: { folder: folder.id, path: x.path }, name: x.path.split("/").pop() });
   }
   checkAccess();
-  batch = newBatch({ link: true, missing, after: askMissing });
+  batch = newBatch({ link: true, missing, after: askMissing, convertMode: opts.convert || null });
   batch.total = items.length;
   addQ.push(...items);
   await processAdds();
@@ -875,11 +875,21 @@ $("mlReconnect").addEventListener("click", async () => {
   if (ok) { if (analyser) analyser.resume(); toast("Folder reconnected"); }
   else toast("The browser wasn't given access. Press Reconnect folder and choose Allow.", true);
 });
+// Swaps every copied song for the same song in a linked folder, without asking song by song
+async function freeUpSpace() {
+  if (!store.tracks.some(t => t.blob)) { toast("No songs are copied into the browser: nothing to free."); return; }
+  let fs = await listFolders(true);
+  if (!fs.length) {
+    try { const h = await showDirectoryPicker({ id: "neon-music", mode: "read" }); fs = [await saveFolder(h)]; } catch (e) { return; }
+  }
+  await rescan(fs, { convert: "link" });
+}
 async function folderMenu(at) {
-  const fs = await listFolders(true);
+  const fs = await listFolders(true), copies = store.tracks.filter(t => t.blob), bytes = copies.reduce((n, t) => n + t.blob.size, 0);
   openMenu(at, [
     { text: "Link a music folder…", run: () => linkFolder() },
     { text: "Rescan linked folders", disabled: !fs.length, run: () => rescan() },
+    { text: copies.length ? `Free up space (${mbs(bytes)} of copies)` : "Free up space", disabled: !copies.length, run: freeUpSpace },
     { text: "Copy a folder in…", run: () => $("folderIn").click() },
     ...(fs.length ? ["-", { label: "Linked folders" }, ...fs.map(f => ({ text: `Stop linking ${f.name}`, run: () => unlinkFolder(f) }))] : []),
     "-", { label: "Linked songs play from your disk and use no space. Copied songs live in the browser." },
@@ -932,6 +942,10 @@ async function processAdds() {
       const msg = parts.join(", ").replace(/^./, c => c.toUpperCase()) + "." + (B.added + B.replaced ? " Beats and tempo are worked out in the background." : "");
       if (B.total < 6 || !notify(B.link ? "Folder linked" : "Songs added", msg, "amp")) toast(msg, !B.added && !B.replaced && B.failed > 0);
     } else if (B.link) toast("Your folder is up to date.");
+    if (B.link) {
+      const left = store.tracks.filter(t => t.blob), bytes = left.reduce((n, t) => n + t.blob.size, 0);
+      if (left.length) setTimeout(() => toast(`${left.length} song${left.length === 1 ? " is" : "s are"} still copied into the browser (${mbs(bytes)}). ${B.skipped ? "Folders, then Free up space, swaps copies for the same songs in your linked folder." : "They aren't in your linked folder."}`), 2500);
+    }
     if (B.after) await B.after(B);
   }
   scheduleRender();
