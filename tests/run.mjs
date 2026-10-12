@@ -10,7 +10,9 @@ const server = spawn("python3", ["-m", "http.server", String(PORT)], { stdio: "i
 await new Promise(r => setTimeout(r, 800));
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required", "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] });
 let failed = 0, passed = 0;
-const check = (ok, what) => { if (ok) { passed++; console.log("  ok   " + what); } else { failed++; console.log("  FAIL " + what); } };
+let current = "";
+// on GitHub each failure is also an annotation on the run, so it shows without opening the log
+const check = (ok, what) => { if (ok) { passed++; console.log("  ok   " + what); } else { failed++; console.log("  FAIL " + what); if (process.env.GITHUB_ACTIONS) console.log(`::error title=${current.replace(/[:,\n]/g, " ")}::${String(what).replace(/\n/g, " ").slice(0, 400)}`); } };
 async function page(opts = {}, { fresh = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true, ...opts });
   const p = await ctx.newPage(); p.errors = [];
@@ -452,8 +454,8 @@ const tests = {
 const only = process.argv[2];
 for (const [name, fn] of Object.entries(tests)) {
   if (only && !name.toLowerCase().includes(only.toLowerCase())) continue;
-  console.log(name);
-  try { await fn(); } catch (e) { failed++; console.log("  FAIL threw: " + e.message.split("\n")[0]); }
+  console.log(name); current = name;
+  try { await fn(); } catch (e) { check(false, "threw: " + e.message.split("\n")[0]); }
 }
 await browser.close(); server.kill();
 console.log(`\n${passed} passed, ${failed} failed`);
