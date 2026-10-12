@@ -5,17 +5,18 @@ import { spawn } from "child_process";
 import fs from "fs";
 const { chromium } = await import(process.env.PLAYWRIGHT || "playwright");
 const PORT = 8765, URL = `http://localhost:${PORT}/`, FX = "tests/.fixtures/";
+const VERSION = fs.readFileSync("core/version.js", "utf8").match(/VERSION = "([^"]+)"/)[1];
 const server = spawn("python3", ["-m", "http.server", String(PORT)], { stdio: "ignore" });
 await new Promise(r => setTimeout(r, 800));
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 let failed = 0, passed = 0;
 const check = (ok, what) => { if (ok) { passed++; console.log("  ok   " + what); } else { failed++; console.log("  FAIL " + what); } };
-async function page(opts = {}) {
+async function page(opts = {}, { fresh = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true, ...opts });
   const p = await ctx.newPage(); p.errors = [];
   p.on("pageerror", e => p.errors.push(e.message));
   p.on("console", m => { if (m.type() === "error" && !/fonts|ERR_|Failed to load resource/.test(m.text())) p.errors.push(m.text()); });
-  await p.addInitScript(() => { if (!sessionStorage.getItem("t")) { localStorage.setItem("neon-os:theme", JSON.stringify({ ball: "cyan", boot: false })); sessionStorage.setItem("t", "1"); } });
+  await p.addInitScript(([v, fresh]) => { if (!sessionStorage.getItem("t")) { localStorage.setItem("neon-os:theme", JSON.stringify({ ball: "cyan", boot: false })); if (!fresh) localStorage.setItem("neon-os:seen-version", v); sessionStorage.setItem("t", "1"); } }, [VERSION, fresh]);
   return p;
 }
 const lib = p => p.evaluate(() => import("./core/backup.js").then(m => m.librarySummary()));
@@ -23,9 +24,36 @@ const wavTail = (path, from) => { const d = fs.readFileSync(path), sr = d.readUI
 async function desk(p) { await p.goto(URL); await p.waitForTimeout(900); }
 async function amp(p, files) { await p.keyboard.press("Control+Alt+Digit1"); await p.waitForSelector('[data-wid="amp:winMain"]'); await p.waitForTimeout(600); if (files) { await p.setInputFiles("#fileIn", files.map(f => FX + f)); await p.waitForTimeout(2500); } }
 const tests = {
+  async "welcome, About and What's new"() {
+    const p = await page({}, { fresh: true }); await desk(p);
+    check(!!(await p.$(".dialog.welcome")), "first visit shows the welcome");
+    await p.click(".welcome [data-amp]"); await p.waitForSelector('[data-wid="amp:winMain"]');
+    check(!(await p.$(".dialog.welcome")), "Open Amp closes it and opens Amp");
+    await p.evaluate(() => localStorage.setItem("neon-os:seen-version", "0.9")); await p.reload(); await p.waitForTimeout(1500);
+    check(!(await p.$(".dialog.welcome")) && (await p.$$eval(".notice", e => e.map(x => x.textContent).join())).includes("What's new"), "an update shows What's new instead");
+    await p.keyboard.press("Control+Alt+Space"); await p.click('.sm-item[data-app="about"]'); await p.waitForTimeout(1000);
+    const af = p.frame({ url: /about/ }); check(!!af && (await af.$eval("#ver", e => e.textContent)) === "VERSION " + VERSION, "About shows the version");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
+  async "search everywhere"() {
+    const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
+    await p.keyboard.press("Control+KeyK"); await p.waitForSelector(".win.search");
+    check(await p.$$eval(".sitem", e => e.length) > 5, "Ctrl+K opens search with apps listed");
+    await p.keyboard.type("loud"); await p.waitForTimeout(400);
+    check((await p.$$eval(".sitem b", e => e.map(x => x.textContent))).includes("loud"), "finds a song by title");
+    await p.keyboard.press("Enter"); await p.waitForTimeout(1500);
+    check((await p.title()).startsWith("loud"), "Enter plays it in Amp");
+    await p.keyboard.press("Control+Space"); await p.keyboard.type("wallp"); await p.waitForTimeout(300); await p.keyboard.press("Enter"); await p.waitForTimeout(1500);
+    const sf = p.frame({ url: /settings/ }); check(!!sf, "a setting opens Settings");
+    const fr = p.frame({ url: /pulse/ }) ; void fr;
+    await p.keyboard.press("Control+Alt+Digit3"); await p.waitForTimeout(1000);
+    const pf = p.frame({ url: /pulse/ }); await pf.click(".step"); await p.keyboard.press("Control+KeyK"); await p.waitForTimeout(300);
+    check(!!(await p.$(".win.search")), "works from inside a framed app");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "every app page loads on its own"() {
     const p = await page();
-    for (const a of ["amp", "files", "pulse", "drift", "chop", "tape", "decks", "notes", "settings", "help"]) { await p.goto(`${URL}apps/${a}/`); await p.waitForTimeout(500); }
+    for (const a of ["amp", "files", "pulse", "drift", "chop", "tape", "decks", "notes", "settings", "help", "about"]) { await p.goto(`${URL}apps/${a}/`); await p.waitForTimeout(500); }
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
   async "desktop, shortcuts, switcher, notifications"() {

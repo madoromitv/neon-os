@@ -148,7 +148,8 @@ function renderTransport() {
   $("pats").innerHTML = SLOTS.map(k => `<button class="btn" data-pat="${k}" aria-pressed="${k === S.cur}" title="Pattern ${k}">${k}</button>`).join("");
 }
 const tempo = Slider($("tempo"), { min: 60, max: 200, step: 1, value: S.bpm, label: "Tempo", text: v => `${v} BPM`, onInput: v => { S.bpm = v; $("bpm").textContent = v; if (S.link) clock.setBpm(v); }, onChange: save });
-Slider($("swing"), { min: 0, max: 0.6, step: 0.01, value: S.swing, label: "Swing", text: v => Math.round(v / 0.6 * 100) + "%", onInput: v => { S.swing = v; }, onChange: save });
+Slider($("swing"), { min: 0, max: 0.6, step: 0.01, value: S.swing, label: "Swing", text: v => Math.round(v / 0.6 * 100) + "%", onInput: v => { S.swing = v; $("swingPct").textContent = Math.round(v / 0.6 * 100) + "%"; }, onChange: save });
+$("swingPct").textContent = Math.round(S.swing / 0.6 * 100) + "%";
 Slider($("master"), { min: 0, max: 1, step: 0.01, value: S.master, label: "Pulse volume", text: v => Math.round(v * 100) + "%",
   onInput: v => { S.master = v; $("masterPct").textContent = Math.round(v * 100) + "%"; if (master) master.gain.setTargetAtTime(v, ctx.currentTime, 0.01); }, onChange: save });
 $("masterPct").textContent = Math.round(S.master * 100) + "%";

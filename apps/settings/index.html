@@ -26,6 +26,7 @@
   .stat { font-size: 19px; line-height: 22px; padding: 4px 10px; }
   .btn:disabled { opacity: .45; }
   p.warn { color: var(--ink); border-left: 2px solid var(--ball); padding-left: 8px; }
+  section.flash { outline: 1px solid var(--ball); outline-offset: 6px; border-radius: 2px; transition: outline-color 1.2s; }
   .seg .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
   .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px 10px; }
   .checks label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
@@ -130,6 +131,13 @@
     // ---------- storage and install ----------
     const gb = n => n >= 1e12 ? (n / 1e12).toFixed(1) + " TB" : n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.max(0.1, n / 1e6).toFixed(1) + " MB";
     let lib = null; // the library summary, filled in by the Backup section
+    // the desktop's search opens Settings at a section
+    addEventListener("message", e => {
+      if (e.origin !== location.origin || !e.data || !e.data.neonOsGoto) return;
+      const el = document.getElementById(e.data.neonOsGoto); if (!el) return;
+      const sec = el.closest("section") || el; sec.scrollIntoView({ block: "start", behavior: "smooth" });
+      sec.classList.add("flash"); setTimeout(() => sec.classList.remove("flash"), 1600);
+    });
     // library sync through the music folder (set up in Amp: Folders, then Sync)
     async function syncLine() {
       const { syncConf } = await import("../../core/sync.js"), { listFolders } = await import("../../core/linked.js");

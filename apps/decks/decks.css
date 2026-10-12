@@ -1,6 +1,6 @@
 /* Decks: two-deck DJ mixer layout */
 body { padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 100%; height: 100%; min-width: 720px; overflow: auto; }
-.console { display: grid; grid-template-columns: minmax(0, 1fr) 210px minmax(0, 1fr); gap: 10px; }
+.console { display: grid; grid-template-columns: minmax(0, 1fr) 260px minmax(0, 1fr); gap: 10px; }
 .deck { display: grid; gap: 8px; align-content: start; min-width: 0; padding: 8px; background: #0a0810; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; }
 .dlcd { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 10px; padding: 6px 10px; align-items: baseline; }
 .dlcd .tag { font-size: 34px; line-height: 1; grid-row: span 2; }
@@ -11,21 +11,24 @@ body { padding: 10px; display: flex; flex-direction: column; gap: 10px; min-heig
 .wave { width: 100%; height: 64px; display: block; cursor: pointer; border-radius: 2px; background: var(--lcd); box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #3a3450; }
 .dctl { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 8px; }
 .btns { display: flex; flex-wrap: wrap; gap: 5px; align-content: start; }
-.btns .btn { min-width: 58px; }
+.btns .btn { min-width: 50px; }
 .btns .btn.big { min-height: 34px; min-width: 70px; }
 .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
 .pitch { display: grid; grid-template-rows: auto 120px auto; justify-items: center; gap: 4px; }
 .pitch .lcd { font-size: 15px; line-height: 18px; padding: 0 4px; min-width: 46px; text-align: center; }
 .mixer { display: grid; gap: 10px; align-content: start; padding: 8px; background: linear-gradient(180deg, var(--metal-1), var(--metal-2)); border: 1px solid var(--edge); border-radius: 3px; box-shadow: inset 1px 1px 0 var(--metal-hi); }
-.chans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.chans { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .chan { display: grid; gap: 5px; justify-items: stretch; }
 .chan > .lbl { text-align: center; color: var(--ball); }
-.eq { display: grid; grid-template-columns: 26px 1fr; align-items: center; gap: 4px; }
+.eq { display: grid; grid-template-columns: 24px 1fr 30px; align-items: center; gap: 4px; }
+.eq .eqv { font: 14px/1 var(--font-lcd); color: var(--ball); text-align: right; }
 .eq .lbl { font-size: 8.5px; letter-spacing: .08em; }
 .fader { display: grid; grid-template-columns: 8px 1fr; justify-items: center; gap: 4px; height: 130px; }
 .meter { width: 6px; height: 100%; background: #000; border-radius: 1px; position: relative; overflow: hidden; box-shadow: inset -1px -1px 0 #3a3450; }
 .meter i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: linear-gradient(0deg, var(--ball-dim), var(--ball)); box-shadow: 0 0 6px var(--ball); }
 .xrow, .mrow { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; }
+.xrow { grid-template-columns: auto 1fr auto 62px; }
+#xfPct { text-align: center; font-size: 15px; padding: 0 2px; white-space: nowrap; }
 .mrow { grid-template-columns: auto 1fr; }
 .mrow.m3 { grid-template-columns: auto 1fr auto; }
 .fpct { justify-self: center; }

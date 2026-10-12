@@ -720,16 +720,20 @@ $("bRep").addEventListener("click", () => { S.repeat = S.repeat === "off" ? "all
 const volS = Slider($("vol"), { min: 0, max: 1, step: 0.01, value: S.vol, label: "Volume", text: v => Math.round(v * 100) + "%", onInput: v => { S.vol = v; Eng.setVolume(v); showVol(); dispatchEvent(new CustomEvent("neonos:volume-changed", { detail: v })); }, onChange: save });
 function showVol() { $("volPct").textContent = Math.round(S.vol * 100) + "%"; }
 showVol();
-const balS = Slider($("bal"), { min: -1, max: 1, step: 0.02, value: S.bal, label: "Balance", text: v => Math.abs(v) < 0.01 ? "Centre" : `${Math.round(Math.abs(v) * 100)}% ${v < 0 ? "left" : "right"}`, onInput: v => { if (Math.abs(v) < 0.06) v = 0; S.bal = v; Eng.setBalance(v); }, onChange: save });
+// balance reads C in the middle, or how far left or right: L 40%, R 25%
+const balText = v => Math.abs(v) < 0.01 ? "C" : `${v < 0 ? "L" : "R"} ${Math.round(Math.abs(v) * 100)}%`;
+function showBal() { $("balPct").textContent = balText(S.bal); }
+const balS = Slider($("bal"), { min: -1, max: 1, step: 0.02, value: S.bal, label: "Balance", text: v => Math.abs(v) < 0.01 ? "Centre" : `${Math.round(Math.abs(v) * 100)}% ${v < 0 ? "left" : "right"}`, onInput: v => { if (Math.abs(v) < 0.06) v = 0; S.bal = v; showBal(); Eng.setBalance(v); }, onChange: save });
 const seekS = Slider($("seek"), { min: 0, max: 1, step: 0.0005, value: 0, label: "Position", text: v => fmt(v * Eng.duration), onInput: () => {}, onChange: v => { if (Eng.buf) { Eng.seek(v * Eng.duration); resetViz(); save(); } } });
-const chaosS = Slider($("chaos"), { min: 0, max: 1, step: 0.01, value: S.chaos, label: "Chaos", text: v => Math.round(v * 100) + "%", onInput: v => { S.chaos = v; }, onChange: save });
+const chaosS = Slider($("chaos"), { min: 0, max: 1, step: 0.01, value: S.chaos, label: "Chaos", text: v => Math.round(v * 100) + "%", onInput: v => { S.chaos = v; $("chaosPct").textContent = Math.round(v * 100) + "%"; }, onChange: save });
+showBal(); $("chaosPct").textContent = Math.round(S.chaos * 100) + "%";
 void volS; void balS; void chaosS;
 
 // ---------- equalizer ----------
 const eqSliders = [];
 (function buildEq() {
   const body2 = $("eqBody");
-  const col = (label, cls) => { const c = document.createElement("div"); c.className = "eq-col" + (cls ? " " + cls : ""); c.innerHTML = `<div class="slider v center"></div><span class="lbl">${label}</span>`; body2.appendChild(c); return c.querySelector(".slider"); };
+  const col = (label, cls) => { const c = document.createElement("div"); c.className = "eq-col" + (cls ? " " + cls : ""); c.innerHTML = `<span class="eqv" aria-hidden="true"></span><div class="slider v center"></div><span class="lbl">${label}</span>`; body2.appendChild(c); return c.querySelector(".slider"); };
   const preEl = col("Pre");
   const db = document.createElement("div"); db.className = "db"; db.innerHTML = "<span>+12</span><span>0</span><span>-12</span>"; body2.appendChild(db);
   eqSliders.pre = Slider(preEl, { min: -12, max: 12, step: 0.5, value: S.pre, orient: "v", label: "Preamp", text: v => `${v > 0 ? "+" : ""}${v} dB`, onInput: v => { S.pre = v; applyEq(); }, onChange: save });
@@ -738,7 +742,10 @@ const eqSliders = [];
     eqSliders[i] = Slider(el, { min: -12, max: 12, step: 0.5, value: S.bands[i], orient: "v", label: `${l} Hz`, text: v => `${v > 0 ? "+" : ""}${v} dB`, onInput: v => { S.bands[i] = v; applyEq(); }, onChange: save });
   });
 })();
-function applyEq() { Eng.setEq(S.eqOn, S.pre, S.bands); drawEqGraph(); $("eqOn").setAttribute("aria-pressed", String(S.eqOn)); }
+// each band shows its setting in dB above the slider
+const dbText = v => v === 0 ? "0" : `${v > 0 ? "+" : ""}${v}`;
+function showEqValues() { const cols = $("eqBody").querySelectorAll(".eq-col .eqv"); cols.forEach((el, i) => { el.textContent = dbText(i === 0 ? S.pre : S.bands[i - 1]); }); }
+function applyEq() { Eng.setEq(S.eqOn, S.pre, S.bands); drawEqGraph(); showEqValues(); $("eqOn").setAttribute("aria-pressed", String(S.eqOn)); }
 function setEqValues(bands, pre) { S.bands = bands.slice(); if (pre != null) S.pre = pre; S.bands.forEach((v, i) => eqSliders[i].set(v)); eqSliders.pre.set(S.pre); applyEq(); save(); }
 $("eqOn").addEventListener("click", () => { S.eqOn = !S.eqOn; applyEq(); save(); });
 $("eqReset").addEventListener("click", () => setEqValues(PRESETS.Flat, 0));
@@ -1041,6 +1048,11 @@ async function applyMerged(M, L, fs) {
   return n;
 }
 setInterval(() => syncNow(false), 30000);
+// from the desktop's search: open the Folders menu
+addEventListener("neonos:folders", () => {
+  if (!S.show.ml) $("tMl").click();
+  const b = $("mlAddFolder"); if (b && !b.hidden) folderMenu(b);
+});
 addEventListener("visibilitychange", () => { if (document.hidden) syncNow(false); });
 function enqueueFiles(files, from = "files") {
   const list = [...files].filter(isAudio);

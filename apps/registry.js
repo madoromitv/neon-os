@@ -16,6 +16,7 @@ export const APPS = [
   { id: "decks", name: "Decks", desc: "Two-deck DJ mixer", url: "apps/decks/", w: 1100, h: 700, icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4z" },
   { id: "notes", name: "Notes", desc: "Quick notes, saved here", url: "apps/notes/", w: 520, h: 460, icon: "M5 3h10l4 4v14H5zm9 1.5V8h3.5zM8 11h8v1.6H8zm0 3.5h8v1.6H8zm0 3.5h5v1.6H8z" },
   { id: "help", name: "Shortcuts", desc: "Every key and mouse move", url: "apps/help/", w: 560, h: 620, desktop: false, icon: "M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zm3 2v2h2V8zm4 0v2h2V8zm4 0v2h2V8zM6 12v2h2v-2zm4 0v2h2v-2zm4 0v2h2v-2zm-6 4v2h8v-2z" },
+  { id: "about", name: "About", desc: "Version, what's new, help", url: "apps/about/", w: 480, h: 560, desktop: false, icon: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2zm0-8h-2V7h2z" },
   { id: "settings", name: "Settings", desc: "Colour, desktop, backup, access", url: "apps/settings/", w: 480, h: 680, icon: "M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" },
 ];
 export const PLANNED = [

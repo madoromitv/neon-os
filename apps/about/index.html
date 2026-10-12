@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<style>
+  body { padding: 14px; display: grid; gap: 14px; align-content: start; overflow: auto; height: 100%; }
+  .hero { display: flex; align-items: center; gap: 16px; padding: 16px; }
+  .hero i { width: 30px; height: 30px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 22px 6px var(--ball-dim), inset 0 0 4px #fff; flex: none; }
+  .hero b { font-size: 34px; letter-spacing: 3px; line-height: 1; display: block; }
+  .hero span { font-size: 18px; opacity: .7; }
+  p { margin: 0; color: var(--ink-dim); font-size: 12.5px; line-height: 1.55; }
+  section { display: grid; gap: 6px; }
+  .rel { background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; padding: 10px 12px; display: grid; gap: 6px; }
+  .rel h3 { margin: 0; font: 600 12.5px var(--font-chrome); color: var(--ink); }
+  .rel h3 small { color: var(--ink-faint); font-weight: 500; margin-left: 6px; }
+  .rel ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; color: var(--ink-dim); font-size: 12px; line-height: 1.45; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  a.btn { text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="lcd hero"><i aria-hidden="true"></i><div><b>NEON OS</b><span id="ver"></span></div></div>
+  <p>A desktop of music apps in the Neon Orbit style, made by Madoromi. Everything you add stays on this device: songs are read from your own folders or kept in this browser, and nothing is uploaded.</p>
+  <div class="row">
+    <button class="btn" id="welcome">Show the welcome</button>
+    <button class="btn" id="keys">Keyboard shortcuts</button>
+    <a class="btn" id="repo" target="_blank" rel="noopener">Source code</a>
+    <a class="btn" id="issue" target="_blank" rel="noopener">Report a problem</a>
+  </div>
+  <section aria-labelledby="newLbl"><span class="lbl" id="newLbl">What's new</span><div id="changes" style="display:grid;gap:8px"></div></section>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { VERSION, CHANGES, REPO } from "../../core/version.js";
+    import { esc } from "../../style-kit/ui.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id);
+    $("ver").textContent = `VERSION ${VERSION}`;
+    $("repo").href = REPO; $("issue").href = `${REPO}/issues/new`;
+    $("changes").innerHTML = CHANGES.map(c => `<div class="rel"><h3>Version ${esc(c.v)}<small>${esc(new Date(c.date).toLocaleDateString())}</small></h3><ul>${c.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>`).join("");
+    const inOs = window.parent !== window;
+    $("welcome").addEventListener("click", () => inOs ? parent.postMessage({ neonOs: "welcome" }, location.origin) : (location.href = "../../"));
+    $("keys").addEventListener("click", () => inOs ? parent.postMessage({ neonOs: "open", app: "help" }, location.origin) : (location.href = "../help/"));
+  </script>
+</body>
+</html>

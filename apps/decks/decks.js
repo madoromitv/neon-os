@@ -182,9 +182,9 @@ function renderDeck(d) {
 }
 
 // ---------- mixer controls ----------
-document.querySelectorAll("[data-eq]").forEach(el => { const k = el.dataset.eq; Slider(el, { min: -12, max: 12, step: 0.5, value: 0, label: `${k} EQ (double-click to reset)`, text: v => `${v} dB`, onInput: v => { mix.eq[k] = v; applyMix(); } }); });
+document.querySelectorAll("[data-eq]").forEach(el => { const k = el.dataset.eq; Slider(el, { min: -12, max: 12, step: 0.5, value: 0, label: `${k} EQ (double-click to reset)`, text: v => `${v} dB`, onInput: v => { mix.eq[k] = v; applyMix(); document.querySelector(`[data-eqv="${k}"]`).textContent = v === 0 ? "0" : `${v > 0 ? "+" : ""}${v}`; } }); });
 document.querySelectorAll("[data-fader]").forEach(el => { const k = el.dataset.fader; Slider(el, { min: 0, max: 1, step: 0.01, value: mix.fader[k], orient: "v", label: `Deck ${k} volume`, text: v => Math.round(v * 100) + "%", onInput: v => { mix.fader[k] = v; applyMix(); document.querySelector(`[data-fpct="${k}"]`).textContent = Math.round(v * 100) + "%"; } }); });
-Slider($("xfade"), { min: 0, max: 1, step: 0.005, value: 0.5, label: "Crossfader", text: v => v < 0.48 ? `${Math.round((1 - v) * 100)}% A` : v > 0.52 ? `${Math.round(v * 100)}% B` : "Centre", onInput: v => { mix.xfade = v; applyMix(); } });
+Slider($("xfade"), { min: 0, max: 1, step: 0.005, value: 0.5, label: "Crossfader", text: v => v < 0.48 ? `${Math.round((1 - v) * 100)}% A` : v > 0.52 ? `${Math.round(v * 100)}% B` : "Centre", onInput: v => { mix.xfade = v; applyMix(); $("xfPct").textContent = v < 0.48 ? `A ${Math.round((1 - v) * 100)}%` : v > 0.52 ? `B ${Math.round(v * 100)}%` : "C"; } });
 Slider($("master"), { min: 0, max: 1, step: 0.01, value: mix.master, label: "Master volume", text: v => Math.round(v * 100) + "%", onInput: v => { mix.master = v; applyMix(); $("masterPct").textContent = Math.round(v * 100) + "%"; } });
 
 // record the mix as it plays

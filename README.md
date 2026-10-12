@@ -14,6 +14,9 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Notifications:** finished imports, analysis, backups, restores and saved recordings show up above the tray and stay in the bell's list. Quiet keeps them in the list without popping up
 - **Desktop:** drag icons to move them (drop on another to swap); choose the wallpaper (orb, haze, plain or your own picture) and which icons show in Settings
 - **Install:** in Chrome or Edge, **Install Neon OS** in the start menu or Settings gives it its own window and icon. Installed or not, it opens and runs with no connection once it has loaded once
+- **Search everywhere:** Ctrl+K (or Ctrl+Space) finds apps, songs, artists, albums, genres, playlists and settings; Enter opens or plays
+- **Sync between computers:** keep your music folder in Google Drive, Dropbox or OneDrive (or on a drive you carry), then in Amp choose Folders, then Sync this library. A small file, neon-os-library.json, keeps playlists, favourites, play counts, edited covers and Rack settings the same on every computer that links the folder; no account needed
+- **Welcome and About:** a short welcome on the first visit, What's new after each update, and About for the version and the list of changes
 - **Phones and tablets:** on a narrow screen, one app shows at a time, filling the screen; Amp's windows stack in one scrolling column. Switch apps from the taskbar
 - **Accessibility:** high contrast and reduce motion in Settings; every window, menu, icon and the app switcher works from the keyboard, with labels for screen readers
 - **Close:** the X on Amp's player closes all of Amp and stops the music; the X on any other Amp panel closes just that panel
@@ -53,6 +56,7 @@ sw.js        offline support: keeps a copy of every file (list written by tools/
 icons/       app icons (made by tools/make-icons.py)
 os/          the shell: window manager, taskbar, start menu, wallpaper, app switcher, mini player
   notices.js   notifications: pop-ups and the bell's list
+  search.js    search everywhere (Ctrl+K)
 style-kit/   the look, shared by every app
   tokens.css   colours, fonts, glows (change the look here)
   base.css     page defaults
@@ -85,6 +89,8 @@ core/        shared engine, used by every app
   glow.js      the orb's glow drawn with WebGL (2D canvas where WebGL isn't available)
   wav.js       WAV export for the Rack apps
   fx.js        the Rack's shared effects: reverb, tempo-synced delay, compressor
+  sync.js      library sync through the music folder (three-way merge)
+  version.js   the version number and What's new
   details.js   the details editor (several songs at once, cover art) and Tidy names, shared by Amp and Files
   loudness.js  measures each song's loudness for volume levelling
 apps/
@@ -99,6 +105,7 @@ apps/
   notes/       notes
   settings/    settings
   help/        the Shortcuts list
+  about/       version, what's new, links
 tests/         browser tests (run.mjs) and the test songs they use (fixtures.py)
 tools/
   precache.py  writes the offline file list into sw.js; run it after adding or changing files

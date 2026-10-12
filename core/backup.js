@@ -6,7 +6,7 @@
 const MAGIC = "NEONOS01", DB = "neon-orbit-player";
 // Everything Neon OS keeps in this browser's settings storage goes in a backup: notes, theme, Amp, the Rack apps'
 // patterns and effects, desktop icons and window layout. Only this browser's own housekeeping is left out.
-const SKIP = new Set(["neon-os:offline", "neon-os:gl", "neon-os:sync"]);
+const SKIP = new Set(["neon-os:offline", "neon-os:gl", "neon-os:sync", "neon-os:seen-version"]);
 const keepKey = k => (k.startsWith("neon-os:") || k === "neon-orbit-amp") && !SKIP.has(k);
 
 export function openDb() {

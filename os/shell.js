@@ -8,6 +8,8 @@ import { osAction } from "../core/shortcuts.js";
 import { getWallImage } from "../core/desk.js";
 import { createGlow, createGlow2D } from "../core/glow.js";
 import { initNotices, addNotice, toggleNotices, closeNotices } from "./notices.js";
+import { VERSION, CHANGES } from "../core/version.js";
+import { initSearch, openSearch } from "./search.js";
 import { sfx } from "../core/sounds.js";
 import { Slider, openMenu as popMenu } from "../style-kit/ui.js";
 import { runBoot } from "./boot.js";
@@ -444,6 +446,7 @@ function doAction(act, wid) {
     case "start": if (menu) closeMenu(); else { closeNotices(); closeTray(); openMenu(); } break;
     case "notices": closeMenu(); closeTray(); toggleNotices(); break;
     case "help": openApp("help"); break;
+    case "search": closeMenu(); closeNotices(); closeTray(); openSearch(); break;
     case "toggle": case "next": case "prev": transport(act); break;
   }
 }
@@ -463,6 +466,7 @@ addEventListener("message", async e => {
     return;
   }
   if (d.neonOs === "open" && appById(d.app)) { openApp(d.app); return; } // an app opens another (Tape's edit buttons)
+  if (d.neonOs === "welcome") { showWelcome(); return; }
   if (d.neonOs === "keyup") { if (d.key === "Alt" && sw) commitSwitch(); return; }
   if (d.neonOs === "install-state") { e.source.postMessage({ neonOsInstall: installState() }, location.origin); return; }
   if (d.neonOs === "install") { const ok = await promptInstall(); e.source.postMessage({ neonOsInstall: { ...installState(), accepted: ok } }, location.origin); return; }
@@ -617,6 +621,8 @@ function openMenu() {
   menu.className = "win lit startmenu"; menu.setAttribute("role", "menu");
   menu.innerHTML = `<div class="titlebar"><span class="ttl">Neon OS</span></div><div class="wbody">
     <div class="lcd hero"><i aria-hidden="true"></i><b>NEON OS</b></div>
+    <button class="sm-item" role="menuitem" data-act="search"><span><b>Search…</b><small>Apps, songs, playlists, settings · Ctrl+K</small></span></button>
+    <div class="sm-sep"></div>
     ${APPS.map(a => `<button class="sm-item" role="menuitem" data-app="${esc(a.id)}">${svg(a.icon)}<span><b>${esc(a.name)}</b><small>${esc(a.desc)}</small></span></button>`).join("")}
     ${PLANNED.length ? `<div class="sm-sep"></div>${PLANNED.map(p => `<div class="sm-item soon" aria-disabled="true"><span><b>${esc(p.name)}</b><small>${esc(p.desc)}, coming</small></span></div>`).join("")}` : ""}
     <div class="sm-sep"></div>
@@ -632,6 +638,7 @@ function openMenu() {
     if (b.dataset.app) openApp(b.dataset.app);
     else if (b.dataset.act === "tidy") tidy();
     else if (b.dataset.act === "install") promptInstall();
+    else if (b.dataset.act === "search") openSearch();
   });
 }
 function tidy() {
@@ -820,6 +827,41 @@ async function loadWall() {
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && wallMoves()) startWall(); });
 
+// ---------- welcome and what's new ----------
+// First visit: a short welcome. After an update: one "What's new" notice that opens About.
+const VKEY = "neon-os:seen-version";
+function greet(firstVisit) {
+  let seen = null; try { seen = localStorage.getItem(VKEY); localStorage.setItem(VKEY, VERSION); } catch (e) {}
+  if (!seen && firstVisit) showWelcome();
+  else if (seen !== VERSION && CHANGES[0]) addNotice({ title: `What's new in Neon OS ${VERSION}`, text: CHANGES[0].items.slice(0, 3).join(". ") + ". Open About for the rest.", app: "about" });
+}
+function showWelcome() {
+  if (document.querySelector(".welcome")) return;
+  const scrim = document.createElement("div"); scrim.className = "scrim";
+  scrim.innerHTML = `<div class="win dialog lit welcome" role="dialog" aria-modal="true" aria-labelledby="wlT">
+    <div class="titlebar"><span class="ttl" id="wlT">Welcome to Neon OS</span></div>
+    <div class="wbody">
+      <div class="lcd whero"><i aria-hidden="true"></i><b>NEON OS</b></div>
+      <p>A desktop of music apps that runs in your browser. Everything you add stays on this device.</p>
+      <ul>
+        <li><b>Open apps</b> from the Neon button or the desktop. Drag a window to an edge to snap it.</li>
+        <li><b>Add your music</b> in Amp: Folders, then Link a music folder plays it straight from your disk (Chrome or Edge), or Add files copies songs in.</li>
+        <li><b>Find anything</b> with Ctrl+Space, and press ? for every keyboard shortcut.</li>
+        <li><b>Settings</b> has colours, the wallpaper, backups, and Install, to use Neon OS like an app, even offline.</li>
+      </ul>
+      <div class="acts"><button type="button" class="btn" data-x>Look around</button><button type="button" class="btn" data-amp>Open Amp</button></div>
+    </div></div>`;
+  const prev = document.activeElement;
+  const close = () => { scrim.remove(); document.removeEventListener("keydown", onKey, true); if (prev && prev.focus) prev.focus(); };
+  const onKey = e => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  document.addEventListener("keydown", onKey, true);
+  scrim.addEventListener("mousedown", e => { if (e.target === scrim) close(); });
+  scrim.querySelector("[data-x]").addEventListener("click", close);
+  scrim.querySelector("[data-amp]").addEventListener("click", () => { close(); openApp("amp"); });
+  document.body.appendChild(scrim);
+  scrim.querySelector("[data-amp]").focus();
+}
+
 // ---------- installing and working offline ----------
 // The service worker (sw.js) keeps a copy of every file, so Neon OS opens with no connection.
 // Browsers that can install it as an app offer it through the start menu and Settings.
@@ -840,6 +882,39 @@ if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
   }).catch(() => {});
 }
 
+// ---------- search everywhere ----------
+// Settings sections open scrolled into view; Amp's folder actions open its Folders menu.
+async function openSettingsAt(section) {
+  await openApp("settings");
+  const fr = els.settings && els.settings.querySelector("iframe"); if (!fr) return;
+  const go = () => fr.contentWindow.postMessage({ neonOsGoto: section }, location.origin);
+  if (fr.contentDocument && fr.contentDocument.readyState === "complete" && fr.contentDocument.getElementById(section)) go(); else fr.addEventListener("load", () => setTimeout(go, 300), { once: true });
+}
+async function ampFolders() { await openApp("amp"); setTimeout(() => dispatchEvent(new CustomEvent("neonos:folders")), 300); }
+initSearch({
+  apps: APPS,
+  openApp: id => openApp(id),
+  play: async ids => { if (!ids.length) return; await openApp("amp"); dispatchEvent(new CustomEvent("neonos:play", { detail: { ids } })); },
+  actions: [
+    { title: "Change the orb colour", sub: "Settings", words: ["colour", "color", "theme", "orb"], run: () => openSettingsAt("colLbl") },
+    { title: "Wallpaper and desktop icons", sub: "Settings", words: ["background", "picture", "desktop", "icons"], run: () => openSettingsAt("dkLbl") },
+    { title: "Link a music folder", sub: "Amp: Folders", words: ["add music", "import", "folder", "songs"], run: ampFolders },
+    { title: "Sync the library between computers", sub: "Amp: Folders", words: ["sync", "other computer", "google drive", "dropbox", "onedrive"], run: ampFolders },
+    { title: "Free up space", sub: "Amp: Folders", words: ["storage", "space", "copies"], run: ampFolders },
+    { title: "Back up everything", sub: "Settings", words: ["backup", "export", "save"], run: () => openSettingsAt("bkLbl") },
+    { title: "Restore a backup", sub: "Settings", words: ["restore", "import backup"], run: () => openSettingsAt("bkLbl") },
+    { title: "Storage and install", sub: "Settings", words: ["protect", "install", "offline", "storage"], run: () => openSettingsAt("stLbl") },
+    { title: "High contrast", sub: "Turn on or off", words: ["accessibility", "contrast", "see"], run: () => setTheme({ contrast: !getTheme().contrast }) },
+    { title: "Reduce motion", sub: "Turn on or off", words: ["accessibility", "motion", "animation", "calm"], run: () => setTheme({ calm: !calmOn() }) },
+    { title: "Keyboard shortcuts", sub: "Shortcuts", words: ["keys", "help", "shortcut"], run: () => openApp("help") },
+    { title: "Tidy windows", sub: "Put windows back in neat places", words: ["arrange", "layout", "windows"], run: () => tidy() },
+    { title: "Show the desktop", sub: "Ctrl+Alt+D", words: ["minimise all", "hide windows"], run: () => showDesktop() },
+    { title: "Notifications", sub: "Ctrl+Alt+N", words: ["notices", "alerts", "bell"], run: () => toggleNotices() },
+    { title: "Show the welcome", sub: "The first-visit guide", words: ["welcome", "help", "start", "guide"], run: () => showWelcome() },
+    { title: "Restart Neon OS", sub: "Reload the desktop", words: ["reload", "restart", "refresh"], run: () => location.reload() },
+  ],
+});
+
 // ---------- start ----------
 setCompact();
 initNotices({ bellBtn: $("bellBtn"), stackEl: $("notices"), nameOf: id => (appById(id) || { name: id }).name, openApp: id => appById(id) && openApp(id) });
@@ -853,7 +928,7 @@ buildSprite(); sizeWall(); loadWall();
 (async () => {
   await runBoot();
   const saved = loadLayout();
-  if (!saved) return; // first visit: just the desktop
+  if (!saved) { greet(true); return; } // first visit: just the desktop (and the welcome)
   const sw = saved.wins;
   if (saved.split) split = { x: clamp(+saved.split.x || 0.5, 0.15, 0.85), y: clamp(+saved.split.y || 0.5, 0.15, 0.85) };
   const wasClosed = new Set(saved.closed || []);
@@ -868,4 +943,5 @@ buildSprite(); sizeWall(); loadWall();
   }
   const f = front(); if (f) focus(f);
   renderTasks(); saveLayout();
+  greet(false);
 })();

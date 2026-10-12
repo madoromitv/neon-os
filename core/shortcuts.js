@@ -14,6 +14,7 @@ export const SHORTCUTS = [
     ["Alt + drag", "Place a window freely, without docking"],
   ] },
   { group: "Desktop", items: [
+    ["Ctrl+K or Ctrl+Space", "Search everywhere: apps, songs, artists, albums, playlists and settings"],
     ["Ctrl+Alt+Space", "Open the start menu"],
     ["Ctrl+Alt+N", "Open notifications"],
     ["? or F1", "Show this list"],
@@ -46,6 +47,7 @@ const CODES = { KeyW: "close", KeyM: "minimise", KeyD: "desktop", Space: "start"
 export function osAction(e) {
   if (e.metaKey) return null;
   if (e.altKey && !e.ctrlKey && e.code === "Backquote") return e.shiftKey ? "switch-back" : "switch";
+  if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.code === "KeyK" || e.code === "Space")) return "search";
   if (e.ctrlKey && e.altKey) {
     if (e.key && e.key.startsWith("Arrow")) return "snap:" + e.key;
     if (/^Digit[1-9]$/.test(e.code)) return "open:" + (+e.code.slice(5) - 1);
