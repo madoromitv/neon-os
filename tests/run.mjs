@@ -135,6 +135,9 @@ const tests = {
     await p.click(".pic"); await p.waitForTimeout(500); check(await p.$eval("#viewer", e => !e.hidden), "Photos opens the viewer");
     await p.click("#vWall"); await p.waitForTimeout(600);
     check(await p.evaluate(async () => JSON.parse(localStorage.getItem("neon-os:theme")).wall === "image" && !!(await (await import("/core/desk.js")).getWallImage())), "Photos sets the wallpaper");
+    await desk(p); check(await p.$eval("#wallPic", e => !e.hidden && e.dataset.fit === "fit" && getComputedStyle(e.querySelector(".front")).backgroundSize === "contain"), "the picture wallpaper fits the screen");
+    await p.goto(URL + "apps/photos/"); await p.waitForTimeout(800); await p.click(".pic"); await p.waitForTimeout(400);
+    check((await p.$$eval(".pic", e => e.length)) === 1 && await p.evaluate(async () => (await (await import("/core/photos.js")).allThumbs()).size === 1), "Photos keeps a small preview");
     await p.click("#vDel"); await p.waitForTimeout(600);
     check((await p.$$eval(".pic", e => e.length)) === 0 && (await p.evaluate(async () => (await (await import("/core/bin.js")).binList()).some(i => i.kind === "photo"))), "a removed picture goes to the Bin");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));

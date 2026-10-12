@@ -908,6 +908,15 @@ function drawWall(now) {
   if (wallMoves() && !document.hidden) wallRaf = requestAnimationFrame(drawWall);
 }
 function startWall() { cancelAnimationFrame(wallRaf); wallRaf = requestAnimationFrame(drawWall); }
+// a picture wallpaper sits behind the (clear) canvas and follows the window's size. Fit (the default) shows the
+// whole picture with a soft blurred copy filling the edges; Fill crops to cover; Stretch; Centre at its own size.
+function showWallPic(t = getTheme()) {
+  const box = $("wallPic"), on = wallMode === "image" && !!wallUrl;
+  box.hidden = !on; if (!on) return;
+  const fit = ["fit", "fill", "stretch", "centre"].includes(t.wallFit) ? t.wallFit : "fit";
+  box.dataset.fit = fit;
+  for (const i of box.children) i.style.backgroundImage = `url("${wallUrl}")`;
+}
 async function loadWall() {
   const t = getTheme();
   wallKey = `${t.wall}|${t.wallStamp}`;
@@ -915,10 +924,10 @@ async function loadWall() {
   if (wallMode === "image") { // the picture is the canvas's own background; the canvas stays clear over it
     const blob = await getWallImage();
     if (wallUrl) { URL.revokeObjectURL(wallUrl); wallUrl = null; }
-    if (blob) { wallUrl = URL.createObjectURL(blob); wall.style.background = `#07050c url("${wallUrl}") center / cover no-repeat`; }
+    if (blob) { wallUrl = URL.createObjectURL(blob); }
     else wallMode = "fog";
   }
-  if (wallMode !== "image") wall.style.background = "";
+  showWallPic(t);
   startWall();
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && wallMoves()) startWall(); });
@@ -1076,7 +1085,7 @@ lockApi = initLock({ nowPlaying: () => mounted.has("amp") && !closed.has("amp") 
 applyTheme();
 onTheme(t => {
   applyTheme(t); buildSprite();
-  if (`${t.wall}|${t.wallStamp}` !== wallKey) loadWall(); else startWall();
+  if (`${t.wall}|${t.wallStamp}` !== wallKey) loadWall(); else { showWallPic(t); startWall(); }
   if (JSON.stringify([...hiddenIcons()]) + iconRows() !== iconsKey) renderIcons();
 });
 buildSprite(); sizeWall(); loadWall();

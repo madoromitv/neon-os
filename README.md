@@ -12,7 +12,7 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Switch apps:** hold Alt and press ` to step through open apps, let go to switch. Ctrl+Alt+M minimises, Ctrl+Alt+W closes, Ctrl+Alt+D shows the desktop, Ctrl+Alt+1 to 9 open apps, Ctrl+Alt+Space opens the start menu. These work inside every app, even while typing
 - **Mini player:** while Amp has a song loaded, the taskbar shows it with previous, play/pause and next; click the title to bring Amp forward. Ctrl+Alt+P, Ctrl+Alt+. and Ctrl+Alt+, do the same from any app, and keyboard media keys work too
 - **Notifications:** finished imports, analysis, backups, restores and saved recordings show up above the tray and stay in the bell's list. Quiet keeps them in the list without popping up
-- **Desktop:** drag icons to move them (drop on another to swap); choose the wallpaper (orb, haze, plain or your own picture) and which icons show in Settings
+- **Desktop:** drag icons to move them (drop on another to swap); choose the wallpaper (orb, haze, plain or your own picture, which fits the screen, fills it, stretches or sits in the centre) and which icons show in Settings
 - **Install:** in Chrome or Edge, **Install Neon OS** in the start menu or Settings gives it its own window and icon. Installed or not, it opens and runs with no connection once it has loaded once. Installed, it opens music files from your file explorer (Open with → Neon OS), its icon's right-click menu has shortcuts to Amp, Search, Pulse and Settings, and the title bar folds into a thin strip with Search
 - **Desktop app:** a download for Windows, macOS and Linux is on the [Releases page](https://github.com/madoromitv/neon-os/releases), built by GitHub from `desktop/`. It registers as a player for MP3, FLAC, WAV, OGG, Opus, M4A and AAC, so double-clicking a song opens it in Amp. The installers aren't signed yet, so Windows shows "More info → Run anyway" and macOS needs a right-click → Open the first time
 - **Several desktops:** the numbers beside the Neon button switch desktop and + adds one (up to 4). Each app sits on one desktop; Ctrl+Alt+[ and ] move between them, Ctrl+Alt+Shift+[ and ] take the front app along, and a window's right-click menu moves it to any desktop. Opening an app that's on another desktop goes there
@@ -46,7 +46,7 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 | Clock | The time, world clocks, alarms that repeat on chosen days, a timer and a stopwatch with laps; alarms and timers go off with Clock closed (and as system notifications when Neon OS is in the background) | Working |
 | Calendar | A month view with events and reminders (at the time, 5 minutes to a day before); reminders go off with Calendar closed | Working |
 | Calculator | Sums worked out properly (× and ÷ before + and −, brackets, %), from the keypad or keyboard, with history; Tempo turns a BPM (or tapped tempo) into note lengths in ms and Hz for delays and reverbs | Working |
-| Photos | Add pictures or link a folder of them (read in place); thumbnails with a size %, sorting, a viewer, a slideshow, and Set as wallpaper | Working |
+| Photos | Add pictures or link a folder of them (read in place); thumbnails with a size %, sorting, a viewer, a slideshow, and Set as wallpaper. Quick with thousands of pictures: previews are made once in background workers and kept, and only the rows on screen are drawn | Working |
 | System monitor | Open apps with how long they've been open and any errors, with Show, Restart and Close; memory, storage and how quickly the desktop responds; how many songs, playlists, notes, events, alarms and pictures are stored | Working |
 | Bin | Everything deleted in the last 30 days, by kind; put back, delete for good, or empty | Working |
 | Settings | Orb colour for every app at once, wallpaper and desktop icons, high contrast and reduce motion, screensaver and lock screen PIN, library protection and install, backup and restore, layout reset, where to save | Working |
@@ -111,7 +111,8 @@ core/        shared engine, used by every app
   bin.js       the Bin: deleted things kept for 30 days
   notebook.js  notes and their folders
   reminders.js alarms, the timer and calendar reminders; the desktop checks them every second
-  photos.js    pictures added to Photos and linked picture folders
+  photos.js    pictures added to Photos, linked picture folders, their remembered lists and previews
+  thumb-worker.js  makes Photos' previews off the main thread
 apps/
   registry.js  the list of apps the desktop shows
   amp/         the player

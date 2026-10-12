@@ -12,6 +12,8 @@ export const CHANGES = [
     "Deleted songs, playlists, notes and pictures wait in the Bin for 30 days",
     "Every app opens and saves files the same way, and can ask where to save (Settings)",
     "The start menu is grouped into Music, Everyday and System",
+    "Photos stays quick with thousands of pictures: small previews made in the background and kept, and only what's on screen is drawn",
+    "A picture wallpaper fits the whole picture to the screen by default (or Fill, Stretch, Centre in Settings) and follows the window's size",
   ] },
   { v: "1.0", date: "2026-10-12", items: [
     "Sync your library through your music folder: the same playlists, favourites and play counts on every computer (Amp: Folders, then Sync)",

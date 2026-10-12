@@ -54,6 +54,13 @@
       <button class="btn" data-wall="image" aria-pressed="false">Picture…</button>
       <input type="file" id="wallIn" accept="image/*" hidden>
     </div>
+    <div class="row seg" role="group" aria-label="How the picture fits" id="fitRow" hidden>
+      <span class="lbl">Picture</span>
+      <button class="btn" data-fit="fit" aria-pressed="false" title="The whole picture, with a soft blurred copy filling the edges">Fit</button>
+      <button class="btn" data-fit="fill" aria-pressed="false" title="Fills the screen; the edges of the picture may be cut off">Fill</button>
+      <button class="btn" data-fit="stretch" aria-pressed="false" title="Stretched to the screen's shape">Stretch</button>
+      <button class="btn" data-fit="centre" aria-pressed="false" title="At its own size in the middle">Centre</button>
+    </div>
     <span class="lbl">Icons on the desktop</span>
     <div class="checks" id="deskApps"></div>
     <p>Drag icons on the desktop to move them; right-click the desktop and pick Arrange icons to put them back in order.</p>
@@ -125,6 +132,9 @@
     const syncDesk = t => {
       const wall = ["orb", "fog", "plain", "image"].includes(t.wall) ? t.wall : "orb";
       document.querySelectorAll("[data-wall]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.wall === wall)));
+      const fit = ["fit", "fill", "stretch", "centre"].includes(t.wallFit) ? t.wallFit : "fit";
+      document.querySelectorAll("[data-fit]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.fit === fit)));
+      $id("fitRow").hidden = wall !== "image";
       const hide = new Set(Array.isArray(t.deskHide) ? t.deskHide : APPS.filter(a => a.desktop === false).map(a => a.id));
       document.querySelectorAll("#deskApps input").forEach(i => { i.checked = !hide.has(i.value); });
     };
@@ -133,6 +143,7 @@
     document.querySelectorAll("[data-wall]").forEach(b => b.addEventListener("click", () => {
       if (b.dataset.wall === "image") $id("wallIn").click(); else syncDesk(setTheme({ wall: b.dataset.wall }));
     }));
+    document.querySelectorAll("[data-fit]").forEach(b => b.addEventListener("click", () => syncDesk(setTheme({ wallFit: b.dataset.fit }))));
     $id("wallIn").addEventListener("change", async e => {
       const f = e.target.files[0]; e.target.value = ""; if (!f) return;
       try { await setWallImage(f); syncDesk(setTheme({ wall: "image", wallStamp: Date.now() })); }

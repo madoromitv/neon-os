@@ -1,12 +1,19 @@
 // Neon OS core: pictures for the Photos app
 // Two kinds of picture: ones added (copied into this browser) and ones in a linked folder on disk (read in place).
-// Both live in one small IndexedDB: "pics" holds added pictures, "folders" holds linked folder handles.
+// One small IndexedDB holds: "pics" (added pictures), "folders" (linked folder handles), "index" (each linked
+// folder's list of pictures, so it opens without rescanning), and "thumbs" (small previews, made once).
 const DB = "neon-os-photos";
 export const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif|bmp|svg)$/i;
 function open() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open(DB, 1);
-    r.onupgradeneeded = () => { r.result.createObjectStore("pics", { keyPath: "id" }); r.result.createObjectStore("folders", { keyPath: "id" }); };
+    const r = indexedDB.open(DB, 2);
+    r.onupgradeneeded = () => {
+      const db = r.result, has = n => db.objectStoreNames.contains(n);
+      if (!has("pics")) db.createObjectStore("pics", { keyPath: "id" });
+      if (!has("folders")) db.createObjectStore("folders", { keyPath: "id" });
+      if (!has("index")) db.createObjectStore("index", { keyPath: "id" });
+      if (!has("thumbs")) db.createObjectStore("thumbs");
+    };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
 }
@@ -26,20 +33,33 @@ export async function addPicFolder(handle) {
   for (const f of have) { try { if (await f.handle.isSameEntry(handle)) return f; } catch (e) {} }
   const f = { id: uid("f"), name: handle.name, handle }; await tx("folders", "readwrite", s => s.put(f)); return f;
 }
-export const removePicFolder = id => tx("folders", "readwrite", s => s.delete(id));
+export async function removePicFolder(id) { await tx("folders", "readwrite", s => s.delete(id)); await tx("index", "readwrite", s => s.delete(id)).catch(() => {}); }
 export async function folderAccess(f, ask = false) {
   try { if (await f.handle.queryPermission({ mode: "read" }) === "granted") return true; return ask ? await f.handle.requestPermission({ mode: "read" }) === "granted" : false; } catch (e) { return false; }
 }
-// every picture in a folder and its subfolders (up to 6 deep), without reading the pictures themselves
-export async function scanPicFolder(f, max = 5000) {
+// the remembered list of a linked folder's pictures: [{ path, name, modified, size }]
+export const getFolderIndex = async id => ((await tx("index", "readonly", s => s.get(id)).catch(() => null)) || {}).entries || null;
+export const setFolderIndex = (id, entries) => tx("index", "readwrite", s => s.put({ id, entries, at: Date.now() })).catch(() => {});
+// every picture in a folder and its subfolders (up to 6 deep): names and handles only, nothing is read
+export async function scanPicFolder(f, max = 50000) {
   const out = [];
   async function walk(dir, path, depth) {
     for await (const [name, h] of dir.entries()) {
       if (out.length >= max) return;
-      if (h.kind === "file" && IMAGE_EXT.test(name)) out.push({ id: f.id + ":" + path + name, name, folder: f.id, folderName: f.name, path: path + name, handle: h });
+      if (h.kind === "file" && IMAGE_EXT.test(name)) out.push({ path: path + name, name, handle: h });
       else if (h.kind === "directory" && depth < 6 && !name.startsWith(".")) await walk(h, path + name + "/", depth + 1);
     }
   }
   await walk(f.handle, "", 0);
   return out;
 }
+// a file inside a linked folder, found again by its path
+export async function fileAt(f, path) {
+  const parts = path.split("/"); let dir = f.handle;
+  for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p);
+  return await (await dir.getFileHandle(parts[parts.length - 1])).getFile();
+}
+// previews: key = picture id + when it changed, so an edited picture gets a new one
+export const allThumbs = async () => { const db = await open(); try { return await new Promise(res => { const out = new Map(), t = db.transaction("thumbs"), c = t.objectStore("thumbs").openCursor(); c.onsuccess = () => { const k = c.result; if (k) { out.set(k.key, k.value); k.continue(); } }; t.oncomplete = () => res(out); t.onerror = () => res(out); }); } finally { db.close(); } };
+export const putThumb = (key, blob) => tx("thumbs", "readwrite", s => s.put(blob, key)).catch(() => {});
+export const dropThumbs = keys => keys.length ? tx("thumbs", "readwrite", s => { for (const k of keys) s.delete(k); }).catch(() => {}) : null;

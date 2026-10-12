@@ -1,6 +1,15 @@
 /* Neon OS shell: desktop, windows, taskbar, start menu */
 body { overflow: hidden; user-select: none; }
 #wall { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#wallPic { position: fixed; inset: 0; overflow: hidden; background: #07050c; }
+#wallPic[hidden] { display: none; }
+#wallPic i { position: absolute; inset: 0; background-repeat: no-repeat; background-position: center; }
+#wallPic .back { inset: -40px; background-size: cover; filter: blur(28px) brightness(.55) saturate(1.2); display: none; }
+#wallPic[data-fit="fit"] .back { display: block; }
+#wallPic[data-fit="fit"] .front { background-size: contain; }
+#wallPic[data-fit="fill"] .front { background-size: cover; }
+#wallPic[data-fit="stretch"] .front { background-size: 100% 100%; }
+#wallPic[data-fit="centre"] .front { background-size: auto; }
 .desktop { position: fixed; inset: 0 0 40px 0; }
 
 /* desktop icons */
@@ -229,6 +238,7 @@ body.wco .wcobar i { width: 9px; height: 9px; border-radius: 50%; background: va
 body.wco .wcobar b { font-size: 11px; letter-spacing: .2em; color: var(--ink-dim); }
 body.wco .wcobar .wco-search { -webkit-app-region: no-drag; app-region: no-drag; margin-left: 12px; height: 22px; padding: 0 12px; border-radius: 2px; background: #000; color: var(--ink-faint); font-size: 11px; box-shadow: inset -1px -1px 0 #3a3450; min-width: 180px; text-align: left; }
 body.wco .desktop { top: var(--wco-top, 32px); }
+body.wco #wallPic { top: var(--wco-top, 32px); }
 body.wco #wall { top: var(--wco-top, 32px); height: calc(100% - var(--wco-top, 32px)); }
 
 /* lock screen and screensaver (os/lock.js): above everything but notices, so alarms still show */

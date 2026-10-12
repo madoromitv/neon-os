@@ -16,9 +16,10 @@
   .bar .slider { width: 110px; }
   .bar .lcd { font-size: 18px; line-height: 24px; padding: 0 8px; min-width: 52px; text-align: center; }
   .bar .count { margin-left: auto; }
-  .grid { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--cell, 140px), 1fr)); gap: 6px; align-content: start;
-    background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; padding: 6px; }
-  .pic { position: relative; aspect-ratio: 1; border-radius: 2px; overflow: hidden; background: #0d0b14; border: 1px solid transparent; padding: 0; cursor: zoom-in; }
+  .bar .prog { font-size: 11.5px; color: var(--ink-faint); }
+  .grid { flex: 1; min-height: 0; overflow: auto; position: relative; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; contain: strict; }
+  .grid .sizer { position: absolute; left: 0; top: 0; width: 1px; }
+  .pic { position: absolute; border-radius: 2px; overflow: hidden; background: #0d0b14; border: 1px solid transparent; padding: 0; cursor: zoom-in; contain: strict; }
   .pic img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity .2s; }
   .pic img.ok { opacity: 1; }
   .pic:hover, .pic:focus-visible { border-color: var(--ball); outline: none; box-shadow: 0 0 10px var(--ball-dim); }
@@ -49,10 +50,11 @@
     <button class="btn" id="link">Link a folder</button>
     <button class="btn" id="unlink" hidden>Unlink folder</button>
     <button class="btn" id="show" title="Play every picture shown, one after another">Slideshow</button>
+    <span class="prog" id="prog" aria-live="polite"></span>
     <span class="lcd count" id="count">0</span>
   </div>
   <div class="warn" id="warn" hidden><span id="warnTxt"></span><button class="btn mini" id="reconnect">Reconnect</button></div>
-  <div class="grid" id="grid" role="list" aria-label="Pictures"></div>
+  <div class="grid" id="grid" role="list" aria-label="Pictures"><div class="sizer" id="sizer"></div></div>
   <p class="empty" id="empty" hidden></p>
 
   <div class="viewer" id="viewer" hidden role="dialog" aria-label="Picture">
@@ -70,7 +72,7 @@
     import "../../core/os-link.js";
     import { applyTheme, onTheme, setTheme } from "../../core/theme.js";
     import { esc, toast, dialog, Slider } from "../../style-kit/ui.js";
-    import { listPics, addPic, removePic, listPicFolders, addPicFolder, removePicFolder, folderAccess, scanPicFolder, IMAGE_EXT } from "../../core/photos.js";
+    import { listPics, addPic, removePic, listPicFolders, addPicFolder, removePicFolder, folderAccess, scanPicFolder, fileAt, getFolderIndex, setFolderIndex, allThumbs, putThumb, dropThumbs, IMAGE_EXT } from "../../core/photos.js";
     import { setWallImage } from "../../core/desk.js";
     import { binPut, onBinChange } from "../../core/bin.js";
     import { notify } from "../../core/notify.js";
@@ -81,27 +83,114 @@
     try { S = { ...S, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) {}
     const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
     const canLink = "showDirectoryPicker" in window;
+    const prog = t => { $("prog").textContent = t || ""; };
 
-    // every picture: { id, name, modified, kind: "added" | "folder", blob? | handle?, folder? }
+    // every picture: { id, name, modified, kind: "added" | "folder", blob? (added) | folder + path (linked) }
     let pics = [], folders = [], locked = [], shown = [];
-    const urls = new Map();
-    async function blobOf(p) { if (p.blob) return p.blob; return await p.handle.getFile(); }
-    async function urlOf(p) { if (!urls.has(p.id)) urls.set(p.id, URL.createObjectURL(await blobOf(p))); return urls.get(p.id); }
+    const byFolder = new Map();
+    async function blobOf(p) { if (p.blob) return p.blob; return await fileAt(byFolder.get(p.folder), p.path); }
+    // the full picture, for the viewer: only a few kept at once
+    const full = new Map();
+    async function fullUrl(p) {
+      if (full.has(p.id)) { const u = full.get(p.id); full.delete(p.id); full.set(p.id, u); return u; }
+      const u = URL.createObjectURL(await blobOf(p)); full.set(p.id, u);
+      while (full.size > 6) { const [k, old] = full.entries().next().value; URL.revokeObjectURL(old); full.delete(k); }
+      return u;
+    }
 
-    async function load() {
-      const added = (await listPics().catch(() => [])).map(p => ({ ...p, kind: "added" }));
-      folders = await listPicFolders().catch(() => []); locked = [];
-      const fromFolders = [];
-      for (const f of folders) {
-        if (!(await folderAccess(f))) { locked.push(f); continue; }
-        try {
-          const found = await scanPicFolder(f);
-          for (let i = 0; i < found.length; i += 64) await Promise.all(found.slice(i, i + 64).map(async p => { try { const file = await p.handle.getFile(); p.modified = file.lastModified; p.size = file.size; } catch (e) { p.modified = 0; } }));
-          fromFolders.push(...found.map(p => ({ ...p, kind: "folder" })));
-        } catch (e) { locked.push(f); }
+    // ---------- previews: made once in background workers, kept in the browser, drawn only when on screen ----------
+    const TH = 320, tkey = p => `${p.id}|${p.modified || 0}`;
+    let thumbs = new Map();            // key -> preview blob (kept)
+    const turls = new Map();           // key -> object URL, at most ~600 at a time
+    const failed = new Set();          // keys the worker couldn't do: shown from the original
+    function thumbUrl(k) {
+      if (turls.has(k)) { const u = turls.get(k); turls.delete(k); turls.set(k, u); return u; }
+      const b = thumbs.get(k); if (!b) return null;
+      const u = URL.createObjectURL(b); turls.set(k, u);
+      while (turls.size > 600) { const [old, ou] = turls.entries().next().value; if (cells.has(old)) break; URL.revokeObjectURL(ou); turls.delete(old); }
+      return u;
+    }
+    const workers = [], busy = new Set(), queue = new Map(); let wanted = new Set(), made = 0;
+    const NW = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
+    function worker(i) {
+      if (!workers[i]) {
+        const w = new Worker(new URL("../../core/thumb-worker.js", location.href)); w.job = null;
+        w.onmessage = async e => {
+          const { key, blob } = e.data; busy.delete(key); w.job = null;
+          if (blob) { thumbs.set(key, blob); putThumb(key, blob); made++; } else failed.add(key);
+          paintKey(key); pump();
+        };
+        workers[i] = w;
       }
-      pics = [...added, ...fromFolders];
-      drawSources(); draw();
+      return workers[i];
+    }
+    function want(list) { // the pictures on screen (and just past it) come first; others wait until they scroll in
+      wanted = new Set(list.map(tkey));
+      for (const k of [...queue.keys()]) if (!wanted.has(k)) queue.delete(k);
+      for (const p of list) { const k = tkey(p); if (!thumbs.has(k) && !failed.has(k) && !busy.has(k) && !queue.has(k)) queue.set(k, p); }
+      pump();
+    }
+    let bgAt = 0; // with nothing on screen waiting, the workers carry on through the rest so scrolling later is instant
+    function nextBackground() {
+      while (bgAt < shown.length) { const p = shown[bgAt++], k = tkey(p); if (!thumbs.has(k) && !failed.has(k) && !busy.has(k)) return [k, p]; }
+      return null;
+    }
+    async function pump() {
+      if (!queue.size && !document.hidden) { const n = nextBackground(); if (n) queue.set(n[0], n[1]); }
+      for (let i = 0; i < NW && queue.size; i++) {
+        const w = worker(i); if (w.job) continue;
+        const [k, p] = queue.entries().next().value; queue.delete(k); busy.add(k); w.job = k;
+        try { const blob = await blobOf(p); w.postMessage({ key: k, blob, size: TH }); } catch (e) { busy.delete(k); w.job = null; failed.add(k); paintKey(k); }
+      }
+      const todo = shown.filter(p => !thumbs.has(tkey(p)) && !failed.has(tkey(p))).length;
+      prog(todo && (queue.size || busy.size) ? `Making previews… ${todo.toLocaleString()} to go` : "");
+      if (!queue.size && busy.size < NW && bgAt < shown.length) setTimeout(pump, 0);
+    }
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) pump(); });
+
+    // ---------- loading: added pictures, then linked folders from their remembered lists, then a fresh look ----------
+    async function folderPics(f, entries) { return entries.map(e => ({ id: f.id + ":" + e.path, name: e.name, path: e.path, folder: f.id, modified: e.modified, size: e.size, kind: "folder" })); }
+    async function rescan(f, known) {
+      const found = await scanPicFolder(f), have = new Map((known || []).map(e => [e.path, e]));
+      const fresh = found.filter(x => !have.has(x.path)); let n = 0;
+      for (let i = 0; i < fresh.length; i += 100) {
+        await Promise.all(fresh.slice(i, i + 100).map(async x => { try { const file = await x.handle.getFile(); x.modified = file.lastModified; x.size = file.size; } catch (e) { x.modified = 0; } }));
+        n += Math.min(100, fresh.length - i); if (fresh.length > 300) prog(`Reading ${f.name}… ${n.toLocaleString()} of ${fresh.length.toLocaleString()}`);
+      }
+      const entries = found.map(x => have.get(x.path) || { path: x.path, name: x.name, modified: x.modified, size: x.size });
+      const changed = !known || fresh.length || entries.length !== known.length;
+      if (changed) await setFolderIndex(f.id, entries);
+      return { entries, changed };
+    }
+    let loading = 0;
+    async function load() {
+      const run = ++loading;
+      const added = (await listPics().catch(() => [])).map(p => ({ ...p, kind: "added" }));
+      folders = await listPicFolders().catch(() => []); locked = []; byFolder.clear();
+      const fromFolders = [], toScan = [];
+      for (const f of folders) {
+        byFolder.set(f.id, f);
+        if (!(await folderAccess(f))) { locked.push(f); continue; }
+        const known = await getFolderIndex(f.id);
+        if (known) fromFolders.push(...await folderPics(f, known));
+        toScan.push([f, known]);
+      }
+      if (!thumbs.size) thumbs = await allThumbs().catch(() => new Map());
+      pics = [...added, ...fromFolders]; drawSources(); draw();
+      // then look at each folder again for pictures added or removed since
+      for (const [f, known] of toScan) {
+        try {
+          const { entries, changed } = await rescan(f, known);
+          if (run !== loading) return;
+          if (changed) { pics = [...pics.filter(p => p.folder !== f.id), ...await folderPics(f, entries)]; draw(true); }
+        } catch (e) { locked.push(f); drawSources(); }
+      }
+      prog("");
+      if (!locked.length && run === loading) { // previews of pictures that are gone
+        const keep = new Set(pics.map(tkey)), gone = [...thumbs.keys()].filter(k => !keep.has(k));
+        if (gone.length) { gone.forEach(k => thumbs.delete(k)); dropThumbs(gone); }
+      }
+      pump();
     }
     function drawSources() {
       const opts = [["all", "All pictures"], ["added", "Added here"], ...folders.map(f => [f.id, "Folder: " + f.name])];
@@ -114,27 +203,66 @@
       $("warnTxt").textContent = locked.length ? `${locked.map(f => f.name).join(", ")} need${locked.length === 1 ? "s" : ""} permission again to show ${locked.length === 1 ? "its" : "their"} pictures.` : "";
     }
     const cmp = { new: (a, b) => (b.modified || 0) - (a.modified || 0), old: (a, b) => (a.modified || 0) - (b.modified || 0), name: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }) };
-    let io = null;
-    function draw() {
+
+    // ---------- the grid: only the rows on screen exist; the rest is empty space of the right height ----------
+    const grid = $("grid"), sizer = $("sizer"), GAP = 6, PAD = 6;
+    const cells = new Map(); // key -> element on screen
+    let geo = { cols: 1, cw: 140, rowH: 146 };
+    function layout() {
+      const W = grid.clientWidth - PAD * 2, want = 140 * S.size;
+      const cols = Math.max(1, Math.floor((W + GAP) / (want + GAP))), cw = Math.max(40, (W - GAP * (cols - 1)) / cols);
+      geo = { cols, cw, rowH: cw + GAP };
+      sizer.style.height = Math.ceil(shown.length / cols) * geo.rowH + PAD * 2 + "px";
+    }
+    function paintKey(k) { const el = cells.get(k); if (el) paint(el); }
+    function paint(el) {
+      const p = shown[+el.dataset.i]; if (!p) return;
+      const img = el.querySelector("img"), k = tkey(p);
+      if (img.dataset.k === k && img.src) return;
+      const u = thumbUrl(k);
+      if (u) { img.dataset.k = k; img.onload = () => img.classList.add("ok"); img.src = u; }
+      else if (failed.has(k)) { img.dataset.k = k; fullUrl(p).then(src => { img.onload = () => img.classList.add("ok"); img.src = src; }).catch(() => { el.querySelector(".nm").textContent = p.name + " (can't open)"; }); }
+    }
+    let rafId = 0;
+    function render() {
+      rafId = 0;
+      const { cols, cw, rowH } = geo, rows = Math.ceil(shown.length / cols);
+      const first = Math.max(0, Math.floor((grid.scrollTop - PAD) / rowH) - 2), last = Math.min(rows - 1, Math.ceil((grid.scrollTop + grid.clientHeight) / rowH) + 2);
+      const keep = new Set();
+      for (let r = first; r <= last; r++) for (let c = 0; c < cols; c++) {
+        const i = r * cols + c, p = shown[i]; if (!p) break;
+        const k = tkey(p); keep.add(k);
+        let el = cells.get(k);
+        if (!el) {
+          el = document.createElement("button"); el.className = "pic"; el.setAttribute("role", "listitem"); el.title = p.name;
+          el.innerHTML = `<img alt="${esc(p.name)}" decoding="async"><span class="nm">${esc(p.name)}</span>`;
+          grid.appendChild(el); cells.set(k, el);
+        }
+        el.dataset.i = i;
+        el.style.cssText = `left:${PAD + c * (cw + GAP)}px;top:${PAD + r * rowH}px;width:${cw}px;height:${cw}px`;
+        paint(el);
+      }
+      for (const [k, el] of cells) if (!keep.has(k)) { el.remove(); cells.delete(k); }
+      // previews for what's on screen, then the next few rows down
+      const ahead = shown.slice(first * cols, Math.min(shown.length, (last + 6) * cols));
+      want(ahead);
+    }
+    const schedule = () => { if (!rafId) rafId = requestAnimationFrame(render); };
+    grid.addEventListener("scroll", schedule, { passive: true });
+    new ResizeObserver(() => { layout(); schedule(); }).observe(grid);
+    function draw(keepScroll) {
       shown = pics.filter(p => S.src === "all" || (S.src === "added" ? p.kind === "added" : p.folder === S.src)).sort(cmp[S.sort] || cmp.new);
-      $("count").textContent = `${shown.length} PIC${shown.length === 1 ? "" : "S"}`;
+      $("count").textContent = `${shown.length.toLocaleString()} PIC${shown.length === 1 ? "" : "S"}`;
       $("sort").value = S.sort;
-      document.body.style.setProperty("--cell", Math.round(140 * S.size) + "px");
-      if (io) io.disconnect();
-      $("grid").innerHTML = shown.map((p, i) => `<button class="pic" role="listitem" data-i="${i}" title="${esc(p.name)}"><img alt="${esc(p.name)}"><span class="nm">${esc(p.name)}</span></button>`).join("");
-      $("grid").hidden = !shown.length; $("empty").hidden = !!shown.length;
-      $("empty").innerHTML = pics.length ? "No pictures here." : `No pictures yet. ${canLink ? "Link a folder of pictures to see them in place, or add" : "Add"} some to keep them here. You can also drop pictures on this window.`;
-      // load each thumbnail only when it scrolls into view
-      io = new IntersectionObserver(es => es.forEach(async e => {
-        if (!e.isIntersecting) return; io.unobserve(e.target);
-        const p = shown[+e.target.dataset.i], img = e.target.querySelector("img");
-        try { img.onload = () => img.classList.add("ok"); img.src = await urlOf(p); } catch (err) { e.target.querySelector(".nm").textContent = p.name + " (can't open)"; }
-      }), { root: $("grid"), rootMargin: "300px" });
-      $("grid").querySelectorAll(".pic").forEach(b => io.observe(b));
+      for (const el of cells.values()) el.remove(); cells.clear(); bgAt = 0;
+      if (!keepScroll) grid.scrollTop = 0;
+      grid.hidden = !shown.length; $("empty").hidden = !!shown.length;
+      $("empty").innerHTML = pics.length ? "No pictures here." : `No pictures yet. ${canLink ? "Link a folder of pictures to see them in place (nothing is copied), or add" : "Add"} some to keep them here. You can also drop pictures on this window.`;
+      layout(); render();
     }
 
     Slider($("size"), { min: 0.5, max: 2, step: 0.05, value: S.size, label: "Thumbnail size", text: v => Math.round(v * 100) + "%",
-      onInput: v => { S.size = v; $("sizePct").textContent = Math.round(v * 100) + "%"; document.body.style.setProperty("--cell", Math.round(140 * v) + "px"); }, onChange: save });
+      onInput: v => { S.size = v; $("sizePct").textContent = Math.round(v * 100) + "%"; layout(); schedule(); }, onChange: save });
     $("sizePct").textContent = Math.round(S.size * 100) + "%";
     $("src").addEventListener("change", () => { S.src = $("src").value; save(); drawSources(); draw(); });
     $("sort").addEventListener("change", () => { S.sort = $("sort").value; save(); draw(); });
@@ -167,16 +295,16 @@
       $("viewer").hidden = false; $("vName").textContent = p.name; $("vPos").textContent = `${at + 1} / ${shown.length}`;
       $("vDel").hidden = p.kind !== "added";
       const img = $("vImg"); img.style.opacity = 0; img.alt = p.name;
-      try { const u = await urlOf(p); if (shown[at] !== p) return; img.onload = () => { img.style.opacity = 1; }; img.src = u; } catch (e) { toast("Couldn't open that picture.", true); }
+      try { const u = await fullUrl(p); if (shown[at] !== p) return; img.onload = () => { img.style.opacity = 1; }; img.src = u; } catch (e) { toast("Couldn't open that picture.", true); }
       // keep the next one ready so the slideshow doesn't wait
-      const n = shown[(at + 1) % shown.length]; if (n) urlOf(n).catch(() => {});
+      const n = shown[(at + 1) % shown.length]; if (n && n !== p) fullUrl(n).catch(() => {});
     }
-    function closeView() { $("viewer").hidden = true; play(false); const b = $("grid").querySelector(`[data-i="${at}"]`); if (b) b.focus(); }
+    function closeView() { $("viewer").hidden = true; play(false); const b = grid.querySelector(`.pic[data-i="${at}"]`); if (b) b.focus(); else { grid.scrollTop = Math.floor(at / geo.cols) * geo.rowH; } }
     function play(on) {
       clearInterval(timer); timer = null; $("vPlay").setAttribute("aria-pressed", String(on));
       if (on) timer = setInterval(() => view(at + 1), S.speed * 1000);
     }
-    $("grid").addEventListener("click", e => { const b = e.target.closest(".pic"); if (b) view(+b.dataset.i); });
+    grid.addEventListener("click", e => { const b = e.target.closest(".pic"); if (b) view(+b.dataset.i); });
     $("vPrev").addEventListener("click", () => { view(at - 1); if (timer) play(true); });
     $("vNext").addEventListener("click", () => { view(at + 1); if (timer) play(true); });
     $("vClose").addEventListener("click", closeView);
@@ -200,8 +328,8 @@
       const p = shown[at]; if (!p || p.kind !== "added") return;
       const { kind, ...rec } = p; void kind;
       try { await binPut("photo", p.name, rec, "Photos"); await removePic(p.id); } catch (e) { toast("Couldn't move it to the Bin.", true); return; }
-      const u = urls.get(p.id); if (u) { URL.revokeObjectURL(u); urls.delete(p.id); }
-      pics = pics.filter(x => x.id !== p.id); const keep = at; draw();
+      const u = full.get(p.id); if (u) { URL.revokeObjectURL(u); full.delete(p.id); }
+      pics = pics.filter(x => x.id !== p.id); const keep = at; draw(true);
       if (shown.length) view(Math.min(keep, shown.length - 1)); else closeView();
       if (!notify("Picture moved to the Bin", `${p.name} can be put back for 30 days.`, "bin")) toast("Moved to the Bin");
     });
