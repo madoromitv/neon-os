@@ -14,6 +14,7 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Notifications:** finished imports, analysis, backups, restores and saved recordings show up above the tray and stay in the bell's list. Quiet keeps them in the list without popping up
 - **Desktop:** drag icons to move them (drop on another to swap); choose the wallpaper (orb, haze, plain or your own picture) and which icons show in Settings
 - **Install:** in Chrome or Edge, **Install Neon OS** in the start menu or Settings gives it its own window and icon. Installed or not, it opens and runs with no connection once it has loaded once
+- **Phones and tablets:** on a narrow screen, one app shows at a time, filling the screen; Amp's windows stack in one scrolling column. Switch apps from the taskbar
 - **Accessibility:** high contrast and reduce motion in Settings; every window, menu, icon and the app switcher works from the keyboard, with labels for screen readers
 - **Close:** the X on Amp's player closes all of Amp and stops the music; the X on any other Amp panel closes just that panel
 - **Amp's player** carries every Amp window docked to it, like the classic player; drag any other Amp window to pull it free
@@ -98,6 +99,7 @@ apps/
   notes/       notes
   settings/    settings
   help/        the Shortcuts list
+tests/         browser tests (run.mjs) and the test songs they use (fixtures.py)
 tools/
   precache.py  writes the offline file list into sw.js; run it after adding or changing files
   make-icons.py  draws the app icons
@@ -127,6 +129,12 @@ python -m http.server 8000
 ```
 
 Then open http://localhost:8000.
+
+## Tests
+
+`tests/run.mjs` opens the desktop and every app in a headless browser and checks the main things work: shortcuts and the app switcher, playing with levelling and gapless playback, linked folders, the details editor, the Rack's effects and exports, working offline and the phone layout. GitHub runs it on every push (`.github/workflows/checks.yml`), along with a check that the offline file list in `sw.js` is up to date.
+
+To run it yourself: `npm install --no-save playwright && npx playwright install chromium`, then `python tests/fixtures.py && node tests/run.mjs`.
 
 ## Your music
 

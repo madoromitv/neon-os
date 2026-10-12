@@ -203,8 +203,40 @@ function geom(st) {
     default: return { x: st.x, y: st.y, w: st.w, h: st.h };
   }
 }
+// ---------- phones and small tablets ----------
+// Under 760 px wide, Neon OS works like a phone: one app on screen at a time, framed apps fill the screen,
+// and a native app's windows (Amp) stack in one scrolling column. Window positions saved for bigger screens are kept.
+const COMPACT_W = 760;
+let compact = false;
+function setCompact() {
+  const c = innerWidth < COMPACT_W; if (c === compact) return false;
+  compact = c; document.body.classList.toggle("compact", c);
+  return true;
+}
+const STACK_H = { winPl: 300, winVis: 240 };
+function renderStack(appId) {
+  const a = area(); let y = 0;
+  for (const k of appWins(appId)) {
+    const el = els[k], st = wins[k]; if (!el) continue;
+    const sec = k.split(":")[1], h = st.autoH ? "" : (STACK_H[sec] || Math.max(360, Math.round(a.h * 0.8))) + "px";
+    Object.assign(el.style, { position: "absolute", left: "0px", top: y + "px", width: a.w + "px", height: h, zIndex: st.z });
+    el.classList.toggle("min", !!st.min); el.classList.remove("max"); delete el.dataset.snap;
+    if (!st.min && !el.hidden && !el.classList.contains("closed")) y += el.offsetHeight;
+  }
+}
+function applyAway() { // in compact mode only the front app shows
+  const f = front(), app = f ? wins[f].appId : null;
+  for (const k in els) els[k].classList.toggle("away", compact && !!app && wins[k] && wins[k].appId !== app);
+}
 function render(wid) {
   const st = wins[wid], el = els[wid]; if (!st || !el) return;
+  if (compact) {
+    if (appById(st.appId).native) { renderStack(st.appId); return; }
+    const a = area();
+    Object.assign(el.style, { position: "absolute", left: desk.scrollLeft + "px", top: desk.scrollTop + "px", width: a.w + "px", height: a.h + "px", zIndex: st.z });
+    el.classList.toggle("min", !!st.min); el.classList.add("max"); el.dataset.snap = "max";
+    return;
+  }
   const g = geom(st);
   if (st.snap) { g.x += desk.scrollLeft; g.y += desk.scrollTop; } // snapped windows fill what's on screen, wherever it's scrolled to
   Object.assign(el.style, { position: "absolute", left: g.x + "px", top: g.y + "px", width: g.w + "px", height: st.autoH ? "" : g.h + "px", zIndex: st.z });
@@ -226,9 +258,9 @@ function focus(wid) {
   const st = wins[wid]; if (!st) return;
   if (front() !== wid || st.min) { raise(wid); st.min = false; render(wid); saveLayout(); }
   for (const k in els) els[k].classList.toggle("lit", k === wid);
-  renderTasks();
+  applyAway(); renderTasks();
 }
-function minimiseGroup(appId) { sfx.minimise(); appWins(appId).forEach(k => { wins[k].min = true; render(k); }); const f = front(); if (f) focus(f); renderTasks(); saveLayout(); }
+function minimiseGroup(appId) { sfx.minimise(); appWins(appId).forEach(k => { wins[k].min = true; render(k); }); const f = front(); if (f) focus(f); applyAway(); renderTasks(); saveLayout(); }
 function restoreGroup(appId) {
   const ks = appWins(appId).sort((a, b) => wins[a].z - wins[b].z);
   ks.forEach(k => { wins[k].min = false; raise(k); render(k); });
@@ -287,7 +319,7 @@ function dockedGroup(wid) {
   return group;
 }
 function startDrag(e, wid) {
-  if (e.button !== 0 || e.target.closest("button")) return;
+  if (e.button !== 0 || e.target.closest("button") || compact) return;
   const st = wins[wid], el = els[wid];
   e.preventDefault(); el.setPointerCapture(e.pointerId);
   const lead = /:winMain$/.test(wid);
@@ -331,7 +363,7 @@ function startDrag(e, wid) {
 }
 let lastRz = {};
 function startResize(e, wid, dir) {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || compact) return;
   const now = performance.now(); // a second press on the same edge straight after the first is a double-click
   if (lastRz.wid === wid && lastRz.dir === dir && now - lastRz.t < 400) { lastRz = {}; e.preventDefault(); e.stopPropagation(); if (dir.length === 1) stretch(wid, dir); return; }
   lastRz = { wid, dir, t: now };
@@ -387,7 +419,7 @@ const NEXT = {
   ArrowDown: { null: "min", max: null, left: "bl", right: "br", tl: "left", tr: "right", bl: "bl", br: "br" },
 };
 function snapKey(wid, key) {
-  const st = wins[wid]; if (!st || !NEXT[key]) return;
+  const st = wins[wid]; if (!st || !NEXT[key] || compact) return;
   if (st.autoH) {
     const a = area(), r = rectOf(wid);
     if (key === "ArrowLeft") st.x = 0; if (key === "ArrowRight") st.x = a.w - r.w;
@@ -527,8 +559,8 @@ addEventListener("blur", () => setTimeout(() => {
   const f = document.activeElement;
   if (f && f.tagName === "IFRAME") { const w = f.closest(".owin"); if (w) focus(w.dataset.wid); }
 }, 0));
-desk.addEventListener("scroll", () => { for (const k in wins) if (wins[k].snap) render(k); }, { passive: true });
-addEventListener("resize", () => { for (const k in wins) { keepInView(wins[k], els[k]); render(k); } sizeWall(); startWall(); if (iconRows() + "" !== iconsKey.slice(iconsKey.lastIndexOf("]") + 1)) renderIcons(); });
+desk.addEventListener("scroll", () => { for (const k in wins) if (wins[k].snap || (compact && !appById(wins[k].appId).native)) render(k); }, { passive: true });
+addEventListener("resize", () => { if (setCompact()) applyAway(); for (const k in wins) { keepInView(wins[k], els[k]); render(k); } sizeWall(); startWall(); if (iconRows() + "" !== iconsKey.slice(iconsKey.lastIndexOf("]") + 1)) renderIcons(); });
 
 // ---------- taskbar: one button per app ----------
 function renderTasks() {
@@ -809,6 +841,7 @@ if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
 }
 
 // ---------- start ----------
+setCompact();
 initNotices({ bellBtn: $("bellBtn"), stackEl: $("notices"), nameOf: id => (appById(id) || { name: id }).name, openApp: id => appById(id) && openApp(id) });
 applyTheme();
 onTheme(t => {

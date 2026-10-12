@@ -1,7 +1,7 @@
 # Writes the list of files Neon OS needs offline into sw.js, with a version that changes whenever any file changes.
 # Run from the repo root after changing files: python tools/precache.py
 import hashlib, json, os, re
-SKIP_DIRS = {".git", "tools", "node_modules"}
+SKIP_DIRS = {".git", ".github", "tools", "tests", "node_modules"}
 KEEP = (".html", ".css", ".js", ".mjs", ".png", ".svg", ".webmanifest", ".json", ".woff2")
 files, h = [], hashlib.sha1()
 for root, dirs, names in os.walk("."):

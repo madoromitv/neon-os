@@ -90,6 +90,7 @@ export function editDetails(tracks, { all = [], save }) {
 // "The" and "&" versus "and". Albums only match within the same artist.
 export const nameKey = s => (s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
   .replace(/^the\s+/, "").replace(/&/g, "and").replace(/[^\p{L}\p{N}]+/gu, "");
+const caps = s => (s.match(/\p{Lu}/gu) || []).length;
 const KINDS = [["artist", "Artists"], ["album", "Albums"], ["genre", "Genres"]];
 export function nameSets(tracks, kind) {
   const sets = new Map();
@@ -100,7 +101,7 @@ export function nameSets(tracks, kind) {
     const m = sets.get(k); m.set(v, (m.get(v) || 0) + 1);
   }
   return [...sets.values()].filter(m => m.size > 1)
-    .map(m => [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])))
+    .map(m => [...m.entries()].sort((a, b) => b[1] - a[1] || caps(b[0]) - caps(a[0]) || a[0].localeCompare(b[0]))) // most used first; on a tie, the capitalised one
     .sort((a, b) => a[0][0].localeCompare(b[0][0], undefined, { sensitivity: "base" }));
 }
 // Resolves to the number of songs changed.

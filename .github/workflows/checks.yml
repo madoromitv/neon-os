@@ -1,0 +1,30 @@
+# Runs on every push and pull request: checks the offline file list is up to date, then opens Neon OS and
+# every app in a headless browser and runs the tests in tests/run.mjs.
+name: Checks
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Offline file list is up to date
+        run: |
+          python tools/precache.py
+          git diff --exit-code sw.js || (echo "::error::sw.js is out of date. Run: python tools/precache.py" && exit 1)
+      - name: Install the test browser
+        run: |
+          npm install --no-save playwright@1.56.0
+          npx playwright install --with-deps chromium
+      - name: Browser tests
+        run: |
+          python tests/fixtures.py
+          node tests/run.mjs
