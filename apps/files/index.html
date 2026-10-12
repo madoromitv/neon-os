@@ -35,7 +35,8 @@
       <label class="search"><input id="q" type="search" placeholder="Search" aria-label="Search"></label>
       <button class="btn" id="play" disabled>Play</button>
       <button class="btn" id="save" disabled>Download</button>
-      <button class="btn" id="rename" disabled>Rename</button>
+      <button class="btn" id="rename" disabled title="Edit details and cover art (Ctrl+I)">Edit details</button>
+      <button class="btn" id="tidy" hidden title="Merge names spelled more than one way">Tidy names</button>
       <button class="btn" id="del" disabled>Delete</button>
     </div>
     <div class="lwell" id="list" role="grid" aria-label="Files" tabindex="0">
@@ -53,6 +54,7 @@
     import { vlist } from "../../style-kit/vlist.js";
     import { esc, toast, dialog } from "../../style-kit/ui.js";
     import { fileOf } from "../../core/linked.js";
+    import { editDetails, tidyNames } from "../../core/details.js";
     applyTheme(); onTheme(applyTheme);
 
     const $ = id => document.getElementById(id);
@@ -86,6 +88,7 @@
       $("tree").innerHTML = treeHTML(view, tracks, playlists, groups, `<span class="head lbl">Documents</span><button class="fold" data-notes aria-current="${view.type === "notes"}">${treeIcon("songs")}<span class="name">Notes</span></button>`);
       $("path").textContent = pathOf(view);
       $("back").hidden = !["artist", "album", "genre"].includes(view.type);
+      $("tidy").hidden = !["artists", "albums", "genres"].includes(view.type);
       if (view.type === "notes") {
         let txt = ""; try { txt = localStorage.getItem("neon-os:notes") || ""; } catch (e) {}
         $("list").classList.add("groups");
@@ -120,7 +123,7 @@
       const bytes = shown.reduce((n, t) => n + (t.blob ? t.blob.size : 0), 0);
       const linked = shown.filter(t => !t.blob && t.link).length;
       $("status").textContent = sel.size ? `${sel.size} selected` : `${shown.length} ${shown.length === 1 ? "song" : "songs"} · ${mb(bytes)} in this browser${linked ? ` · ${linked} from your linked folder (↗)` : ""}`;
-      const n = sel.size; $("play").disabled = !n; $("save").disabled = n !== 1; $("rename").disabled = n !== 1; $("del").disabled = !n;
+      const n = sel.size; $("play").disabled = !n; $("save").disabled = n !== 1; $("rename").disabled = !n; $("del").disabled = !n;
     }
     const setView = v => { view = v; sel.clear(); anchor = null; $("q").value = ""; render(false); };
 
@@ -180,13 +183,22 @@
       }
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
     });
-    $("rename").addEventListener("click", async () => {
-      const t = byId([...sel][0]); if (!t) return;
-      const r = await dialog({ title: "Edit details", fields: [{ label: "Title", value: t.title }, { label: "Artist", value: t.artist || "" }, { label: "Album", value: t.album || "" }, { label: "Genre", value: t.genre || "" }], confirm: "Save" });
-      if (!r) return;
-      try { const db = await openDb(); const { coverUrl, ...rec } = t; void coverUrl; await put(db, "tracks", { ...rec, title: r[0] || t.title, artist: r[1], album: r[2], genre: r[3] }); db.close(); notifyLibraryChange("edit"); await load(); }
+    // details, cover art and tidying names (core/details.js)
+    async function saveDetails(t, patch) {
+      const db = await openDb(); const { coverUrl, ...rec } = t; void coverUrl;
+      Object.assign(rec, patch); await put(db, "tracks", rec); db.close(); Object.assign(t, patch);
+    }
+    async function edit() {
+      const ts = [...sel].map(byId).filter(Boolean); if (!ts.length) return;
+      try { const n = await editDetails(ts, { all: tracks, save: saveDetails }); if (n) { notifyLibraryChange("edit"); await load(); toast(n === 1 ? "Details saved" : `Saved ${n} songs`); } }
       catch (e) { toast("Couldn't save those details. Try again.", true); }
+    }
+    $("rename").addEventListener("click", edit);
+    $("tidy").addEventListener("click", async () => {
+      try { const n = await tidyNames(tracks, { save: saveDetails, kind: { artists: "artist", albums: "album", genres: "genre" }[view.type] || "artist" }); if (n) { notifyLibraryChange("edit"); await load(); } }
+      catch (e) { toast("Couldn't change those names. Try again.", true); }
     });
+    addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "i" && !e.target.closest("input, .dialog") && sel.size) { e.preventDefault(); edit(); } });
     async function remove() {
       const pl = view.type === "pl" ? playlists.find(p => p.id === view.id) : null, ids = [...sel];
       const ok = await dialog(pl

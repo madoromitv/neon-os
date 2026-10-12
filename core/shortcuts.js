@@ -30,6 +30,7 @@ export const SHORTCUTS = [
     ["← / →", "Back or forward 5 seconds"],
     ["↑ / ↓", "Volume up or down"],
     ["J", "Search the library"],
+    ["Ctrl+I", "Edit details and cover art of the selected songs (also in Files)"],
     ["L", "Add songs"],
     ["F", "Full-screen visualiser"],
   ] },

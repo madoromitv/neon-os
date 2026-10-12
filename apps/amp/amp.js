@@ -11,6 +11,7 @@ import { getTheme, setTheme, onTheme, applyTheme } from "../../core/theme.js";
 import { notify } from "../../core/notify.js";
 import { createGlow, createGlow2D } from "../../core/glow.js";
 import { measureLoudness, levelGain } from "../../core/loudness.js";
+import { editDetails, tidyNames } from "../../core/details.js";
 import { fileOf, linkSupported, listFolders, saveFolder, removeFolder, scanFolder, foldersNeedingAccess, reconnectAll, hasAccess } from "../../core/linked.js";
 import { onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
 void closePop;
@@ -143,7 +144,7 @@ $("plList").addEventListener("contextmenu", e => {
     { text: "Remove from playlist", key: "Del", run: () => removePlIdx([...plSel]) },
     "-",
     ...sendToItems([...plSel].map(k => pl[k])),
-    ...(t && !t.builtin && store.canWrite ? ["-", { text: "Edit details", run: () => editTrack(t) }] : []),
+    ...(t && !t.builtin && store.canWrite ? ["-", { text: plSel.size > 1 ? `Edit details of ${plSel.size} songs` : "Edit details", run: () => editTracks([...plSel].map(i => pl[i])) }] : []),
   ], { x: e.clientX, y: e.clientY });
 });
 // drag to reorder
@@ -250,7 +251,15 @@ function renderTree() {
   $("treeNew").hidden = !store.canWrite;
   $("mlAdd").hidden = !store.canWrite;
   $("mlAddFolder").hidden = !store.canWrite;
+  $("mlTidy").hidden = !store.canWrite || !["artists", "albums", "genres"].includes(mlView.type);
 }
+$("mlTidy").addEventListener("click", () => tidy({ artists: "artist", albums: "album", genres: "genre" }[mlView.type] || "artist"));
+// Ctrl+I: details of the selected songs
+addEventListener("keydown", e => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== "i" || e.target.closest("input, textarea, .dialog")) return;
+  const ids = mlSel.size ? [...mlSel] : plSel.size ? [...plSel].map(i => pl[i]) : [];
+  if (ids.length && store.canWrite) { e.preventDefault(); editTracks(ids); }
+});
 $("treePls").addEventListener("click", e => { const b = e.target.closest("[data-pl]"); if (b) setMlView({ type: "pl", id: b.dataset.pl }); });
 $("treePls").addEventListener("dblclick", e => { const b = e.target.closest("[data-pl]"); if (!b) return; const p = plById(b.dataset.pl); if (p) { Eng.ensure(); setPl(p.tracks.filter(id => byId(id))); playIndex(S.shuffle ? Math.floor(Math.random() * pl.length) : 0); } });
 $("treeBrowse").addEventListener("click", e => { const b = e.target.closest("[data-browse]"); if (b) setMlView({ type: b.dataset.browse }); });
@@ -283,7 +292,7 @@ function renderMl() {
   vRows = grp ? groupsVisible() : mlVisible();
   drawRows();
   const n = mlIds().length, tot = mlIds().reduce((s, id) => s + (byId(id).duration || 0), 0);
-  const what = grp ? `${vRows.length} ${mlView.type.slice(0, -1)}${vRows.length === 1 ? "" : "s"}` : `${n.toLocaleString()} ${n === 1 ? "song" : "songs"}, ${fmtLong(tot)}.`;
+  const what = grp ? `${vRows.length.toLocaleString()} ${mlView.type.slice(0, -1)}${vRows.length === 1 ? "" : "s"}.` : `${n.toLocaleString()} ${n === 1 ? "song" : "songs"}, ${fmtLong(tot)}.`;
   if (!adding) setStatus(`${what} ${analyser && analyser.pending ? `Finding beats: ${analyser.pending} to go. ` : ""}${storeNote()}`);
 }
 function songRow(id, curId) {
@@ -397,7 +406,7 @@ function trackMenu(ids) {
     ...(store.canWrite && own.length ? [{ text: own.every(t => t.fav) ? "Remove from favourites" : "Add to favourites", run: () => toggleFav(own.map(t => t.id), !own.every(t => t.fav)) }] : []),
     ...(sendToItems(ids).length ? ["-", ...sendToItems(ids)] : []),
     ...(mlView.type === "pl" && store.canWrite ? ["-", { text: "Remove from this playlist", run: () => removeFromPlaylist(mlView.id, ids) }] : []),
-    ...(store.canWrite && (one && !one.builtin) ? ["-", { text: "Edit details", run: () => editTrack(one) }] : []),
+    ...(store.canWrite && own.length ? ["-", { text: own.length === 1 ? "Edit details" : `Edit details of ${own.length} songs`, key: "Ctrl+I", run: () => editTracks(own.map(t => t.id)) }] : []),
     ...(store.canWrite && own.length ? [{ text: own.length === 1 ? "Delete from library" : `Delete ${own.length} songs from library`, danger: true, run: () => deleteTracks(own) }] : []),
   ];
 }
@@ -457,11 +466,24 @@ async function removeFromPlaylist(pid, ids) {
   try { await store.updatePlaylist(pid, { tracks: p.tracks.filter(x => !ids.includes(x)) }); mlSel.clear(); renderTree(); renderMl(); }
   catch (e) { toast("Couldn't update the playlist. Try again.", true); }
 }
-async function editTrack(t) {
-  const r = await dialog({ title: "Edit details", fields: [{ label: "Title", value: t.title }, { label: "Artist", value: t.artist }, { label: "Album", value: t.album }, { label: "Genre", value: t.genre || "" }], confirm: "Save" });
-  if (!r) return;
-  try { await store.updateTrack(t.id, { title: r[0] || t.title, artist: r[1], album: r[2], genre: r[3] }); notifyLibraryChange("edit"); renderAll(); if (curTrack() === t) setNowPlaying(); }
-  catch (e) { toast("Couldn't save those details. Try again.", true); }
+// details and cover art for one song or several (core/details.js)
+async function saveDetails(t, patch) {
+  if ("coverBlob" in patch) { if (t.coverUrl) URL.revokeObjectURL(t.coverUrl); patch.coverUrl = patch.coverBlob ? URL.createObjectURL(patch.coverBlob) : null; }
+  await store.updateTrack(t.id, patch);
+}
+async function editTrack(t) { return editTracks([t.id]); }
+async function editTracks(ids) {
+  const ts = ids.map(byId).filter(t => t && !t.builtin); if (!ts.length) return;
+  try {
+    const n = await editDetails(ts, { all: store.tracks, save: saveDetails });
+    if (n) { notifyLibraryChange("edit"); renderAll(); if (curTrack()) setNowPlaying(); toast(n === 1 ? "Details saved" : `Saved ${n} songs`); }
+  } catch (e) { toast("Couldn't save those details. Try again.", true); }
+}
+async function tidy(kind) {
+  try {
+    const n = await tidyNames(store.tracks, { save: saveDetails, kind });
+    if (n) { notifyLibraryChange("edit"); renderAll(); if (curTrack()) setNowPlaying(); }
+  } catch (e) { toast("Couldn't change those names. Try again.", true); }
 }
 async function deleteTracks(ts) {
   const ok = await dialog({ title: "Delete from library", text: ts.length === 1 ? `Delete ${ts[0].title}? It's removed from your library and every playlist.` : `Delete ${ts.length} songs? They're removed from your library and every playlist.`, confirm: "Delete", danger: true });

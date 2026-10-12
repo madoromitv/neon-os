@@ -29,8 +29,8 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 
 | App | What it is | Status |
 | --- | --- | --- |
-| Amp | Music player with library, playlists, equalizer and the Neon Orbit visualiser; volume levelling (Level), gapless playback and crossfades of 3 to 12 seconds (Fade); browse by artist, album and genre, smart playlists, favourites and play counts; stays quick with thousands of songs | Working |
-| Files | The same library sections as Amp (songs, artists, albums, genres, smart playlists, playlists) plus notes; play in Amp, favourite, download, edit details, delete | Working |
+| Amp | Music player with library, playlists, equalizer and the Neon Orbit visualiser; volume levelling (Level), gapless playback and crossfades of 3 to 12 seconds (Fade); edit details and cover art for several songs at once (Ctrl+I) and Tidy names to merge artists, albums and genres spelled more than one way; browse by artist, album and genre, smart playlists, favourites and play counts; stays quick with thousands of songs | Working |
+| Files | The same library sections as Amp (songs, artists, albums, genres, smart playlists, playlists) plus notes; play in Amp, favourite, download, edit details and cover art (several songs at once), tidy names, delete | Working |
 | Notes | Quick notes, saved in this browser | Working |
 | Settings | Orb colour for every app at once, wallpaper and desktop icons, high contrast and reduce motion, library protection and install, backup and restore, layout reset | Working |
 | Shortcuts | Every keyboard shortcut and mouse move, searchable (press ? anywhere) | Working |
@@ -82,6 +82,7 @@ core/        shared engine, used by every app
   rack.js      plays Pulse, Drift and Chop patterns anywhere (Tape uses it)
   glow.js      the orb's glow drawn with WebGL (2D canvas where WebGL isn't available)
   wav.js       WAV export for the Rack apps
+  details.js   the details editor (several songs at once, cover art) and Tidy names, shared by Amp and Files
   loudness.js  measures each song's loudness for volume levelling
 apps/
   registry.js  the list of apps the desktop shows

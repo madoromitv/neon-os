@@ -90,3 +90,27 @@
 
 /* small LCD readout beside a control, e.g. a volume percentage */
 .pct { font-family: var(--font-lcd); font-size: 16px; line-height: 18px; padding: 0 5px; min-width: 42px; text-align: right; white-space: nowrap; }
+
+/* song details editor and Tidy names (core/details.js) */
+.dialog.details { width: min(560px, 100%); }
+.dialog.details .dgrid { display: grid; grid-template-columns: 150px 1fr; gap: 14px; }
+.dialog.details .cover { display: grid; gap: 6px; align-content: start; }
+.dialog.details .art { width: 150px; height: 150px; display: grid; place-items: center; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; overflow: hidden; }
+.dialog.details .art img { width: 100%; height: 100%; object-fit: cover; }
+.dialog.details .art svg { width: 48px; height: 48px; fill: var(--ink-faint); }
+.dialog.details .fields { display: grid; gap: 8px; align-content: start; }
+.dialog.details input::placeholder { color: var(--ink-faint); font-style: italic; }
+.dialog .chk { display: flex !important; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-dim); }
+.dialog .chk input, .dialog.tidy input[type=checkbox], .dialog.tidy input[type=radio] { accent-color: var(--ball); width: 15px; height: 15px; padding: 0; box-shadow: none; }
+.dialog.tidy { width: min(520px, 100%); }
+.dialog.tidy .seg { display: flex; gap: 4px; }
+.dialog.tidy .seg .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+.dialog.tidy .tlist { max-height: min(420px, 55vh); overflow: auto; display: grid; gap: 8px; padding: 6px; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; }
+.dialog.tidy .tset { margin: 0; border: 1px solid #2a2438; border-radius: 3px; padding: 4px 10px 8px; display: grid; gap: 4px; }
+.dialog.tidy legend { font-size: 11px; color: var(--ink-faint); padding: 0 4px; }
+.dialog.tidy legend label, .dialog.tidy .tname { display: flex; align-items: center; gap: 8px; }
+.dialog.tidy .tname span { flex: 1; font-size: 13px; }
+.dialog.tidy .tname small { color: var(--ink-faint); font-size: 11px; }
+.dialog.tidy .tempty { padding: 16px; text-align: center; }
+.dialog .acts .hint { margin-right: auto; align-self: center; color: var(--ink-faint); font-size: 11.5px; }
+@media (max-width: 520px) { .dialog.details .dgrid { grid-template-columns: 1fr; } }
