@@ -9,6 +9,7 @@ import { createAnalyser } from "../../core/analyser.js";
 import { SMART, smartById, buildGroups, albumOrder, viewSongs, viewGroups, viewTitle as libTitle, searchGroups, groupNote, nkey } from "../../core/library.js";
 import { getTheme, setTheme, onTheme, applyTheme } from "../../core/theme.js";
 import { notify } from "../../core/notify.js";
+import { createGlow, createGlow2D } from "../../core/glow.js";
 import { fileOf, linkSupported, listFolders, saveFolder, removeFolder, scanFolder, foldersNeedingAccess, reconnectAll, hasAccess } from "../../core/linked.js";
 import { onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
 void closePop;
@@ -1043,8 +1044,12 @@ addEventListener("neonos:play", e => {
 function renderAll() { renderTree(); renderMl(); renderPl(); setNowPlaying(); }
 
 // =================== Neon Orbit visualiser ===================
-const canvas = $("viz"), ctx = canvas.getContext("2d");
-let sprite = null;
+// drawn with WebGL where the browser has it (core/glow.js), otherwise on a 2D canvas
+const canvas = $("viz");
+const NEBULA = { base: null, blobs: [{ x: 0.28, y: 0.3, r: 0.6, color: [42, 16, 80, 0.5] }, { x: 0.78, y: 0.72, r: 0.55, color: [61, 11, 58, 0.45] }] };
+const glow = createGlow(canvas, { background: OBS ? null : NEBULA }) || createGlow2D(canvas, { background: OBS ? null : NEBULA });
+canvas.dataset.renderer = glow.gl ? "webgl" : "2d";
+let lastLoud = 0;
 const rgbOf = k => COLORS[k] || [1, 3, 5].map(o => parseInt(k.slice(o, o + 2), 16));
 function buildSprite() {
   const [r, g, b] = rgbOf(S.color);
@@ -1055,14 +1060,15 @@ function buildSprite() {
   grd.addColorStop(0.16, `rgba(${r},${g},${b},0.75)`);
   grd.addColorStop(0.38, `rgba(${r},${g},${b},0.18)`);
   grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
-  x.fillStyle = grd; x.fillRect(0, 0, N, N); sprite = c;
+  x.fillStyle = grd; x.fillRect(0, 0, N, N); void c;
+  glow.setColor([r, g, b]);
   document.documentElement.style.setProperty("--ball", `rgb(${r},${g},${b})`);
 }
 let W = 0, H = 0;
 function resize() {
   const r = $("stage").getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1);
   W = Math.max(1, r.width); H = Math.max(1, r.height);
-  canvas.width = Math.round(W * d); canvas.height = Math.round(H * d); ctx.setTransform(d, 0, 0, d, 0, 0);
+  glow.resize(W, H, d);
   const m = $("mini"), mr = m.getBoundingClientRect(); m.width = Math.max(1, Math.round(mr.width * d)); m.height = Math.max(1, Math.round(mr.height * d));
 }
 if (window.ResizeObserver) { const ro = new ResizeObserver(() => { resize(); drawEqGraph(); }); ro.observe($("stage")); ro.observe($("mini")); ro.observe($("eqGraph")); } else addEventListener("resize", resize);
@@ -1155,13 +1161,7 @@ function frame(now) {
   const mq = $("marqueeText");
   if (!reduced && mq) { const half = mq.scrollWidth / 2; if (half > $("marquee").clientWidth - 12) { marqueeX = (marqueeX + dt * 42) % half; mq.style.transform = `translateX(${-marqueeX}px)`; } else mq.style.transform = ""; }
 
-  ctx.globalCompositeOperation = "source-over"; ctx.clearRect(0, 0, W, H);
-  if (!OBS) {
-    const g1 = ctx.createRadialGradient(W*0.28, H*0.3, 0, W*0.28, H*0.3, Math.max(W, H)*0.6);
-    g1.addColorStop(0, "rgba(42,16,80,0.5)"); g1.addColorStop(1, "rgba(6,4,11,0)"); ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H);
-    const g2 = ctx.createRadialGradient(W*0.78, H*0.72, 0, W*0.78, H*0.72, Math.max(W, H)*0.55);
-    g2.addColorStop(0, "rgba(61,11,58,0.45)"); g2.addColorStop(1, "rgba(6,4,11,0)"); ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H);
-  }
+  glow.begin(reduced ? 0 : now / 1000, reduced ? 0 : lastLoud);
   const nb = 6, n = 12;
   let bp, envs, pulses;
   if (data && (playing || t > 0.05)) { bp = beatPos(t); envs = data.bands.map(b => envAt(b, t)); pulses = data.bands.map(b => pulseAt(b, t)); }
@@ -1189,7 +1189,8 @@ function frame(now) {
   const yaw = chaos * 0.7 * Math.sin(bp * 0.37) + chaos * 0.3 * Math.sin(bp * 0.91);
   const cY = Math.cos(yaw), sY = Math.sin(yaw), cT = Math.cos(tilt), sT = Math.sin(tilt), cR = Math.cos(roll), sR = Math.sin(roll), FOV = 3.2;
   const TRAIL = Math.round(lerp(22, 40, chaos)), sc = Math.min(1.15, Math.max(0.6, H / 520));
-  ctx.globalCompositeOperation = "lighter";
+  lastLoud = playing ? loud : 0;
+  const STEP = glow.gl ? 2 : 4, MAXS = glow.gl ? 12 : 6; // WebGL has room for smoother trails
   for (let i = 0; i < n; i++) {
     const ph = phys[i], e = envs[i % nb], pu = pulses[i % nb];
     const a = spin + i * (Math.PI * 2 / n) + (0.12 + 0.5 * chaos) * Math.sin(bp * (0.5 + 0.13 * i) + i * 1.7) * e + ph.a;
@@ -1202,13 +1203,15 @@ function frame(now) {
     const size = (13 + 24 * e + 30 * pu) * persp * sc;
     const hh = hist[i]; hh.unshift({ x: px, y: py, s: size, b: bright }); if (hh.length > TRAIL) hh.length = TRAIL;
     for (let k = hh.length - 1; k >= 1; k--) {
-      const q0 = hh[k], q1 = hh[k - 1], fade = 1 - k / TRAIL, steps = Math.min(6, Math.ceil(Math.hypot(q1.x - q0.x, q1.y - q0.y) / 4)) || 1;
-      for (let s = 0; s < steps; s++) { const u = s / steps, sz = lerp(q0.s, q1.s, u) * (0.35 + 0.5 * fade) * 2.2; ctx.globalAlpha = Math.min(1, q1.b * fade * fade * 0.3); ctx.drawImage(sprite, lerp(q0.x, q1.x, u) - sz / 2, lerp(q0.y, q1.y, u) - sz / 2, sz, sz); }
+      const q0 = hh[k], q1 = hh[k - 1], fade = 1 - k / TRAIL, dist = Math.hypot(q1.x - q0.x, q1.y - q0.y);
+      const steps = Math.min(MAXS, Math.ceil(dist / STEP)) || 1, even = (Math.min(6, Math.ceil(dist / 4)) || 1) / steps; // same total light, more dots
+      const al = Math.min(1, q1.b * fade * fade * 0.3) * even;
+      for (let s = 0; s < steps; s++) { const u = s / steps, sz = lerp(q0.s, q1.s, u) * (0.35 + 0.5 * fade) * 2.2; glow.dot(lerp(q0.x, q1.x, u), lerp(q0.y, q1.y, u), sz, al); }
     }
-    const halo = size * 5.5; ctx.globalAlpha = Math.min(1, bright * 0.75); ctx.drawImage(sprite, px - halo / 2, py - halo / 2, halo, halo);
-    const core = size * 1.6; ctx.globalAlpha = Math.min(1, 0.35 + bright); ctx.drawImage(sprite, px - core / 2, py - core / 2, core, core);
+    glow.dot(px, py, size * 5.5, Math.min(1, bright * 0.75));
+    glow.dot(px, py, size * 1.6, Math.min(1, 0.35 + bright));
   }
-  ctx.globalAlpha = 1;
+  glow.end();
 
   if (loadedId && countedId !== loadedId && Eng.state === "playing" && Eng.time() > Math.min(30, Eng.duration * 0.5)) {
     countedId = loadedId; const t = byId(loadedId);

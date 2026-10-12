@@ -36,6 +36,8 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 | Shortcuts | Every keyboard shortcut and mouse move, searchable (press ? anywhere) | Working |
 | Pulse | 16-step drum machine: 8 synthesised drums, 4 patterns, tempo, swing, accents, WAV export | Working |
 | Drift | Synth: 2 oscillators, filter, envelope, LFO, presets; on-screen, computer or MIDI keyboard; 16-step note sequencer | Working |
+| Chop | Sampler: load any song and it's cut into 16 slices on its own beats; play them from pads or the keyboard, sequence four patterns, record, Link, WAV export | Working |
+| Tape | Arranger: line up Pulse, Drift and Chop patterns bar by bar into a whole track, loop from a marker, export the track as a WAV | Working |
 | Decks | Two-deck DJ mixer: waveforms, cue, 4-beat loop, pitch, beat sync, 3-band EQ, crossfader, mix recording; loads from the same library sections as Amp | Working |
 
 ## How it's built
@@ -75,6 +77,11 @@ core/        shared engine, used by every app
   analyser.js  background analysis queue, with analysis-worker.js doing the work on spare cores
   library.js   what Artists, Albums, Genres and the smart playlists contain, shared by Amp, Files and Decks
   library-tree.js  the library sidebar Files and Decks share
+  linked.js    linked music folders: songs read straight from your disk
+  chop.js      slicing songs on their beats, shared by Chop and Tape
+  rack.js      plays Pulse, Drift and Chop patterns anywhere (Tape uses it)
+  glow.js      the orb's glow drawn with WebGL (2D canvas where WebGL isn't available)
+  wav.js       WAV export for the Rack apps
 apps/
   registry.js  the list of apps the desktop shows
   amp/         the player
@@ -82,6 +89,8 @@ apps/
   pulse/       drum machine
   drift/       synth
   decks/       DJ mixer
+  chop/        sampler
+  tape/        arranger
   notes/       notes
   settings/    settings
   help/        the Shortcuts list
@@ -119,7 +128,9 @@ Then open http://localhost:8000.
 
 Songs you add are stored in your own browser and never uploaded. The repository holds no music.
 
-To add your whole library at once, drop the folder onto the desktop or use **Add folder** in Amp's library: every folder inside it is searched for music files (MP3, FLAC, WAV, OGG, M4A, AAC, Opus) and anything else is ignored. Songs are added straight away, four at a time, and are playable immediately; beats, tempo and visualiser data are worked out afterwards in background workers on spare processor cores (playing a song moves it to the front). If a song is already in your library (the same title plus the same file size, artist or album), Amp asks once per batch whether to **skip**, **replace** (the new copy keeps the old one's place in your playlists) or **keep both**.
+**Link your music folder (Chrome and Edge).** In Amp's library, **Folders → Link a music folder** plays songs straight from a folder on your disk: nothing is copied, so the library uses no browser storage, and **Rescan linked folders** picks up songs added, moved or removed since. If songs from that folder were copied in before, Amp offers to swap the copies for the files on disk, keeping their playlists, favourites, play counts and analysis. After the browser restarts it may ask for permission again: play a song or press **Reconnect folder**. Linked songs' audio stays in your folder, so backups hold their details, playlists and analysis but not the audio itself.
+
+To copy your whole library in instead, drop the folder onto the desktop or use **Add folder** in Amp's library: every folder inside it is searched for music files (MP3, FLAC, WAV, OGG, M4A, AAC, Opus) and anything else is ignored. Songs are added straight away, four at a time, and are playable immediately; beats, tempo and visualiser data are worked out afterwards in background workers on spare processor cores (playing a song moves it to the front). If a song is already in your library (the same title plus the same file size, artist or album), Amp asks once per batch whether to **skip**, **replace** (the new copy keeps the old one's place in your playlists) or **keep both**.
 
 Browsers can clear stored songs when a computer runs out of space. Adding songs asks the browser to protect the library, and **Settings → Protect my library** shows whether it agreed (browsers usually agree once Neon OS is installed or used often).
 
@@ -129,5 +140,5 @@ To keep them safe or move them, open **Settings → Back up everything**. You ge
 
 1. Foundations: split Amp into the style kit, core and app (done)
 2. Neon OS shell: desktop, window manager, launcher, settings (done)
-3. The Rack: Pulse, Drift and Decks, with Pulse and Drift on a shared clock (done)
+3. The Rack: Pulse, Drift, Chop, Tape and Decks, with Pulse, Drift and Chop on a shared clock (done)
 4. The game: set aboard a ship whose orb is a sleeping mind; story notes in [LORE.md](LORE.md). Neon OS stays a clean tool with no lore in it.

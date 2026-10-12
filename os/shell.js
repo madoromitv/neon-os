@@ -6,6 +6,7 @@ import { esc, clamp } from "../style-kit/ui.js";
 import { getTheme, setTheme, applyTheme, onTheme, ballHex, calmOn } from "../core/theme.js";
 import { osAction } from "../core/shortcuts.js";
 import { getWallImage } from "../core/desk.js";
+import { createGlow, createGlow2D } from "../core/glow.js";
 import { initNotices, addNotice, toggleNotices, closeNotices } from "./notices.js";
 import { sfx } from "../core/sounds.js";
 import { Slider, openMenu as popMenu } from "../style-kit/ui.js";
@@ -745,43 +746,30 @@ addEventListener("contextmenu", e => {
 // ---------- wallpaper ----------
 // orb: the orb idling (still when reduced motion is on). fog: the colour haze without the orb.
 // plain: the desk colour. image: a picture chosen in Settings (kept in core/desk.js).
-const wall = $("wall"), wctx = wall.getContext("2d");
-let sprite = null, WW = 0, WH = 0, wallMode = "orb", wallImg = null, wallRaf = 0, wallKey = "";
-function buildSprite() {
-  const hex = ballHex(getTheme().ball), r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
-  const N = 128, c = document.createElement("canvas"); c.width = c.height = N;
-  const x = c.getContext("2d"), grd = x.createRadialGradient(N / 2, N / 2, 0, N / 2, N / 2, N / 2);
-  grd.addColorStop(0, "rgba(255,255,255,1)"); grd.addColorStop(0.08, `rgba(${(r + 255) / 2 | 0},${(g + 255) / 2 | 0},${(b + 255) / 2 | 0},1)`);
-  grd.addColorStop(0.2, `rgba(${r},${g},${b},0.6)`); grd.addColorStop(0.45, `rgba(${r},${g},${b},0.12)`); grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
-  x.fillStyle = grd; x.fillRect(0, 0, N, N); sprite = c;
-}
-function sizeWall() { const d = Math.min(2, devicePixelRatio || 1); WW = innerWidth; WH = innerHeight; wall.width = WW * d; wall.height = WH * d; wctx.setTransform(d, 0, 0, d, 0, 0); }
+const wall = $("wall");
+const HAZE = [{ x: 0.2, y: 0.15, r: 0.7, color: [42, 16, 80, 0.45] }, { x: 0.85, y: 0.85, r: 0.6, color: [61, 11, 58, 0.4] }];
+const DESK = [7, 5, 12, 1];
+const wglow = createGlow(wall, { background: { base: DESK, blobs: HAZE } }) || createGlow2D(wall, { background: { base: DESK, blobs: HAZE } });
+wall.dataset.renderer = wglow.gl ? "webgl" : "2d";
+let WW = 0, WH = 0, wallMode = "orb", wallUrl = null, wallRaf = 0, wallKey = "";
+function buildSprite() { const hex = ballHex(getTheme().ball); wglow.setColor([1, 3, 5].map(o => parseInt(hex.slice(o, o + 2), 16))); }
+function sizeWall() { WW = innerWidth; WH = innerHeight; wglow.resize(WW, WH, Math.min(2, devicePixelRatio || 1)); }
 const wallMoves = () => wallMode === "orb" && !calmOn();
 function drawWall(now) {
   wallRaf = 0;
   const t = now / 1000;
-  wctx.globalCompositeOperation = "source-over"; wctx.globalAlpha = 1;
-  wctx.fillStyle = "#07050c"; wctx.fillRect(0, 0, WW, WH);
-  if (wallMode === "plain") return;
-  if (wallMode === "image" && wallImg) { // fill the screen, cropping the edges if needed
-    const s = Math.max(WW / wallImg.naturalWidth, WH / wallImg.naturalHeight), w = wallImg.naturalWidth * s, h = wallImg.naturalHeight * s;
-    wctx.drawImage(wallImg, (WW - w) / 2, (WH - h) / 2, w, h); return;
+  wglow.setBackground(wallMode === "image" ? null : { base: DESK, blobs: wallMode === "plain" ? [] : HAZE });
+  wglow.begin(wallMoves() ? t : 0, 0);
+  if (wallMode === "orb") {
+    const cx = WW / 2, cy = (WH - TASKBAR) / 2, R = Math.min(WW, WH) * 0.2, n = 12;
+    for (let i = 0; i < n; i++) {
+      const a = t * 0.15 + i * Math.PI * 2 / n, wob = 1 + 0.06 * Math.sin(t * 0.6 + i * 1.7);
+      const x = Math.cos(a) * R * wob, y = Math.sin(a) * R * wob * 0.42, z = Math.sin(a);
+      const s = (34 + 10 * Math.sin(t * 0.8 + i)) * (0.75 + 0.25 * z);
+      wglow.dot(cx + x, cy + y, s * 4, (0.18 + 0.12 * (z + 1) / 2) * (wglow.gl ? 1.3 : 1));
+    }
   }
-  const g1 = wctx.createRadialGradient(WW * 0.2, WH * 0.15, 0, WW * 0.2, WH * 0.15, Math.max(WW, WH) * 0.7);
-  g1.addColorStop(0, "rgba(42,16,80,0.45)"); g1.addColorStop(1, "rgba(7,5,12,0)"); wctx.fillStyle = g1; wctx.fillRect(0, 0, WW, WH);
-  const g2 = wctx.createRadialGradient(WW * 0.85, WH * 0.85, 0, WW * 0.85, WH * 0.85, Math.max(WW, WH) * 0.6);
-  g2.addColorStop(0, "rgba(61,11,58,0.4)"); g2.addColorStop(1, "rgba(7,5,12,0)"); wctx.fillStyle = g2; wctx.fillRect(0, 0, WW, WH);
-  if (wallMode === "fog") return;
-  const cx = WW / 2, cy = (WH - TASKBAR) / 2, R = Math.min(WW, WH) * 0.2, n = 12;
-  wctx.globalCompositeOperation = "lighter";
-  for (let i = 0; i < n; i++) {
-    const a = t * 0.15 + i * Math.PI * 2 / n, wob = 1 + 0.06 * Math.sin(t * 0.6 + i * 1.7);
-    const x = Math.cos(a) * R * wob, y = Math.sin(a) * R * wob * 0.42, z = Math.sin(a);
-    const s = (34 + 10 * Math.sin(t * 0.8 + i)) * (0.75 + 0.25 * z);
-    wctx.globalAlpha = 0.18 + 0.12 * (z + 1) / 2;
-    wctx.drawImage(sprite, cx + x - s * 2, cy + y - s * 2, s * 4, s * 4);
-  }
-  wctx.globalAlpha = 1;
+  wglow.end();
   if (wallMoves() && !document.hidden) wallRaf = requestAnimationFrame(drawWall);
 }
 function startWall() { cancelAnimationFrame(wallRaf); wallRaf = requestAnimationFrame(drawWall); }
@@ -789,13 +777,13 @@ async function loadWall() {
   const t = getTheme();
   wallKey = `${t.wall}|${t.wallStamp}`;
   wallMode = ["orb", "fog", "plain", "image"].includes(t.wall) ? t.wall : "orb";
-  if (wallMode === "image") {
+  if (wallMode === "image") { // the picture is the canvas's own background; the canvas stays clear over it
     const blob = await getWallImage();
-    if (blob) {
-      const img = new Image(), url = URL.createObjectURL(blob); img.src = url;
-      try { await img.decode(); if (wallImg) URL.revokeObjectURL(wallImg.src); wallImg = img; } catch (e) { URL.revokeObjectURL(url); wallMode = "fog"; }
-    } else wallMode = "fog";
+    if (wallUrl) { URL.revokeObjectURL(wallUrl); wallUrl = null; }
+    if (blob) { wallUrl = URL.createObjectURL(blob); wall.style.background = `#07050c url("${wallUrl}") center / cover no-repeat`; }
+    else wallMode = "fog";
   }
+  if (wallMode !== "image") wall.style.background = "";
   startWall();
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && wallMoves()) startWall(); });
