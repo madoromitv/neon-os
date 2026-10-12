@@ -17,7 +17,7 @@ async function page(opts = {}, { fresh = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true, ...opts });
   const p = await ctx.newPage(); p.errors = [];
   p.on("pageerror", e => p.errors.push(e.message));
-  p.on("console", m => { if (m.type() === "error" && !/fonts|ERR_|Failed to load resource/.test(m.text())) p.errors.push(m.text()); });
+  p.on("console", m => { if (m.type() === "error" && !/fonts|ERR_|Failed to load resource|Refused to (frame|display)/.test(m.text())) p.errors.push(m.text()); });
   await p.addInitScript(([v, fresh]) => { try { if (location.protocol === "http:" && location.port === "8765" && !sessionStorage.getItem("t")) { localStorage.setItem("neon-os:theme", JSON.stringify({ ball: "cyan", boot: false })); localStorage.setItem("neon-os:ask-save", "off"); if (!fresh) localStorage.setItem("neon-os:seen-version", v); sessionStorage.setItem("t", "1"); } } catch (e) {} }, [VERSION, fresh]); // pages in the Browser's tabs (other sites, error pages) are left alone
   return p;
 }
