@@ -429,6 +429,7 @@ addEventListener("message", async e => {
     dispatchEvent(new CustomEvent("neonos:play", { detail: { ids: d.ids } }));
     return;
   }
+  if (d.neonOs === "open" && appById(d.app)) { openApp(d.app); return; } // an app opens another (Tape's edit buttons)
   if (d.neonOs === "keyup") { if (d.key === "Alt" && sw) commitSwitch(); return; }
   if (d.neonOs === "install-state") { e.source.postMessage({ neonOsInstall: installState() }, location.origin); return; }
   if (d.neonOs === "install") { const ok = await promptInstall(); e.source.postMessage({ neonOsInstall: { ...installState(), accepted: ok } }, location.origin); return; }
