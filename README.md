@@ -14,7 +14,7 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Notifications:** finished imports, analysis, backups, restores and saved recordings show up above the tray and stay in the bell's list. Quiet keeps them in the list without popping up
 - **Desktop:** drag icons to move them (drop on another to swap); choose the wallpaper (orb, haze, plain or your own picture, which fits the screen, fills it, stretches or sits in the centre) and which icons show in Settings
 - **Install:** in Chrome or Edge, **Install Neon OS** in the start menu or Settings gives it its own window and icon. Installed or not, it opens and runs with no connection once it has loaded once. Installed, it opens music files from your file explorer (Open with → Neon OS), its icon's right-click menu has shortcuts to Amp, Search, Pulse and Settings, and the title bar folds into a thin strip with Search
-- **Desktop app:** a download for Windows, macOS and Linux is on the [Releases page](https://github.com/madoromitv/neon-os/releases), built by GitHub from `desktop/`. It registers as a player for MP3, FLAC, WAV, OGG, Opus, M4A and AAC, so double-clicking a song opens it in Amp. The installers aren't signed yet, so Windows shows "More info → Run anyway" and macOS needs a right-click → Open the first time
+- **Desktop app:** a download for Windows, macOS and Linux is on the [Releases page](https://github.com/madoromitv/neon-os/releases), built by GitHub from `desktop/`. It registers as a player for MP3, FLAC, WAV, OGG, Opus, M4A and AAC, so double-clicking a song opens it in Amp. The installers aren't signed yet, so Windows shows "More info → Run anyway" and macOS needs a right-click → Open the first time. From desktop app 1.2 on, it keeps itself up to date: Neon OS's files download from the website in the background (each checked against `version.json`) and are used the next time it starts, with a **Restart to update** button by the bell. A new installer is only needed when the desktop app itself changes; About says when one is out
 - **Several desktops:** the numbers beside the Neon button switch desktop and + adds one (up to 4). Each app sits on one desktop; Ctrl+Alt+[ and ] move between them, Ctrl+Alt+Shift+[ and ] take the front app along, and a window's right-click menu moves it to any desktop. Opening an app that's on another desktop goes there
 - **Lock screen and screensaver:** Ctrl+Alt+L (or Lock in the start menu) shows the time, the date and what's playing with its controls. Set a PIN in Settings to keep casual hands off (it isn't encryption). After a spell with no mouse or keys (Settings: never to 1 hour, 10 minutes to start), the screensaver is the orb drifting over black; waking it asks for the PIN if one is set
 - **The Bin:** songs, playlists, notes and pictures you delete wait in the Bin for 30 days; put them back (a song returns to the playlists it was in) or delete them for good
@@ -132,7 +132,8 @@ apps/
   settings/    settings
   help/        the Shortcuts list
   about/       version, what's new, links
-desktop/       the desktop app (Electron): main.js opens Neon OS in its own window; GitHub builds the installers
+desktop/       the desktop app (Electron): main.js opens Neon OS in its own window, updater.js keeps its files up to date; GitHub builds the installers
+version.json   every file with a fingerprint (written by tools/precache.py); the desktop app updates from it
 tests/         browser tests (run.mjs) and the test songs they use (fixtures.py)
 tools/
   precache.py  writes the offline file list into sw.js; run it after adding or changing files

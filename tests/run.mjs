@@ -142,6 +142,29 @@ const tests = {
     check((await p.$$eval(".pic", e => e.length)) === 0 && (await p.evaluate(async () => (await (await import("/core/bin.js")).binList()).some(i => i.kind === "photo"))), "a removed picture goes to the Bin");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "desktop app updates (with a stand-in for the desktop app)"() {
+    const p = await page();
+    await p.addInitScript(() => {
+      let cb = null; window.__restarted = false;
+      window.neonOsDesktop = { onOpenFiles() {}, version: async () => "1.1.0", onUpdate: fn => { cb = fn; }, __send: u => cb && cb(u),
+        updateInfo: async () => ({ app: "1.1.0", files: "abc123", ready: window.__ready || null, appNews: null }),
+        checkUpdates: async () => ({ files: { status: "ready", version: "def456" }, app: { status: "newer", version: "1.2.0", url: "https://example.com/r" } }),
+        restart: async () => { window.__restarted = true; } };
+    });
+    await desk(p);
+    check(await p.$eval("#updBtn", e => e.hidden), "no update button until there's an update");
+    await p.evaluate(() => { window.__ready = "def456"; window.neonOsDesktop.__send({ kind: "files", version: "def456" }); });
+    await p.waitForTimeout(300);
+    check(!(await p.$eval("#updBtn", e => e.hidden)) && /update ready/.test(await p.evaluate(() => localStorage.getItem("neon-os:notices"))), "a downloaded update shows Restart to update and a notice");
+    await p.click("#updBtn"); await p.waitForTimeout(600);
+    check(await p.evaluate(() => window.__restarted), "Restart to update restarts the app");
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="about"]'); await p.waitForTimeout(1200);
+    const af = p.frame({ url: /about/ });
+    check(!(await af.$eval("#updBox", e => e.hidden)) && /DESKTOP APP 1.1.0/.test(await af.$eval("#updVer", e => e.textContent)), "About shows the desktop app and files versions");
+    await af.click("#updCheck"); await p.waitForTimeout(400);
+    check(!(await af.$eval("#updGo", e => e.hidden)) && /1\.2\.0/.test(await af.$eval("#updApp", e => e.textContent)), "Check for updates offers the restart and a newer desktop app");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "several desktops, lock screen and screensaver"() {
     const p = await page(); await desk(p);
     await p.keyboard.press("Control+Alt+Digit2"); await p.waitForSelector('[data-wid="files"]');

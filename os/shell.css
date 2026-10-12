@@ -44,6 +44,9 @@ body { overflow: hidden; user-select: none; }
 .start i { width: 12px; height: 12px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 10px 2px var(--ball); }
 .tasks { flex: 1; min-width: 0; display: flex; gap: 4px; overflow: hidden; }
 .desks { display: flex; gap: 2px; flex: none; }
+.updbtn { min-height: 26px; padding: 0 10px; font-size: 11px; color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); animation: updGlow 2.4s ease-in-out infinite; }
+@keyframes updGlow { 50% { box-shadow: 0 0 10px var(--ball-dim); } }
+body.compact .updbtn { padding: 0 6px; font-size: 10px; }
 .dsk { min-width: 24px; min-height: 24px; padding: 0 6px; font: 17px/1 var(--font-lcd); position: relative; }
 .dsk.on { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); background: linear-gradient(180deg, #1c1926, #2b2736); box-shadow: inset 1px 1px 0 #0b0910, inset -1px -1px 0 #4b4462; }
 .dsk i { position: absolute; right: 3px; top: 3px; width: 4px; height: 4px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 4px var(--ball-dim); }

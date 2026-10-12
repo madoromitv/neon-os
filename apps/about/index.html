@@ -35,6 +35,11 @@
     <a class="btn" id="repo" target="_blank" rel="noopener">Source code</a>
     <a class="btn" id="issue" target="_blank" rel="noopener">Report a problem</a>
   </div>
+  <section aria-labelledby="updLbl" id="updBox" hidden><span class="lbl" id="updLbl">Updates</span>
+    <div class="lcd" id="updVer" style="font-size:19px;line-height:22px;padding:4px 10px"></div>
+    <div class="row"><button class="btn" id="updCheck">Check for updates</button><button class="btn" id="updGo" hidden>Restart to update</button><a class="btn" id="updApp" target="_blank" rel="noopener" hidden></a></div>
+    <p id="updMsg">Neon OS updates itself from the website: changes download in the background and are used the next time it starts. A new desktop app (the window around Neon OS) is only needed now and then; this says when one is out.</p>
+  </section>
   <section aria-labelledby="newLbl"><span class="lbl" id="newLbl">What's new</span><div id="changes" style="display:grid;gap:8px"></div></section>
   <script type="module">
     import "../../core/os-link.js";
@@ -44,7 +49,22 @@
     applyTheme(); onTheme(applyTheme);
     const $ = id => document.getElementById(id);
     $("ver").textContent = `VERSION ${VERSION}`;
-    $("repo").href = REPO; $("dl").href = `${REPO}/releases/latest`; if (window.neonOsDesktop) $("dl").textContent = "Desktop app updates"; $("issue").href = `${REPO}/issues/new`;
+    $("repo").href = REPO; $("dl").href = `${REPO}/releases/latest`; $("issue").href = `${REPO}/issues/new`;
+    // in the desktop app (the bridge lives on the desktop's own page): versions, and updates
+    let desk = window.neonOsDesktop || null; try { if (!desk && parent !== window) desk = parent.neonOsDesktop || null; } catch (e) {}
+    if (desk && desk.updateInfo) {
+      $("dl").hidden = true; $("updBox").hidden = false;
+      const show = (i, r) => {
+        $("updVer").textContent = `DESKTOP APP ${i.app} · FILES ${String(i.files || "").toUpperCase()}`;
+        $("updGo").hidden = !i.ready && !(r && r.files && r.files.status === "ready");
+        const news = (r && r.app && r.app.status === "newer") ? r.app : i.appNews;
+        $("updApp").hidden = !news; if (news) { $("updApp").textContent = `Get desktop app ${news.version}`; $("updApp").href = news.url; }
+        if (r) $("updMsg").textContent = r.files.status === "ready" ? "An update is downloaded. Restart Neon OS to use it." : r.files.status === "current" ? "Neon OS is up to date." : r.files.status === "busy" ? "Already checking…" : "Couldn't reach the website. Neon OS keeps working; it tries again later.";
+      };
+      desk.updateInfo().then(i => show(i));
+      $("updCheck").addEventListener("click", async () => { $("updCheck").disabled = true; $("updMsg").textContent = "Checking…"; const r = await desk.checkUpdates(); show(await desk.updateInfo(), r); $("updCheck").disabled = false; });
+      $("updGo").addEventListener("click", () => desk.restart());
+    }
     $("changes").innerHTML = CHANGES.map(c => `<div class="rel"><h3>Version ${esc(c.v)}<small>${esc(new Date(c.date).toLocaleDateString())}</small></h3><ul>${c.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>`).join("");
     const inOs = window.parent !== window;
     $("welcome").addEventListener("click", () => inOs ? parent.postMessage({ neonOs: "welcome" }, location.origin) : (location.href = "../../"));

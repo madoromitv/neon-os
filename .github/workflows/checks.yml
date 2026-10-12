@@ -19,7 +19,7 @@ jobs:
       - name: Offline file list is up to date
         run: |
           python tools/precache.py
-          git diff --exit-code sw.js || (echo "::error::sw.js is out of date. Run: python tools/precache.py" && exit 1)
+          git diff --exit-code sw.js version.json || (echo "::error::sw.js or version.json is out of date. Run: python tools/precache.py" && exit 1)
       - name: Install the test browser
         run: |
           npm install --no-save playwright@1.56.0

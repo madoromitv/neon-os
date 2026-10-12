@@ -1,7 +1,7 @@
 {
   "name": "neon-os",
   "productName": "Neon OS",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A desktop of music apps in the Neon Orbit style",
   "author": { "name": "Madoromi", "email": "madoromitv@users.noreply.github.com" },
   "homepage": "https://madoromitv.github.io/neon-os/",
@@ -22,7 +22,7 @@
     "productName": "Neon OS",
     "copyright": "Madoromi",
     "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "preload.js", "app/**/*"],
+    "files": ["main.js", "preload.js", "updater.js", "app/**/*"],
     "fileAssociations": [
       { "ext": "mp3", "name": "MP3 audio", "description": "MP3 audio", "mimeType": "audio/mpeg", "role": "Viewer" },
       { "ext": "flac", "name": "FLAC audio", "description": "FLAC audio", "mimeType": "audio/flac", "role": "Viewer" },

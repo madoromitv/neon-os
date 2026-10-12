@@ -1058,6 +1058,18 @@ if ("launchQueue" in window) launchQueue.setConsumer(async params => {
   if (params.files && params.files.length) openFiles(await Promise.all(params.files.map(h => h.getFile().catch(() => null))));
 });
 if (window.neonOsDesktop) window.neonOsDesktop.onOpenFiles(list => openFiles(list.map(f => new File([f.data], f.name, { type: f.type || "" }))));
+// desktop app updates (desktop/updater.js): new files are downloaded in the background; restarting uses them
+if (window.neonOsDesktop && window.neonOsDesktop.onUpdate) {
+  let told = "";
+  window.neonOsDesktop.onUpdate(u => {
+    if (u.kind === "files") {
+      $("updBtn").hidden = false;
+      if (told !== u.version) { told = u.version; addNotice({ title: "Neon OS update ready", text: "Restart Neon OS to use it: the button by the bell, or About.", app: "about" }); }
+    } else if (u.kind === "app") addNotice({ title: `Desktop app ${u.version} is out`, text: "Open About to download it. Neon OS keeps updating itself meanwhile.", app: "about" });
+  });
+  window.neonOsDesktop.updateInfo().then(i => { if (i && i.ready) $("updBtn").hidden = false; }).catch(() => {});
+  $("updBtn").addEventListener("click", () => { saveLayout(); setTimeout(() => window.neonOsDesktop.restart(), 350); });
+}
 // shortcuts on the installed app's icon: ?open=amp, ?search=1
 function launchShortcut() {
   const q = new URLSearchParams(location.search), open = q.get("open");
