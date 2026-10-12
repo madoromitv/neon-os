@@ -103,6 +103,20 @@ const tests = {
     const tt = wavTail(await td.path(), 16.3); check(tt > 0.0004, `Tape plays the drum lane through Pulse's reverb (${tt.toFixed(4)})`);
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "backup and restore carry songs, Rack patterns and settings"() {
+    const p = await page(); await desk(p); await amp(p, ["quiet.wav"]);
+    const r = await p.evaluate(async () => {
+      localStorage.setItem("neon-os:pulse", JSON.stringify({ bpm: 133 })); localStorage.setItem("neon-os:icons", JSON.stringify({ amp: { c: 2, r: 1 } }));
+      const m = await import("./core/backup.js"), blob = await m.exportBackup();
+      localStorage.removeItem("neon-os:pulse"); localStorage.removeItem("neon-os:icons");
+      const db = await m.openDb(); await new Promise(res => { const t = db.transaction("tracks", "readwrite"); t.objectStore("tracks").clear(); t.oncomplete = res; }); db.close();
+      const out = await m.importBackup(new File([blob], "b.neonos"));
+      return { songs: out.songs, pulse: JSON.parse(localStorage.getItem("neon-os:pulse") || "{}").bpm, icons: !!localStorage.getItem("neon-os:icons"), lib: (await m.librarySummary()).songs };
+    });
+    check(r.songs === 1 && r.lib === 1, "songs come back");
+    check(r.pulse === 133 && r.icons, "Rack patterns and desktop icons come back");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "works offline after the first visit"() {
     const p = await page(); await desk(p); await p.waitForTimeout(1500);
     await p.context().setOffline(true); await p.reload(); await p.waitForTimeout(1500);

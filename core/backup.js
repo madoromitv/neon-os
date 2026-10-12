@@ -4,7 +4,10 @@
 // The header lists each song with where its audio and cover sit in the data section, so restoring never has to
 // load the whole file into memory.
 const MAGIC = "NEONOS01", DB = "neon-orbit-player";
-const KEEP = ["neon-os:notes", "neon-os:theme", "neon-orbit-amp"]; // per-browser settings worth carrying over
+// Everything Neon OS keeps in this browser's settings storage goes in a backup: notes, theme, Amp, the Rack apps'
+// patterns and effects, desktop icons and window layout. Only this browser's own housekeeping is left out.
+const SKIP = new Set(["neon-os:offline", "neon-os:gl"]);
+const keepKey = k => (k.startsWith("neon-os:") || k === "neon-orbit-amp") && !SKIP.has(k);
 
 export function openDb() {
   return new Promise((res, rej) => {
@@ -41,8 +44,10 @@ export async function exportBackup() {
     meta.push({ ...rest, audio: add(blob), cover: add(coverBlob) });
   }
   const settings = {};
-  for (const k of KEEP) { try { const v = localStorage.getItem(k); if (v != null) settings[k] = v; } catch (e) {} }
-  const header = new TextEncoder().encode(JSON.stringify({ version: 1, created: new Date().toISOString(), tracks: meta, playlists, settings }));
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (keepKey(k)) settings[k] = localStorage.getItem(k); } } catch (e) {}
+  // the desktop picture, if there is one
+  let wall = null; try { const { getWallImage } = await import("./desk.js"); const b = await getWallImage(); if (b) wall = add(b); } catch (e) {}
+  const header = new TextEncoder().encode(JSON.stringify({ version: 1, created: new Date().toISOString(), tracks: meta, playlists, settings, wall }));
   const len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, header.length);
   return new Blob([MAGIC, len, header, ...parts], { type: "application/octet-stream" });
 }
@@ -68,7 +73,8 @@ export async function importBackup(file, onProgress = () => {}) {
   }
   for (const p of header.playlists || []) await put(db, "playlists", p);
   db.close();
-  for (const [k, v] of Object.entries(header.settings || {})) { try { localStorage.setItem(k, v); } catch (e) {} }
+  for (const [k, v] of Object.entries(header.settings || {})) { if (!keepKey(k)) continue; try { localStorage.setItem(k, v); } catch (e) {} }
+  if (header.wall) { try { const { setWallImage } = await import("./desk.js"); await setWallImage(new Blob([await slice(header.wall).arrayBuffer()], { type: header.wall.type || "image/jpeg" })); } catch (e) {} }
   notifyLibraryChange("restore");
   return { songs: (header.tracks || []).length, playlists: (header.playlists || []).length, created: header.created };
 }

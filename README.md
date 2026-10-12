@@ -146,7 +146,7 @@ To copy your whole library in instead, drop the folder onto the desktop or use *
 
 Browsers can clear stored songs when a computer runs out of space. Adding songs asks the browser to protect the library, and **Settings → Protect my library** shows whether it agreed (browsers usually agree once Neon OS is installed or used often).
 
-To keep them safe or move them, open **Settings → Back up everything**. You get one `.neonos` file with your songs, playlists, notes and settings. **Restore a backup** in any browser or on any computer brings it all back; restoring adds to what's there and never deletes songs.
+To keep them safe or move them, open **Settings → Back up everything**. You get one `.neonos` file with your songs, playlists, notes, Rack patterns and effects, desktop layout, wallpaper and settings. **Restore a backup** in any browser or on any computer brings it all back; restoring adds to what's there and never deletes songs.
 
 ## Roadmap
 
