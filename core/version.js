@@ -1,8 +1,11 @@
 // Neon OS core: version and what's new
 // Bump VERSION and add an entry at the top of CHANGES with each update people should hear about:
 // the desktop shows "What's new" once, the next time Neon OS opens, and About lists them all.
-export const VERSION = "1.3";
+export const VERSION = "1.4";
 export const CHANGES = [
+  { v: "1.4", date: "2026-10-12", items: [
+    "The wallpaper can be a slideshow of your Photos: all of them, the ones added there, or one linked folder; it fades between pictures every 1 minute to a day, shuffled or in order, with an optional slow zoom (Settings → Desktop, or Use as wallpaper in Photos)",
+  ] },
   { v: "1.3", date: "2026-10-12", items: [
     "Video: watch videos from your computer or a linked folder, with subtitles, speed, loop and pop-out; each one carries on where you stopped",
     "Browser: the web with tabs, bookmarks and a start page (every site works in the desktop app; on the website, sites that allow it)",

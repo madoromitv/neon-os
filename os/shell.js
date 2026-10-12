@@ -16,6 +16,7 @@ import { sfx } from "../core/sounds.js";
 import { Slider, openMenu as popMenu } from "../style-kit/ui.js";
 import { runBoot } from "./boot.js";
 import { initLock } from "./lock.js";
+import { createWallPic } from "./wallpic.js";
 
 window.neonOsShell = true; // apps running inside the desktop (Amp) check this
 const $ = id => document.getElementById(id);
@@ -514,6 +515,7 @@ addEventListener("message", async e => {
   if (d.neonOs === "open" && appById(d.app)) { openApp(d.app); return; } // an app opens another (Tape's edit buttons)
   if (d.neonOs === "welcome") { showWelcome(); return; }
   if (d.neonOs === "lock") { doAction("lock"); return; }
+  if (d.neonOs === "wall-next") { wallPic.next(); return; }
   if (d.neonOs === "pause-music") { if (mounted.has("amp") && !closed.has("amp")) dispatchEvent(new CustomEvent("neonos:transport", { detail: "pause" })); return; }
   if (d.neonOs === "ready" && appById(d.app)) { // a framed app is listening: hand over anything waiting for it
     appReady.add(d.app); const q = forApp[d.app] || []; delete forApp[d.app];
@@ -928,6 +930,7 @@ addEventListener("contextmenu", e => {
       "-",
       { text: "Tidy windows", run: tidy },
       { text: "Arrange icons", run: arrangeIcons },
+      ...(wallMode === "slideshow" ? [{ text: "Next wallpaper picture", run: () => wallPic.next() }] : []),
       { text: "Desktop and colour…", run: () => openApp("settings") },
       { text: "Keyboard shortcuts", key: "?", run: () => openApp("help") },
       { text: "Restart Neon OS", run: () => location.reload() },
@@ -950,7 +953,7 @@ const wallMoves = () => wallMode === "orb" && !calmOn();
 function drawWall(now) {
   wallRaf = 0;
   const t = now / 1000;
-  wglow.setBackground(wallMode === "image" ? null : { base: DESK, blobs: wallMode === "plain" ? [] : HAZE });
+  wglow.setBackground(wallMode === "image" || wallMode === "slideshow" ? null : { base: DESK, blobs: wallMode === "plain" ? [] : HAZE });
   wglow.begin(wallMoves() ? t : 0, 0);
   if (wallMode === "orb") {
     const cx = WW / 2, cy = (WH - TASKBAR) / 2, R = Math.min(WW, WH) * 0.2, n = 12;
@@ -965,25 +968,26 @@ function drawWall(now) {
   if (wallMoves() && !document.hidden) wallRaf = requestAnimationFrame(drawWall);
 }
 function startWall() { cancelAnimationFrame(wallRaf); wallRaf = requestAnimationFrame(drawWall); }
-// a picture wallpaper sits behind the (clear) canvas and follows the window's size. Fit (the default) shows the
-// whole picture with a soft blurred copy filling the edges; Fill crops to cover; Stretch; Centre at its own size.
-function showWallPic(t = getTheme()) {
-  const box = $("wallPic"), on = wallMode === "image" && !!wallUrl;
-  box.hidden = !on; if (!on) return;
-  const fit = ["fit", "fill", "stretch", "centre"].includes(t.wallFit) ? t.wallFit : "fit";
-  box.dataset.fit = fit;
-  for (const i of box.children) i.style.backgroundImage = `url("${wallUrl}")`;
-}
+// a picture wallpaper (one picture, or a slideshow from Photos) sits behind the (clear) canvas and follows the
+// window's size (os/wallpic.js). Fit (the default) shows the whole picture with a soft blurred copy filling the
+// edges; Fill crops to cover; Stretch; Centre at its own size.
+let emptyTold = "";
+const wallPic = createWallPic($("wallPic"), { onEmpty: locked => {
+  wallMode = "fog"; startWall();
+  const why = locked.length ? `${locked.join(", ")} need${locked.length === 1 ? "s" : ""} permission again: open Photos and press Reconnect.` : "There are no pictures in Photos for it yet.";
+  if (emptyTold !== why) { emptyTold = why; addNotice({ title: "Wallpaper slideshow is waiting", text: why, app: "photos" }); }
+} });
+const wallKeyOf = t => `${t.wall}|${t.wallStamp}|${t.slideSrc}|${t.slideEvery}|${t.slideOrder}`;
+function showWallPic(t = getTheme()) { if (wallMode === "image" || wallMode === "slideshow") wallPic.setFit(t.wallFit, wallMode === "slideshow" && t.slideZoom && !calmOn(t), t.slideEvery); }
 async function loadWall() {
   const t = getTheme();
-  wallKey = `${t.wall}|${t.wallStamp}`;
-  wallMode = ["orb", "fog", "plain", "image"].includes(t.wall) ? t.wall : "orb";
-  if (wallMode === "image") { // the picture is the canvas's own background; the canvas stays clear over it
+  wallKey = wallKeyOf(t);
+  wallMode = ["orb", "fog", "plain", "image", "slideshow"].includes(t.wall) ? t.wall : "orb";
+  if (wallMode === "image") { // the picture is behind the canvas; the canvas stays clear over it
     const blob = await getWallImage();
-    if (wallUrl) { URL.revokeObjectURL(wallUrl); wallUrl = null; }
-    if (blob) { wallUrl = URL.createObjectURL(blob); }
-    else wallMode = "fog";
-  }
+    if (blob) { wallUrl = URL.createObjectURL(blob); await wallPic.single(wallUrl, t); } else { wallMode = "fog"; wallPic.hide(); }
+  } else if (wallMode === "slideshow") { if (!(await wallPic.slideshow(t))) wallMode = "fog"; }
+  else wallPic.hide();
   showWallPic(t);
   startWall();
 }
@@ -1171,7 +1175,7 @@ lockApi = initLock({ nowPlaying: () => mounted.has("amp") && !closed.has("amp") 
 applyTheme();
 onTheme(t => {
   applyTheme(t); buildSprite();
-  if (`${t.wall}|${t.wallStamp}` !== wallKey) loadWall(); else { showWallPic(t); startWall(); }
+  if (wallKeyOf(t) !== wallKey) loadWall(); else { showWallPic(t); startWall(); }
   if (JSON.stringify([...hiddenIcons()]) + iconRows() !== iconsKey) renderIcons();
 });
 buildSprite(); sizeWall(); loadWall();

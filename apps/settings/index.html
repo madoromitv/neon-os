@@ -52,7 +52,16 @@
       <button class="btn" data-wall="fog" aria-pressed="false">Haze</button>
       <button class="btn" data-wall="plain" aria-pressed="false">Plain</button>
       <button class="btn" data-wall="image" aria-pressed="false">Picture…</button>
+      <button class="btn" data-wall="slideshow" aria-pressed="false" title="Pictures from Photos, changing every few minutes">Slideshow</button>
       <input type="file" id="wallIn" accept="image/*" hidden>
+    </div>
+    <div id="slideBox" hidden style="display:grid;gap:8px">
+      <div class="row"><span class="lbl">Pictures from</span><select id="slideSrc" aria-label="Pictures from"></select></div>
+      <div class="row"><span class="lbl">Change every</span><select id="slideEvery" aria-label="Change every">
+        <option value="1">1 minute</option><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="1440">Day</option></select>
+        <span class="row seg" role="group" aria-label="Order"><button class="btn" data-order="shuffle" aria-pressed="true">Shuffle</button><button class="btn" data-order="order" aria-pressed="false">In order</button></span></div>
+      <div class="row"><button class="btn" id="slideZoom" aria-pressed="false"><i class="led"></i>Slow zoom</button><button class="btn" id="slideNext">Next picture</button></div>
+      <p id="slideMsg">The pictures come from Photos: ones added there, or a folder linked there.</p>
     </div>
     <div class="row seg" role="group" aria-label="How the picture fits" id="fitRow" hidden>
       <span class="lbl">Picture</span>
@@ -130,11 +139,16 @@
 
     // ---------- desktop ----------
     const syncDesk = t => {
-      const wall = ["orb", "fog", "plain", "image"].includes(t.wall) ? t.wall : "orb";
+      const wall = ["orb", "fog", "plain", "image", "slideshow"].includes(t.wall) ? t.wall : "orb";
       document.querySelectorAll("[data-wall]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.wall === wall)));
       const fit = ["fit", "fill", "stretch", "centre"].includes(t.wallFit) ? t.wallFit : "fit";
       document.querySelectorAll("[data-fit]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.fit === fit)));
-      $id("fitRow").hidden = wall !== "image";
+      $id("fitRow").hidden = wall !== "image" && wall !== "slideshow";
+      $id("slideBox").hidden = wall !== "slideshow";
+      $id("slideEvery").value = String(t.slideEvery || 10);
+      document.querySelectorAll("[data-order]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.order === (t.slideOrder || "shuffle"))));
+      $id("slideZoom").setAttribute("aria-pressed", String(!!t.slideZoom));
+      if ($id("slideSrc").options.length) $id("slideSrc").value = t.slideSrc || "all";
       const hide = new Set(Array.isArray(t.deskHide) ? t.deskHide : APPS.filter(a => a.desktop === false).map(a => a.id));
       document.querySelectorAll("#deskApps input").forEach(i => { i.checked = !hide.has(i.value); });
     };
@@ -144,6 +158,18 @@
       if (b.dataset.wall === "image") $id("wallIn").click(); else syncDesk(setTheme({ wall: b.dataset.wall }));
     }));
     document.querySelectorAll("[data-fit]").forEach(b => b.addEventListener("click", () => syncDesk(setTheme({ wallFit: b.dataset.fit }))));
+    // the slideshow's pictures: everything in Photos, the ones added there, or one linked folder
+    import("../../core/photos.js").then(async ({ listPicFolders, listPics }) => {
+      const [fs, pics] = await Promise.all([listPicFolders().catch(() => []), listPics().catch(() => [])]);
+      $id("slideSrc").innerHTML = [["all", "All of Photos"], ["added", "Added in Photos" + (pics.length ? ` (${pics.length})` : "")], ...fs.map(f => [f.id, "Folder: " + f.name])].map(([v, n]) => `<option value="${v}">${n.replace(/[<&]/g, "")}</option>`).join("");
+      $id("slideSrc").value = getTheme().slideSrc || "all";
+      if (!fs.length && !pics.length) $id("slideMsg").textContent = "Photos has no pictures yet: add some there, or link a folder of them, and the slideshow uses them.";
+    });
+    $id("slideSrc").addEventListener("change", () => syncDesk(setTheme({ slideSrc: $id("slideSrc").value })));
+    $id("slideEvery").addEventListener("change", () => syncDesk(setTheme({ slideEvery: +$id("slideEvery").value })));
+    document.querySelectorAll("[data-order]").forEach(b => b.addEventListener("click", () => syncDesk(setTheme({ slideOrder: b.dataset.order }))));
+    $id("slideZoom").addEventListener("click", () => syncDesk(setTheme({ slideZoom: !getTheme().slideZoom })));
+    $id("slideNext").addEventListener("click", () => { if (parent !== window) parent.postMessage({ neonOs: "wall-next" }, location.origin); });
     $id("wallIn").addEventListener("change", async e => {
       const f = e.target.files[0]; e.target.value = ""; if (!f) return;
       try { await setWallImage(f); syncDesk(setTheme({ wall: "image", wallStamp: Date.now() })); }

@@ -81,6 +81,7 @@
     <button class="btn" id="link">Link a folder</button>
     <button class="btn" id="unlink" hidden>Unlink folder</button>
     <button class="btn" id="show" title="Play every picture shown, one after another">Slideshow</button>
+    <button class="btn" id="asWall" title="Make the desktop's wallpaper a slideshow of these pictures">Use as wallpaper</button>
     <span class="prog" id="prog" aria-live="polite"></span>
     <span class="lcd count" id="count">0</span>
   </div>
@@ -102,7 +103,7 @@
   </div>
   <script type="module">
     import "../../core/os-link.js";
-    import { applyTheme, onTheme, setTheme } from "../../core/theme.js";
+    import { applyTheme, onTheme, setTheme, getTheme } from "../../core/theme.js";
     import { esc, toast, dialog, Slider } from "../../style-kit/ui.js";
     import { listPics, addPic, putPic, removePic, listPicFolders, addPicFolder, removePicFolder, folderAccess, scanPicFolder, fileAt, getFolderIndex, setFolderIndex, allThumbs, putThumb, dropThumbs, IMAGE_EXT } from "../../core/photos.js";
     import { setWallImage } from "../../core/desk.js";
@@ -342,6 +343,12 @@
     $("vNext").addEventListener("click", () => { view(at + 1); if (timer) play(true); });
     $("vClose").addEventListener("click", closeView);
     $("vPlay").addEventListener("click", () => play(!timer));
+    $("asWall").addEventListener("click", () => {
+      if (!shown.length) { toast("There are no pictures here yet.", true); return; }
+      setTheme({ wall: "slideshow", slideSrc: S.src, slideEvery: getTheme().slideEvery || 10 });
+      const where = S.src === "all" ? "all your pictures" : S.src === "added" ? "the pictures added here" : (folders.find(f => f.id === S.src) || {}).name;
+      if (!notify("Wallpaper slideshow on", `Showing ${where}. Settings → Desktop sets how often it changes.`, "settings")) toast("The wallpaper is now a slideshow");
+    });
     $("show").addEventListener("click", () => { if (!shown.length) return; view(0); play(true); });
     $("speed").value = String(S.speed);
     $("speed").addEventListener("change", () => { S.speed = +$("speed").value; save(); if (timer) play(true); });

@@ -12,7 +12,7 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Switch apps:** hold Alt and press ` to step through open apps, let go to switch. Ctrl+Alt+M minimises, Ctrl+Alt+W closes, Ctrl+Alt+D shows the desktop, Ctrl+Alt+1 to 9 open apps, Ctrl+Alt+Space opens the start menu. These work inside every app, even while typing
 - **Mini player:** while Amp has a song loaded, the taskbar shows it with previous, play/pause and next; click the title to bring Amp forward. Ctrl+Alt+P, Ctrl+Alt+. and Ctrl+Alt+, do the same from any app, and keyboard media keys work too
 - **Notifications:** finished imports, analysis, backups, restores and saved recordings show up above the tray and stay in the bell's list. Quiet keeps them in the list without popping up
-- **Desktop:** drag icons to move them (drop on another to swap); choose the wallpaper (orb, haze, plain or your own picture, which fits the screen, fills it, stretches or sits in the centre) and which icons show in Settings
+- **Desktop:** drag icons to move them (drop on another to swap); choose the wallpaper (orb, haze, plain, your own picture, or a **slideshow** of your Photos that fades to the next picture every 1 minute to a day, shuffled or in order, with an optional slow zoom; pictures fit the screen, fill it, stretch or sit in the centre). **Use as wallpaper** in Photos makes a slideshow of what it's showing, and right-clicking the desktop gives the next picture and which icons show in Settings
 - **Install:** in Chrome or Edge, **Install Neon OS** in the start menu or Settings gives it its own window and icon. Installed or not, it opens and runs with no connection once it has loaded once. Installed, it opens music files from your file explorer (Open with → Neon OS), its icon's right-click menu has shortcuts to Amp, Search, Pulse and Settings, and the title bar folds into a thin strip with Search
 - **Desktop app:** a download for Windows, macOS and Linux is on the [Releases page](https://github.com/madoromitv/neon-os/releases), built by GitHub from `desktop/`. It registers as a player for MP3, FLAC, WAV, OGG, Opus, M4A and AAC, so double-clicking a song opens it in Amp. The installers aren't signed yet, so Windows shows "More info → Run anyway" and macOS needs a right-click → Open the first time. From desktop app 1.2 on, it keeps itself up to date: Neon OS's files download from the website in the background (each checked against `version.json`) and are used the next time it starts, with a **Restart to update** button by the bell. A new installer is only needed when the desktop app itself changes; About says when one is out
 - **Selecting icons:** drag a box on the empty desktop to select several icons (Ctrl- or Shift-click adds one), then drag one of them to move them all, press Enter or right-click to open them together
@@ -73,6 +73,7 @@ os/          the shell: window manager, taskbar, start menu, wallpaper, app swit
   notices.js   notifications: pop-ups and the bell's list
   search.js    search everywhere (Ctrl+K)
   lock.js      the lock screen and screensaver
+  wallpic.js   the picture wallpaper: one picture, or a slideshow from Photos
 style-kit/   the look, shared by every app
   tokens.css   colours, fonts, glows (change the look here)
   base.css     page defaults

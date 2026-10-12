@@ -195,6 +195,23 @@ const tests = {
     check(!(await p.$(".dicon.sel")), "clicking the empty desktop clears the selection");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "wallpaper slideshow from Photos"() {
+    const p = await page();
+    await p.goto(URL + "apps/photos/"); await p.waitForTimeout(300);
+    await p.evaluate(async () => { const m = await import("/core/photos.js"); for (const [i, c] of ["#cc3355", "#33cc55", "#3355cc"].entries()) { const cv = new OffscreenCanvas(320, 200), g = cv.getContext("2d"); g.fillStyle = c; g.fillRect(0, 0, 320, 200); await m.addPic(new File([await cv.convertToBlob({ type: "image/png" })], `p${i}.png`, { type: "image/png" })); } });
+    await p.reload(); await p.waitForTimeout(800);
+    await p.click("#asWall"); await p.waitForTimeout(300);
+    check(await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:theme")).wall === "slideshow"), "Photos' Use as wallpaper turns the slideshow on");
+    await desk(p); await p.waitForTimeout(800);
+    const pic = () => p.$eval("#wallPic", b => { const l = b.querySelector(".layer.on .front"); return { shown: !b.hidden, img: l ? l.style.backgroundImage : "" }; });
+    const a = await pic(); check(a.shown && a.img.startsWith('url("blob:'), "the desktop shows a picture from Photos");
+    await p.click("#desktop", { button: "right", position: { x: 700, y: 400 } }); await p.click('.pop .mi:has-text("Next wallpaper picture")'); await p.waitForTimeout(800);
+    const b = await pic(); check(b.img && b.img !== a.img, "Next wallpaper picture changes it");
+    await p.reload(); await p.waitForTimeout(1500);
+    const st = await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:wall-show") || "{}"));
+    check(!!st.cur && (await pic()).shown, "after a reload it carries on with the slideshow");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "the orb: presets, live input and recording video"() {
     const p = await page({ permissions: ["microphone"] }); await desk(p); await amp(p, ["song.wav"]);
     await p.click("#lookBtn"); await p.waitForTimeout(200);
