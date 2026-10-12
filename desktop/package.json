@@ -24,7 +24,14 @@
     "directories": { "output": "dist", "buildResources": "build" },
     "files": ["main.js", "preload.js", "app/**/*"],
     "fileAssociations": [
-      { "ext": ["mp3", "flac", "wav", "ogg", "oga", "opus", "m4a", "aac"], "name": "Audio", "description": "Music", "role": "Viewer" }
+      { "ext": "mp3", "name": "MP3 audio", "description": "MP3 audio", "mimeType": "audio/mpeg", "role": "Viewer" },
+      { "ext": "flac", "name": "FLAC audio", "description": "FLAC audio", "mimeType": "audio/flac", "role": "Viewer" },
+      { "ext": "wav", "name": "WAV audio", "description": "WAV audio", "mimeType": "audio/wav", "role": "Viewer" },
+      { "ext": "ogg", "name": "Ogg audio", "description": "Ogg audio", "mimeType": "audio/ogg", "role": "Viewer" },
+      { "ext": "oga", "name": "Ogg audio", "description": "Ogg audio", "mimeType": "audio/ogg", "role": "Viewer" },
+      { "ext": "opus", "name": "Opus audio", "description": "Opus audio", "mimeType": "audio/opus", "role": "Viewer" },
+      { "ext": "m4a", "name": "M4A audio", "description": "M4A audio", "mimeType": "audio/mp4", "role": "Viewer" },
+      { "ext": "aac", "name": "AAC audio", "description": "AAC audio", "mimeType": "audio/aac", "role": "Viewer" }
     ],
     "win": { "target": ["nsis"], "artifactName": "Neon-OS-Setup-${version}.${ext}" },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true },
