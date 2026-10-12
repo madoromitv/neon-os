@@ -93,6 +93,7 @@
     <div class="row">
       <button class="btn" id="tidy">Reset window layout</button>
       <button class="btn" id="bootT" aria-pressed="true"><i class="led"></i>Boot screen</button>
+      <button class="btn" id="askSaveT" aria-pressed="true" title="When saving exports and backups, ask where to save them (Chrome and Edge)"><i class="led"></i>Ask where to save</button>
     </div>
     <p>Reset puts every window back to its default size the next time Neon OS opens. Boot screen turns the start-up sequence on or off.</p>
   </section>
@@ -197,6 +198,10 @@
     const syncBoot = t => bootBtn.setAttribute("aria-pressed", String(t.boot !== false));
     bootBtn.addEventListener("click", () => syncBoot(setTheme({ boot: getTheme().boot === false })));
     onTheme(syncBoot); syncBoot(getTheme());
+    const askBtn = document.getElementById("askSaveT");
+    const syncAsk = () => { let on = true; try { on = localStorage.getItem("neon-os:ask-save") !== "off"; } catch (e) {} askBtn.setAttribute("aria-pressed", String(on)); askBtn.hidden = !("showSaveFilePicker" in window); };
+    askBtn.addEventListener("click", () => { const on = askBtn.getAttribute("aria-pressed") === "true"; try { localStorage.setItem("neon-os:ask-save", on ? "off" : "on"); } catch (e) {} syncAsk(); });
+    syncAsk();
     onTheme(sync);
     sync(getTheme());
 
@@ -213,13 +218,15 @@
         catch (e) { $("libStat").textContent = "LIBRARY UNAVAILABLE"; }
       };
       $("backup").addEventListener("click", async () => {
+        const { saveTarget } = await import("../../core/wav.js");
+        const target = await saveTarget(`neon-os-backup-${new Date().toISOString().slice(0, 10)}.neonos`, { description: "Neon OS backup", accept: { "application/octet-stream": [".neonos"] } });
+        if (!target) return;
         $("backup").disabled = true; msg("Packing your library…");
         try {
-          const blob = await exportBackup(), a = document.createElement("a");
-          a.href = URL.createObjectURL(blob); a.download = `neon-os-backup-${new Date().toISOString().slice(0, 10)}.neonos`;
-          document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-          msg(`Backup saved (${mb(blob.size)}). Check your downloads folder.`);
-          notify("Backup saved", `${a.download} (${mb(blob.size)}) is in your downloads folder.`, "settings");
+          const blob = await exportBackup(); await target.write(blob);
+          const where = target.picked ? `Saved as ${target.name}` : `${target.name} is in your downloads folder`;
+          msg(`Backup saved (${mb(blob.size)}). ${where}.`);
+          notify("Backup saved", `${where} (${mb(blob.size)}).`, "settings");
         } catch (e) { msg("Couldn't make the backup. Try again."); }
         $("backup").disabled = false;
       });

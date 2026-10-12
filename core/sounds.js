@@ -34,7 +34,18 @@ function noise(dur, freq, q, vol, delay = 0, sweepTo) {
   src.connect(bp); bp.connect(g); g.connect(out); src.start(t);
 }
 
+function alarmTone(f, delay) {
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  if (!ctx) { ctx = new AC(); out = ctx.createGain(); out.connect(ctx.destination); }
+  if (ctx.state !== "running") ctx.resume().catch(() => {});
+  const t = getTheme(); out.gain.value = Math.max(0.35, Math.pow(t.sysVol == null ? 0.6 : t.sysVol, 2) * 0.9);
+  const at = ctx.currentTime + delay, o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = "triangle"; o.frequency.value = f; g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.25, at + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.3);
+  o.connect(g); g.connect(out); o.start(at); o.stop(at + 0.32);
+}
 export const sfx = {
+  // an alarm or timer: a rising three-note figure, four times (plays even with system sounds off: it's an alarm)
+  alarm() { const was = getTheme().sounds; for (let r = 0; r < 4; r++) [660, 880, 1320].forEach((f, i) => alarmTone(f, r * 1.1 + i * 0.16)); void was; },
   tick() { noise(0.03, 3200, 4, 0.25); },
   open() { tone(520, 980, 0.16, "triangle", 0.09); tone(780, 1470, 0.18, "sine", 0.04, 0.02); },
   close() { tone(900, 420, 0.16, "triangle", 0.08); },

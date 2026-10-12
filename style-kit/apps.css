@@ -1,0 +1,26 @@
+/* Neon OS style kit: everyday app layout
+   Shared by the everyday apps (Clock, Calculator, Calendar, Notes, Photos, System monitor, Bin):
+   a tab row, panes, lists of items, form rows and cards, all in the Neon Orbit look. */
+body.app { padding: 12px; display: flex; flex-direction: column; gap: 12px; min-height: 100%; height: 100%; overflow: auto; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs .btn[aria-selected="true"], .seg .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); background: linear-gradient(180deg, #1c1926, #2b2736); box-shadow: inset 1px 1px 0 #0b0910, inset -1px -1px 0 #4b4462; }
+.pane { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.row.center { justify-content: center; }
+.card { display: grid; gap: 8px; padding: 10px 12px; background: #0a0810; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; }
+.list { display: grid; gap: 2px; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; padding: 4px; }
+.list:empty { display: none; }
+.item { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 2px; min-width: 0; }
+.item:hover { background: #ffffff08; }
+.item.sel { background: var(--sel); }
+.item > span { flex: 1; min-width: 0; display: grid; }
+.item strong { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item small { font-size: 11.5px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn.mini { min-height: 22px; padding: 0 8px; font-size: 11px; }
+.hint { margin: 0; color: var(--ink-faint); font-size: 11.5px; line-height: 1.5; }
+.app input[type=text], .app input[type=time], .app input[type=date], .app input[type=number], .app input[type=search], .app select, .app textarea {
+  background: #000; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; padding: 6px 9px; font-size: 13px; color: var(--ink); color-scheme: dark; }
+.app input:focus, .app select:focus, .app textarea:focus { outline: none; box-shadow: 0 0 0 1px var(--ball); }
+.app select { max-width: 100%; }
+.app input[type=text], .app input[type=search] { flex: 1; min-width: 140px; }
+.empty { padding: 24px; text-align: center; color: var(--ink-faint); font-size: 12.5px; }

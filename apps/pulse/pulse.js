@@ -8,7 +8,7 @@ import { clock } from "../../core/clock.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, dialog } from "../../style-kit/ui.js";
 import { notify } from "../../core/notify.js";
-import { toWav } from "../../core/wav.js";
+import { toWav, saveTarget } from "../../core/wav.js";
 import { createFx, fxOf } from "../../core/fx.js";
 import { fxPanel } from "../../style-kit/fx-panel.js";
 applyTheme(); onTheme(applyTheme);
@@ -177,6 +177,7 @@ addEventListener("keydown", e => {
 
 // ---------- export: four bars to WAV ----------
 $("wav").addEventListener("click", async () => {
+  const target = await saveTarget(`pulse-${S.cur}-${Math.round(S.bpm)}bpm.wav`, { description: "WAV audio", accept: { "audio/wav": [".wav"] } }); if (!target) return; // Save as, before rendering
   const btn = $("wav"); btn.disabled = true; btn.textContent = "Rendering…";
   try {
     const SR = 44100, bars = 4, len = bars * STEPS * stepDur() + 1.2 + (S.fx.reverb ? 1 + S.fx.size * 4.5 : 0) + (S.fx.delay ? 3 : 0);
@@ -185,10 +186,8 @@ $("wav").addEventListener("click", async () => {
     const bs = VOICES.map((_, i) => { const g = off.createGain(); g.gain.value = S.mute[i] ? 0 : S.vol[i]; g.connect(m); return g; });
     const p = pat();
     for (let n = 0; n < bars * STEPS; n++) { const s = n % STEPS, t = stepTime(0.02 + n * stepDur(), s); VOICES.forEach((v, i) => { if (p[i][s]) hit(off, bs[i], v.id, t, p[i][s] === 2 ? 1 : 0.62); }); }
-    const buf = await off.startRendering(), wav = toWav(buf);
-    const a = document.createElement("a"); a.href = URL.createObjectURL(wav); a.download = `pulse-${S.cur}-${Math.round(S.bpm)}bpm.wav`;
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
-    if (!notify("Pattern saved", `${a.download} is in your downloads folder.`, "pulse")) toast(`Saved ${a.download}`);
+    await target.write(toWav(await off.startRendering()));
+    if (!notify("Pattern saved", `${target.picked ? `Saved as ${target.name}.` : `${target.name} is in your downloads folder.`}`, "pulse")) toast(`Saved ${target.name}`);
   } catch (e) { toast("Couldn't render the WAV. Try again.", true); }
   btn.disabled = false; btn.textContent = "Export WAV";
 });

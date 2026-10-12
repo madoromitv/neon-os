@@ -12,6 +12,7 @@ import { notify } from "../../core/notify.js";
 import { createGlow, createGlow2D } from "../../core/glow.js";
 import { measureLoudness, levelGain } from "../../core/loudness.js";
 import { editDetails, tidyNames } from "../../core/details.js";
+import { binPut } from "../../core/bin.js";
 import { fileOf, linkSupported, listFolders, saveFolder, removeFolder, scanFolder, foldersNeedingAccess, reconnectAll, hasAccess, folderById, setWriteFolder } from "../../core/linked.js";
 import { syncConf, setSyncConf, deviceId, loadBase, saveBase, clearBase, readRemote, writeRemote, snapshot, merge, removals, urlToBlob, stable, trackKey } from "../../core/sync.js";
 import { onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
@@ -451,9 +452,9 @@ $("mlRename").addEventListener("click", async () => {
 });
 $("mlDelete").addEventListener("click", async () => {
   const p = plById(mlView.id); if (!p) return;
-  const ok = await dialog({ title: "Delete playlist", text: `Delete ${p.name}? The songs stay in your library.`, confirm: "Delete", danger: true });
+  const ok = await dialog({ title: "Move playlist to the Bin", text: `${p.name} goes to the Bin for 30 days. The songs stay in your library.`, confirm: "Move to the Bin", danger: true });
   if (!ok) return;
-  try { await store.deletePlaylist(p.id); setMlView({ type: "all" }); } catch (e) { toast("Couldn't delete the playlist. Try again.", true); }
+  try { await binPut("playlist", p.name, { ...p }, `${p.tracks.length} songs`); await store.deletePlaylist(p.id); setMlView({ type: "all" }); notifyLibraryChange("edit"); } catch (e) { toast("Couldn't delete the playlist. Try again.", true); }
 });
 
 async function addToPlaylist(pid, ids) {
@@ -488,15 +489,19 @@ async function tidy(kind) {
   } catch (e) { toast("Couldn't change those names. Try again.", true); }
 }
 async function deleteTracks(ts) {
-  const ok = await dialog({ title: "Delete from library", text: ts.length === 1 ? `Delete ${ts[0].title}? It's removed from your library and every playlist.` : `Delete ${ts.length} songs? They're removed from your library and every playlist.`, confirm: "Delete", danger: true });
+  const ok = await dialog({ title: "Move to the Bin", text: `${ts.length === 1 ? ts[0].title + " goes" : ts.length + " songs go"} to the Bin, out of your library and playlists. The Bin keeps ${ts.length === 1 ? "it" : "them"} for 30 days, so you can put ${ts.length === 1 ? "it" : "them"} back.`, confirm: "Move to the Bin", danger: true });
   if (!ok) return;
   try {
     const gone = new Set(ts.map(t => t.id));
+    for (const t of ts) { // the Bin keeps the song and which playlists it was in, to put it back
+      const { coverUrl, ...rec } = t; void coverUrl;
+      await binPut("song", t.title, { track: rec, playlists: store.playlists.filter(p => p.tracks.includes(t.id)).map(p => p.id) }, [t.artist, t.album].filter(Boolean).join(" · "));
+    }
     for (const p of store.playlists.filter(p => p.tracks.some(id => gone.has(id)))) await store.updatePlaylist(p.id, { tracks: p.tracks.filter(id => !gone.has(id)) });
     for (const t of ts) await store.deleteTrack(t);
     removePlIdx(pl.map((id, i) => gone.has(id) ? i : -1).filter(i => i >= 0));
     mlSel.clear(); renderAll(); notifyLibraryChange("delete");
-    toast(ts.length === 1 ? `Deleted ${ts[0].title}` : `Deleted ${ts.length} songs`);
+    toast(ts.length === 1 ? `${ts[0].title} is in the Bin` : `${ts.length} songs are in the Bin`);
   } catch (e) { toast("Couldn't delete. Try again.", true); }
 }
 

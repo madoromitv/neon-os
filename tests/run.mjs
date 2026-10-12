@@ -16,7 +16,7 @@ async function page(opts = {}, { fresh = false } = {}) {
   const p = await ctx.newPage(); p.errors = [];
   p.on("pageerror", e => p.errors.push(e.message));
   p.on("console", m => { if (m.type() === "error" && !/fonts|ERR_|Failed to load resource/.test(m.text())) p.errors.push(m.text()); });
-  await p.addInitScript(([v, fresh]) => { if (!sessionStorage.getItem("t")) { localStorage.setItem("neon-os:theme", JSON.stringify({ ball: "cyan", boot: false })); if (!fresh) localStorage.setItem("neon-os:seen-version", v); sessionStorage.setItem("t", "1"); } }, [VERSION, fresh]);
+  await p.addInitScript(([v, fresh]) => { if (!sessionStorage.getItem("t")) { localStorage.setItem("neon-os:theme", JSON.stringify({ ball: "cyan", boot: false })); localStorage.setItem("neon-os:ask-save", "off"); if (!fresh) localStorage.setItem("neon-os:seen-version", v); sessionStorage.setItem("t", "1"); } }, [VERSION, fresh]);
   return p;
 }
 const lib = p => p.evaluate(() => import("./core/backup.js").then(m => m.librarySummary()));
@@ -66,7 +66,73 @@ const tests = {
   },
   async "every app page loads on its own"() {
     const p = await page();
-    for (const a of ["amp", "files", "pulse", "drift", "chop", "tape", "decks", "notes", "settings", "help", "about"]) { await p.goto(`${URL}apps/${a}/`); await p.waitForTimeout(500); }
+    for (const a of ["amp", "files", "pulse", "drift", "chop", "tape", "decks", "notes", "clock", "calendar", "calculator", "photos", "monitor", "bin", "settings", "help", "about"]) { await p.goto(`${URL}apps/${a}/`); await p.waitForTimeout(500); }
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
+  async "everyday apps: clock, calendar, calculator, notes, Bin, Photos, System monitor"() {
+    const p = await page();
+    // calculator: × before +, history kept
+    await p.goto(URL + "apps/calculator/"); await p.waitForTimeout(400);
+    await p.keyboard.type("2+3*4"); await p.keyboard.press("Enter");
+    check((await p.$eval("#res", e => e.textContent)) === "14", "Calculator does × before +");
+    check(JSON.parse(await p.evaluate(() => localStorage.getItem("neon-os:calculator"))).hist.length === 1, "Calculator keeps its history");
+    await p.click('[data-tab="tempo"]'); await p.fill("#bpm", "120"); await p.dispatchEvent("#bpm", "input");
+    check((await p.$eval("#lengths", e => e.textContent)).includes("500.0 ms"), "Tempo: a beat at 120 BPM is 500 ms");
+    // alarms, timers and reminders go off on the desktop with Clock and Calendar closed
+    if (new Date().getSeconds() > 50) await p.waitForTimeout((61 - new Date().getSeconds()) * 1000); // the alarm's minute mustn't pass mid-test
+    await p.evaluate(() => {
+      const d = new Date(), hm = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"), day = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      localStorage.setItem("neon-os:clock", JSON.stringify({ alarms: [{ id: "a1", time: hm, label: "Test alarm", days: [], on: true }], timer: { label: "", endsAt: Date.now() + 1500, left: 0, total: 1500 }, zones: [], watch: { startedAt: null, elapsed: 0, laps: [] } }));
+      localStorage.setItem("neon-os:calendar", JSON.stringify({ events: [{ id: "e1", title: "Test event", date: day, time: hm, remind: 0, fired: false }] }));
+    });
+    await desk(p); await p.waitForTimeout(2600);
+    const notes = await p.evaluate(() => localStorage.getItem("neon-os:notices") || "");
+    check(/Test alarm/.test(notes), "an alarm goes off");
+    check(/Test event/.test(notes), "a calendar reminder goes off");
+    check(/[Tt]imer/.test(notes), "a timer goes off");
+    check(await p.evaluate(() => !JSON.parse(localStorage.getItem("neon-os:clock")).alarms[0].on), "a one-off alarm turns itself off");
+    // start menu groups, and System monitor lists and closes apps
+    await p.click("#startBtn"); check((await p.$$eval(".sm-h", e => e.map(x => x.textContent))).join() === "Music,Everyday,System", "start menu is grouped");
+    await p.click('.sm-item[data-app="files"]'); await p.waitForTimeout(800);
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="monitor"]'); await p.waitForTimeout(2500);
+    const mf = p.frame({ url: /monitor/ });
+    check((await mf.$$eval(".task strong", e => e.map(x => x.textContent))).includes("Files"), "System monitor lists open apps");
+    await mf.click('[data-app="files"] [data-act="close"]'); await p.waitForTimeout(800);
+    check(!(await p.$('[data-wid="files"]')), "System monitor closes an app");
+    check((await mf.$$eval(".stat", e => e.length)) >= 5, "System monitor shows what's stored");
+    // notes: folders, the Bin, and putting a note back
+    await p.goto(URL + "apps/notes/"); await p.waitForTimeout(400);
+    await p.click("#newNote"); await p.keyboard.type("Shopping list\nmilk"); await p.waitForTimeout(500);
+    check((await p.$$eval("#notes strong", e => e.map(x => x.textContent))).includes("Shopping list"), "Notes titles a note by its first line");
+    await p.click("#del"); await p.waitForTimeout(600);
+    await p.goto(URL + "apps/bin/"); await p.waitForTimeout(600);
+    check((await p.$$eval(".bin strong", e => e.map(x => x.textContent))).includes("Shopping list"), "a deleted note is in the Bin");
+    await p.click(".bin .item input"); await p.click("#restore"); await p.waitForTimeout(600);
+    check(await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:notebook")).notes.some(n => n.text.startsWith("Shopping list"))), "the Bin puts a note back");
+    check(!(await p.$(".bin .item")), "and it leaves the Bin");
+    // a song in the Bin comes back with its playlist
+    await desk(p); await amp(p, ["quiet.wav"]);
+    await p.evaluate(async () => {
+      const { makeLocalStore } = await import("./core/storage.js"), { binPut } = await import("./core/bin.js"), s = makeLocalStore(); await s.init();
+      const t = s.tracks[0], pl = await s.createPlaylist("Keep"); await s.updatePlaylist(pl.id, { tracks: [t.id] });
+      const { coverUrl, ...rec } = t; void coverUrl; await binPut("song", t.title, { track: rec, playlists: [pl.id] }, "");
+      await s.updatePlaylist(pl.id, { tracks: [] }); await s.deleteTrack(t);
+    });
+    check((await lib(p)).songs === 0, "song deleted");
+    await p.goto(URL + "apps/bin/"); await p.waitForTimeout(600);
+    await p.click(".bin .item input"); await p.click("#restore"); await p.waitForTimeout(800);
+    const back = await p.evaluate(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return { n: s.tracks.length, inPl: s.playlists[0].tracks.length }; });
+    check(back.n === 1 && back.inPl === 1, "the Bin puts a song back in its playlist");
+    // photos: add a picture, view it, make it the wallpaper
+    await p.screenshot({ path: FX + "pic.png", clip: { x: 0, y: 0, width: 64, height: 48 } });
+    await p.goto(URL + "apps/photos/"); await p.waitForTimeout(500);
+    await p.setInputFiles("#fileIn", FX + "pic.png"); await p.waitForTimeout(1200);
+    check((await p.$$eval(".pic", e => e.length)) === 1, "Photos adds a picture");
+    await p.click(".pic"); await p.waitForTimeout(500); check(await p.$eval("#viewer", e => !e.hidden), "Photos opens the viewer");
+    await p.click("#vWall"); await p.waitForTimeout(600);
+    check(await p.evaluate(async () => JSON.parse(localStorage.getItem("neon-os:theme")).wall === "image" && !!(await (await import("/core/desk.js")).getWallImage())), "Photos sets the wallpaper");
+    await p.click("#vDel"); await p.waitForTimeout(600);
+    check((await p.$$eval(".pic", e => e.length)) === 0 && (await p.evaluate(async () => (await (await import("/core/bin.js")).binList()).some(i => i.kind === "photo"))), "a removed picture goes to the Bin");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
   async "desktop, shortcuts, switcher, notifications"() {

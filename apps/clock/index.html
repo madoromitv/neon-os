@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clock · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  .big { font: 84px/1 var(--font-lcd); text-align: center; padding: 18px 10px 6px; letter-spacing: 2px; }
+  .big small { font-size: 40px; opacity: .6; }
+  .sub { text-align: center; font: 22px/1.2 var(--font-lcd); padding: 0 10px 14px; opacity: .8; }
+  .zone b { font: 26px/1 var(--font-lcd); color: var(--ball); min-width: 86px; }
+  .alarm b { font: 30px/1 var(--font-lcd); color: var(--ball); min-width: 86px; }
+  .alarm.off b { color: var(--ink-faint); }
+  .days { display: flex; gap: 4px; flex-wrap: wrap; }
+  .days label { display: grid; place-items: center; width: 34px; height: 26px; border-radius: 2px; background: #000; box-shadow: inset -1px -1px 0 #3a3450; font-size: 11px; cursor: pointer; }
+  .days input { display: none; }
+  .days input:checked + span { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .ring { width: 220px; height: 220px; margin: 6px auto; position: relative; display: grid; place-items: center; }
+  .ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 8; }
+  .ring .track { stroke: #000; }
+  .ring .fill { stroke: var(--ball); filter: drop-shadow(0 0 6px var(--ball-dim)); stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
+  .ring .t { font: 56px/1 var(--font-lcd); color: var(--ball); text-shadow: 0 0 8px var(--ball-dim); }
+  .laps { max-height: 240px; overflow: auto; }
+  .hms { display: flex; gap: 6px; align-items: center; justify-content: center; }
+  .hms input { width: 64px; text-align: center; font: 26px/1 var(--font-lcd); }
+</style>
+</head>
+<body class="app">
+  <nav class="seg tabs" id="tabs" role="tablist">
+    <button class="btn" role="tab" data-tab="clock">Clock</button>
+    <button class="btn" role="tab" data-tab="alarms">Alarms</button>
+    <button class="btn" role="tab" data-tab="timer">Timer</button>
+    <button class="btn" role="tab" data-tab="watch">Stopwatch</button>
+  </nav>
+
+  <section class="pane" data-pane="clock">
+    <div class="lcd"><div class="big" id="now">00:00<small>:00</small></div><div class="sub" id="date"></div></div>
+    <span class="lbl">World clocks</span>
+    <div class="list" id="zones"></div>
+    <div class="row"><select id="zonePick" aria-label="Add a city or time zone"></select><button class="btn" id="zoneAdd">Add</button></div>
+  </section>
+
+  <section class="pane" data-pane="alarms" hidden>
+    <div class="list" id="alarms"></div>
+    <form class="card" id="alarmForm">
+      <span class="lbl">New alarm</span>
+      <div class="row"><input type="time" id="aTime" required aria-label="Time" value="07:30"><input type="text" id="aLabel" placeholder="Label (optional)" aria-label="Label"></div>
+      <div class="days" id="aDays" aria-label="Repeat on"></div>
+      <div class="row"><button class="btn" type="submit">Add alarm</button><span class="hint">No days ticked: rings once.</span></div>
+    </form>
+  </section>
+
+  <section class="pane" data-pane="timer" hidden>
+    <div class="ring"><svg viewBox="0 0 220 220" aria-hidden="true"><circle class="track" cx="110" cy="110" r="100"/><circle class="fill" id="tFill" cx="110" cy="110" r="100" stroke-dasharray="628.3" stroke-dashoffset="0"/></svg><span class="t" id="tLeft">5:00</span></div>
+    <div class="row center" id="tPresets"></div>
+    <div class="hms"><input type="number" id="tH" min="0" max="23" value="0" aria-label="Hours"><b>:</b><input type="number" id="tM" min="0" max="59" value="5" aria-label="Minutes"><b>:</b><input type="number" id="tS" min="0" max="59" value="0" aria-label="Seconds"></div>
+    <div class="row center"><input type="text" id="tLabel" placeholder="Label (optional)" aria-label="Timer label"></div>
+    <div class="row center"><button class="btn" id="tGo">Start</button><button class="btn" id="tReset">Reset</button></div>
+  </section>
+
+  <section class="pane" data-pane="watch" hidden>
+    <div class="lcd"><div class="big" id="wTime">0:00<small>.00</small></div></div>
+    <div class="row center"><button class="btn" id="wGo">Start</button><button class="btn" id="wLap">Lap</button><button class="btn" id="wReset">Reset</button></div>
+    <div class="list laps" id="laps"></div>
+  </section>
+
+  <p class="hint" id="notifyHint"></p>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { esc } from "../../style-kit/ui.js";
+    import { loadClock, saveClock, uid, pad2, fmtDur, CLOCK_KEY } from "../../core/reminders.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id);
+    let C = loadClock();
+    const save = () => saveClock(C);
+    addEventListener("storage", e => { if (e.key === CLOCK_KEY) { C = loadClock(); drawAlarms(); } }); // the desktop marks alarms done
+
+    // tabs (the open tab is remembered)
+    let tab = localStorage.getItem("neon-os:clock-tab") || "clock";
+    const showTab = t => { tab = t; try { localStorage.setItem("neon-os:clock-tab", t); } catch (e) {} document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === t))); document.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== t); };
+    $("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) showTab(b.dataset.tab); });
+    showTab(tab);
+
+    // ---------- clock and world clocks ----------
+    const zoneTime = (z, d) => d.toLocaleTimeString(undefined, { timeZone: z, hour: "2-digit", minute: "2-digit" });
+    const zoneName = z => z.split("/").pop().replace(/_/g, " ");
+    const zones = (Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : ["Europe/London", "America/New_York", "Asia/Tokyo", "Asia/Seoul", "Australia/Sydney"]);
+    $("zonePick").innerHTML = zones.map(z => `<option value="${esc(z)}">${esc(zoneName(z))} (${esc(z.split("/")[0])})</option>`).join("");
+    $("zonePick").value = "Asia/Seoul";
+    function drawZones() {
+      const d = new Date();
+      $("zones").innerHTML = C.zones.length ? C.zones.map(z => `<div class="item zone"><b>${zoneTime(z, d)}</b><span><strong>${esc(zoneName(z))}</strong><small>${esc(d.toLocaleDateString(undefined, { timeZone: z, weekday: "short", day: "numeric", month: "short" }))}</small></span><button class="btn mini" data-del="${esc(z)}" aria-label="Remove ${esc(zoneName(z))}">×</button></div>`).join("") : `<p class="hint">Add a city to see its time here.</p>`;
+    }
+    $("zoneAdd").addEventListener("click", () => { const z = $("zonePick").value; if (!C.zones.includes(z)) { C.zones.push(z); save(); drawZones(); } });
+    $("zones").addEventListener("click", e => { const b = e.target.closest("[data-del]"); if (b) { C.zones = C.zones.filter(z => z !== b.dataset.del); save(); drawZones(); } });
+
+    // ---------- alarms (rung by the desktop, so they work with Clock closed) ----------
+    const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    $("aDays").innerHTML = [1, 2, 3, 4, 5, 6, 0].map(d => `<label><input type="checkbox" value="${d}"><span>${DAYS[d]}</span></label>`).join("");
+    const daysText = a => !a.days || !a.days.length ? "Once" : a.days.length === 7 ? "Every day" : a.days.length === 5 && !a.days.includes(0) && !a.days.includes(6) ? "Weekdays" : a.days.slice().sort((x, y) => ((x + 6) % 7) - ((y + 6) % 7)).map(d => DAYS[d]).join(" ");
+    function drawAlarms() {
+      const list = C.alarms.slice().sort((a, b) => a.time.localeCompare(b.time));
+      $("alarms").innerHTML = list.length ? list.map(a => `<div class="item alarm${a.on ? "" : " off"}"><b>${esc(a.time)}</b><span><strong>${esc(a.label || "Alarm")}</strong><small>${esc(daysText(a))}</small></span>
+        <button class="btn" data-toggle="${a.id}" aria-pressed="${a.on}"><i class="led"></i>${a.on ? "On" : "Off"}</button><button class="btn mini" data-del="${a.id}" aria-label="Delete alarm">×</button></div>`).join("") : `<p class="hint">No alarms yet.</p>`;
+    }
+    $("alarms").addEventListener("click", e => {
+      const t = e.target.closest("[data-toggle]"), d = e.target.closest("[data-del]");
+      if (t) { const a = C.alarms.find(x => x.id === t.dataset.toggle); a.on = !a.on; save(); drawAlarms(); }
+      if (d) { C.alarms = C.alarms.filter(x => x.id !== d.dataset.del); save(); drawAlarms(); }
+    });
+    $("alarmForm").addEventListener("submit", e => {
+      e.preventDefault();
+      C.alarms.push({ id: uid(), time: $("aTime").value, label: $("aLabel").value.trim(), days: [...document.querySelectorAll("#aDays input:checked")].map(i => +i.value), on: true });
+      save(); drawAlarms(); $("aLabel").value = ""; askNotify();
+    });
+
+    // ---------- timer ----------
+    const PRESETS = [1, 3, 5, 10, 15, 25, 45];
+    $("tPresets").innerHTML = PRESETS.map(m => `<button class="btn mini" data-min="${m}">${m} min</button>`).join("");
+    $("tPresets").addEventListener("click", e => { const b = e.target.closest("[data-min]"); if (!b) return; const m = +b.dataset.min; $("tH").value = Math.floor(m / 60); $("tM").value = m % 60; $("tS").value = 0; if (!C.timer.endsAt) { C.timer.left = 0; drawTimer(); } });
+    const typed = () => ((+$("tH").value || 0) * 3600 + (+$("tM").value || 0) * 60 + (+$("tS").value || 0)) * 1000;
+    function drawTimer() {
+      const T = C.timer, running = !!T.endsAt, left = running ? T.endsAt - Date.now() : T.left || typed(), total = T.total || typed() || 1;
+      $("tLeft").textContent = fmtDur(Math.max(0, left));
+      $("tFill").style.strokeDashoffset = String(628.3 * (1 - Math.max(0, Math.min(1, left / total))));
+      $("tGo").textContent = running ? "Pause" : T.left ? "Resume" : "Start";
+    }
+    $("tGo").addEventListener("click", () => {
+      const T = C.timer;
+      if (T.endsAt) { T.left = T.endsAt - Date.now(); T.endsAt = null; }
+      else if (T.left) { T.endsAt = Date.now() + T.left; T.left = 0; }
+      else { const ms = typed(); if (!ms) return; T.total = ms; T.endsAt = Date.now() + ms; T.label = $("tLabel").value.trim(); askNotify(); }
+      save(); drawTimer();
+    });
+    $("tReset").addEventListener("click", () => { C.timer = { label: "", endsAt: null, left: 0, total: 0 }; save(); drawTimer(); });
+    ["tH", "tM", "tS"].forEach(id => $(id).addEventListener("input", () => { if (!C.timer.endsAt && !C.timer.left) drawTimer(); }));
+
+    // ---------- stopwatch (keeps running with Clock closed) ----------
+    const W = () => C.watch;
+    const wNow = () => W().elapsed + (W().startedAt ? Date.now() - W().startedAt : 0);
+    const wFmt = ms => { const cs = Math.floor(ms / 10) % 100; return `${fmtDur(Math.floor(ms / 1000) * 1000)}<small>.${pad2(cs)}</small>`; };
+    function drawWatch() {
+      $("wTime").innerHTML = wFmt(wNow()); $("wGo").textContent = W().startedAt ? "Stop" : W().elapsed ? "Resume" : "Start";
+      $("laps").innerHTML = W().laps.map((l, i) => `<div class="item"><b>Lap ${W().laps.length - i}</b><span>${wFmt(l.split)}</span><small>${wFmt(l.at)}</small></div>`).join("");
+    }
+    $("wGo").addEventListener("click", () => { const w = W(); if (w.startedAt) { w.elapsed += Date.now() - w.startedAt; w.startedAt = null; } else w.startedAt = Date.now(); save(); drawWatch(); });
+    $("wLap").addEventListener("click", () => { const w = W(), at = wNow(); if (!at) return; const prev = w.laps[0] ? w.laps[0].at : 0; w.laps.unshift({ at, split: at - prev }); save(); drawWatch(); });
+    $("wReset").addEventListener("click", () => { C.watch = { startedAt: null, elapsed: 0, laps: [] }; save(); drawWatch(); });
+
+    // ---------- notifications in the background ----------
+    function askNotify() { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().then(drawHint); }
+    function drawHint() {
+      const p = "Notification" in window ? Notification.permission : "denied";
+      $("notifyHint").textContent = p === "granted" ? "Alarms and timers also show a system notification when Neon OS is in the background." : "Alarms and timers ring while Neon OS is open, even with Clock closed.";
+    }
+
+    function tick() {
+      const d = new Date();
+      $("now").innerHTML = `${pad2(d.getHours())}:${pad2(d.getMinutes())}<small>:${pad2(d.getSeconds())}</small>`;
+      $("date").textContent = d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+      if (tab === "clock" && d.getSeconds() === 0) drawZones();
+      if (tab === "timer") { C.timer = loadClock().timer; drawTimer(); }
+      if (tab === "watch" && W().startedAt) drawWatch();
+    }
+    drawZones(); drawAlarms(); drawTimer(); drawWatch(); drawHint(); tick();
+    setInterval(tick, 250);
+    setInterval(() => { if (tab === "watch" && W().startedAt) $("wTime").innerHTML = wFmt(wNow()); }, 40);
+  </script>
+</body>
+</html>

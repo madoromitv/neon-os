@@ -10,6 +10,20 @@ export function toWav(buf) {
   let o = 44; for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) { const v = Math.max(-1, Math.min(1, chans[c][i])); data.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true); o += 2; }
   return new Blob([data], { type: "audio/wav" });
 }
+// "Save as": where the browser can (Chrome, Edge), asks where to save and under what name; elsewhere the file
+// goes to the downloads folder. Call saveTarget() straight from the click, before any slow work (rendering),
+// because the browser only shows its save window right after a click; then write the file when it's ready.
+export async function saveTarget(name, type = {}) {
+  let ask = true; try { ask = localStorage.getItem("neon-os:ask-save") !== "off"; } catch (e) {}
+  if (ask && "showSaveFilePicker" in window) {
+    try {
+      const h = await showSaveFilePicker({ suggestedName: name, types: type.accept ? [{ description: type.description || "File", accept: type.accept }] : undefined });
+      return { name: h.name, async write(blob) { const w = await h.createWritable(); await w.write(blob); await w.close(); }, picked: true };
+    } catch (e) { if (e && e.name === "AbortError") return null; } // cancelled: nothing saved
+  }
+  return { name, write: async blob => download(blob, name), picked: false };
+}
+export async function saveAs(blob, name, type) { const t = await saveTarget(name, type); if (!t) return null; await t.write(blob); return t; }
 // Saves a Blob to the downloads folder under the given name.
 export function download(blob, name) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;

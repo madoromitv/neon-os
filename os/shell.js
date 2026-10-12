@@ -10,6 +10,8 @@ import { createGlow, createGlow2D } from "../core/glow.js";
 import { initNotices, addNotice, toggleNotices, closeNotices } from "./notices.js";
 import { VERSION, CHANGES } from "../core/version.js";
 import { initSearch, openSearch } from "./search.js";
+import { dueNow } from "../core/reminders.js";
+import { binPurge } from "../core/bin.js";
 import { sfx } from "../core/sounds.js";
 import { Slider, openMenu as popMenu } from "../style-kit/ui.js";
 import { runBoot } from "./boot.js";
@@ -45,7 +47,7 @@ async function openApp(appId, savedWins) {
   const app = appById(appId); if (!app) return;
   if (app.native) {
     if (!mounted.has(appId)) { closed.delete(appId); await mountNative(app, savedWins || parked); }
-    else { const was = closed.delete(appId); appWins(appId).forEach(k => els[k].classList.remove("closed")); restoreGroup(appId); renderTasks(); saveLayout(); if (was) sfx.open(); }
+    else { const was = closed.delete(appId); if (was) taskInfo[appId] = { since: Date.now(), errors: 0 }; appWins(appId).forEach(k => els[k].classList.remove("closed")); restoreGroup(appId); renderTasks(); saveLayout(); if (was) sfx.open(); }
     return;
   }
   if (wins[appId]) { focus(appId); return; }
@@ -66,6 +68,7 @@ function buildFramed(app) {
       <button class="tbtn" data-act="close" aria-label="Close ${esc(app.name)}" title="Close">${svg(ICON.close)}</button></span></div>
     <div class="wbody frame"><iframe src="${esc(app.url)}" title="${esc(app.name)}" allow="autoplay; fullscreen"></iframe></div>`;
   desk.appendChild(el); els[wid] = el;
+  watchTask(app.id, el.querySelector("iframe"));
   el.querySelector('[data-act="min"]').addEventListener("click", () => minimiseGroup(app.id));
   el.querySelector('[data-act="max"]').addEventListener("click", () => toggleMax(wid));
   el.querySelector('[data-act="close"]').addEventListener("click", () => closeFramed(wid));
@@ -74,9 +77,37 @@ function buildFramed(app) {
   render(wid); renderTasks();
 }
 
+// What System monitor shows for each open app: when it opened and how many errors it has thrown since.
+const taskInfo = {};
+function watchTask(appId, frame) {
+  taskInfo[appId] = { since: Date.now(), errors: 0 };
+  const hook = () => { try { const w = frame.contentWindow, bump = () => { if (taskInfo[appId]) taskInfo[appId].errors++; }; w.addEventListener("error", bump); w.addEventListener("unhandledrejection", bump); } catch (e) {} };
+  if (frame) frame.addEventListener("load", hook);
+}
+// how long the desktop took to answer lately: a timer that should tick every 250 ms, and how late it was
+let lagMax = 0, lagAt = performance.now();
+setInterval(() => { const now = performance.now(), late = Math.max(0, now - lagAt - 250); lagAt = now; lagMax = Math.max(late, lagMax * 0.9); }, 250);
+function taskList() {
+  const ids = [...new Set(Object.values(wins).map(w => w.appId))].filter(k => !closed.has(k));
+  return ids.map(id => {
+    const a = appById(id), ws = appWins(id), info = taskInfo[id] || {};
+    return { id, name: a.name, native: !!a.native, windows: ws.filter(k => !(els[k] && els[k].hidden)).length, min: ws.every(k => wins[k].min), since: info.since || null, errors: info.errors || 0 };
+  });
+}
+function taskAct(appId, act) {
+  const app = appById(appId); if (!app || !appWins(appId).length) return false;
+  if (act === "show") { openApp(appId); if (!app.native) focus(appId); return true; }
+  if (act === "close") { closeApp(appId); return true; }
+  if (act === "restart" && !app.native) {
+    const fr = els[appId] && els[appId].querySelector("iframe"); if (!fr) return false;
+    taskInfo[appId] = { since: Date.now(), errors: 0 }; fr.src = app.url; return true;
+  }
+  return false;
+}
+
 // A native app's page is fetched, its windows are moved onto the desktop, then its script runs here.
 async function mountNative(app, savedWins) {
-  mounted.add(app.id);
+  mounted.add(app.id); taskInfo[app.id] = { since: Date.now(), errors: 0 };
   const html = await (await fetch(app.url)).text();
   const doc = new DOMParser().parseFromString(html, "text/html");
   await new Promise(res => {
@@ -469,6 +500,8 @@ addEventListener("message", async e => {
   }
   if (d.neonOs === "open" && appById(d.app)) { openApp(d.app); return; } // an app opens another (Tape's edit buttons)
   if (d.neonOs === "welcome") { showWelcome(); return; }
+  if (d.neonOs === "tasks") { e.source.postMessage({ neonOsTasks: taskList(), lag: Math.round(lagMax), memory: performance.memory ? { used: performance.memory.usedJSHeapSize, limit: performance.memory.jsHeapSizeLimit } : null }, location.origin); return; }
+  if (d.neonOs === "task" && d.app) { const ok = taskAct(d.app, d.act); e.source.postMessage({ neonOsTasks: taskList(), done: ok ? d.act : null }, location.origin); return; }
   if (d.neonOs === "keyup") { if (d.key === "Alt" && sw) commitSwitch(); return; }
   if (d.neonOs === "install-state") { e.source.postMessage({ neonOsInstall: installState() }, location.origin); return; }
   if (d.neonOs === "install") { const ok = await promptInstall(); e.source.postMessage({ neonOsInstall: { ...installState(), accepted: ok } }, location.origin); return; }
@@ -616,6 +649,8 @@ document.addEventListener("keydown", e => { if (trayPop && e.key === "Escape") {
 renderVolIcon();
 
 // ---------- start menu ----------
+// music apps on the left, everyday and system apps on the right (one column on a phone)
+const GROUPS = { music: "Music", everyday: "Everyday", system: "System" };
 let menu = null;
 function closeMenu() { if (!menu) return; menu.remove(); menu = null; $("startBtn").setAttribute("aria-expanded", "false"); }
 function openMenu() {
@@ -625,7 +660,7 @@ function openMenu() {
     <div class="lcd hero"><i aria-hidden="true"></i><b>NEON OS</b></div>
     <button class="sm-item" role="menuitem" data-act="search"><span><b>Search…</b><small>Apps, songs, playlists, settings · Ctrl+K</small></span></button>
     <div class="sm-sep"></div>
-    ${APPS.map(a => `<button class="sm-item" role="menuitem" data-app="${esc(a.id)}">${svg(a.icon)}<span><b>${esc(a.name)}</b><small>${esc(a.desc)}</small></span></button>`).join("")}
+    <div class="sm-cols">${[["music"], ["everyday", "system"]].map(col => `<div class="sm-col">${col.map(g => `<span class="sm-h">${GROUPS[g]}</span>${APPS.filter(a => (a.group || "music") === g).map(a => `<button class="sm-item" role="menuitem" data-app="${esc(a.id)}">${svg(a.icon)}<span><b>${esc(a.name)}</b><small>${esc(a.desc)}</small></span></button>`).join("")}`).join("")}</div>`).join("")}</div>
     ${PLANNED.length ? `<div class="sm-sep"></div>${PLANNED.map(p => `<div class="sm-item soon" aria-disabled="true"><span><b>${esc(p.name)}</b><small>${esc(p.desc)}, coming</small></span></div>`).join("")}` : ""}
     <div class="sm-sep"></div>
     <button class="sm-item" role="menuitem" data-act="tidy"><span><b>Tidy windows</b><small>Put open windows back in neat places</small></span></button>
@@ -913,6 +948,13 @@ initSearch({
     { title: "Show the desktop", sub: "Ctrl+Alt+D", words: ["minimise all", "hide windows"], run: () => showDesktop() },
     { title: "Notifications", sub: "Ctrl+Alt+N", words: ["notices", "alerts", "bell"], run: () => toggleNotices() },
     { title: "Show the welcome", sub: "The first-visit guide", words: ["welcome", "help", "start", "guide"], run: () => showWelcome() },
+    { title: "Set an alarm", sub: "Clock", words: ["alarm", "wake", "ring"], run: () => openApp("clock") },
+    { title: "Start a timer", sub: "Clock", words: ["timer", "countdown", "stopwatch"], run: () => openApp("clock") },
+    { title: "Add an event", sub: "Calendar", words: ["event", "reminder", "appointment", "date"], run: () => openApp("calendar") },
+    { title: "Tempo and note lengths", sub: "Calculator", words: ["bpm", "delay time", "ms", "tap tempo"], run: () => openApp("calculator") },
+    { title: "Set a picture as the wallpaper", sub: "Photos", words: ["wallpaper", "background", "picture", "photo"], run: () => openApp("photos") },
+    { title: "Put back something deleted", sub: "Bin", words: ["undelete", "restore", "trash", "recycle", "deleted"], run: () => openApp("bin") },
+    { title: "Close a stuck app", sub: "System monitor", words: ["task manager", "frozen", "not responding", "memory", "kill"], run: () => openApp("monitor") },
     { title: "Restart Neon OS", sub: "Reload the desktop", words: ["reload", "restart", "refresh"], run: () => location.reload() },
   ],
 });
@@ -952,6 +994,18 @@ function launchShortcut() {
   if (q.has("search")) setTimeout(openSearch, 200);
   if (open || q.has("search")) history.replaceState(null, "", location.pathname);
 }
+
+// ---------- alarms, timers and calendar reminders (core/reminders.js) ----------
+// Checked every second here, so they go off with Clock and Calendar closed. In the background, a system
+// notification too (if allowed in Clock).
+setInterval(() => {
+  for (const d of dueNow()) {
+    addNotice({ title: d.title, text: d.text, app: d.app }); sfx.alarm();
+    if (document.hidden && "Notification" in window && Notification.permission === "granted") { try { new Notification(d.title, { body: d.text, icon: "icons/icon-192.png" }); } catch (e) {} }
+  }
+}, 1000);
+// things in the Bin for over 30 days go for good: checked at start and every few hours
+binPurge().catch(() => {}); setInterval(() => binPurge().catch(() => {}), 4 * 3600e3);
 
 // ---------- start ----------
 setCompact(); syncWco();

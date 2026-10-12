@@ -9,7 +9,7 @@
 // play counts, which add up. Songs are matched by folder name and path, so the music must sit at the same place
 // inside the shared folder on each computer. Songs copied into the browser (not linked) stay on that computer.
 export const SYNC_FILE = "neon-os-library.json";
-export const SYNC_KEYS = ["neon-os:theme", "neon-os:notes", "neon-os:pulse", "neon-os:drift", "neon-os:chop", "neon-os:tape"];
+export const SYNC_KEYS = ["neon-os:theme", "neon-os:notes", "neon-os:notebook", "neon-os:calendar", "neon-os:pulse", "neon-os:drift", "neon-os:chop", "neon-os:tape"];
 const FIELDS = ["title", "artist", "album", "genre", "year", "fav", "plays", "lastPlayed", "bpm", "duration", "loud", "peak", "cover"];
 const CONF_KEY = "neon-os:sync";
 

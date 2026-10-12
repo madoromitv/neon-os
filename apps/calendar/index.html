@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendar · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  .wrap { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(240px, 1fr); gap: 12px; flex: 1; min-height: 0; }
+  .month { font: 30px/1 var(--font-lcd); color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); padding: 6px 12px; flex: 1; }
+  .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .grid .wd { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); text-align: center; padding: 4px 0; }
+  .day { min-height: 54px; padding: 5px 6px; border-radius: 2px; background: #0a0810; box-shadow: inset -1px -1px 0 #2a2438; text-align: left; display: grid; align-content: start; gap: 3px; border: 1px solid transparent; }
+  .day b { font: 20px/1 var(--font-lcd); color: var(--ink-dim); }
+  .day.out b { color: var(--ink-faint); opacity: .5; }
+  .day.today b { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .day.sel { border-color: var(--ball); background: var(--sel); }
+  .day .dots { display: flex; gap: 3px; flex-wrap: wrap; }
+  .day .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 5px var(--ball-dim); }
+  .side { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; }
+  .ev b { font: 22px/1 var(--font-lcd); color: var(--ball); min-width: 56px; }
+  @media (max-width: 640px) { .wrap { grid-template-columns: 1fr; } .day { min-height: 42px; } }
+</style>
+</head>
+<body class="app">
+  <div class="row"><button class="btn" id="prev" aria-label="Previous month">‹</button><div class="lcd month" id="month"></div><button class="btn" id="next" aria-label="Next month">›</button><button class="btn" id="today">Today</button></div>
+  <div class="wrap">
+    <div class="grid" id="grid" role="grid" aria-label="Month"></div>
+    <div class="side">
+      <span class="lbl" id="dayLbl"></span>
+      <div class="list" id="events"></div>
+      <form class="card" id="form">
+        <span class="lbl" id="formLbl">New event</span>
+        <input type="text" id="title" placeholder="What's happening?" aria-label="Event" required>
+        <div class="row"><input type="date" id="date" aria-label="Date" required><input type="time" id="time" aria-label="Time (leave empty for all day)"></div>
+        <div class="row"><span class="lbl">Remind me</span><select id="remind" aria-label="Reminder">
+          <option value="">No reminder</option><option value="0">At the time</option><option value="5">5 minutes before</option><option value="15">15 minutes before</option>
+          <option value="30">30 minutes before</option><option value="60">1 hour before</option><option value="1440">1 day before</option></select></div>
+        <div class="row"><button class="btn" type="submit" id="saveBtn">Add event</button><button class="btn" type="button" id="cancel" hidden>Cancel</button><button class="btn" type="button" id="del" hidden style="color:var(--danger)">Delete</button></div>
+      </form>
+      <span class="lbl">Coming up</span>
+      <div class="list" id="upcoming"></div>
+      <p class="hint">Reminders go off while Neon OS is open, even with Calendar closed. All-day events remind at 9:00.</p>
+    </div>
+  </div>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { esc } from "../../style-kit/ui.js";
+    import { loadCalendar, saveCalendar, uid, dayKey, CAL_KEY } from "../../core/reminders.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id);
+    let C = loadCalendar(), view = new Date(), sel = dayKey(new Date()), editing = null;
+    view.setDate(1);
+    const save = () => saveCalendar(C);
+    addEventListener("storage", e => { if (e.key === CAL_KEY) { C = loadCalendar(); drawAll(); } });
+    const byDay = k => C.events.filter(e => e.date === k).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+    const remindText = r => r === "" || r == null ? "" : ({ 0: "at the time", 5: "5 min before", 15: "15 min before", 30: "30 min before", 60: "1 hour before", 1440: "1 day before" }[r] || "");
+
+    function drawGrid() {
+      $("month").textContent = view.toLocaleDateString(undefined, { month: "long", year: "numeric" }).toUpperCase();
+      const first = new Date(view.getFullYear(), view.getMonth(), 1), start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7)); // weeks start on Monday
+      const today = dayKey(new Date());
+      let html = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => `<span class="wd">${d}</span>`).join("");
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(start); d.setDate(start.getDate() + i); const k = dayKey(d), evs = byDay(k);
+        html += `<button class="day${d.getMonth() !== view.getMonth() ? " out" : ""}${k === today ? " today" : ""}${k === sel ? " sel" : ""}" data-day="${k}" aria-label="${d.toDateString()}${evs.length ? `, ${evs.length} event${evs.length === 1 ? "" : "s"}` : ""}"><b>${d.getDate()}</b><span class="dots">${evs.slice(0, 4).map(() => "<i></i>").join("")}</span></button>`;
+      }
+      $("grid").innerHTML = html;
+    }
+    function drawDay() {
+      $("dayLbl").textContent = new Date(sel + "T00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+      const evs = byDay(sel);
+      $("events").innerHTML = evs.map(e => `<div class="item ev" data-id="${e.id}" style="cursor:pointer" title="Edit"><b>${esc(e.time || "All day")}</b><span><strong>${esc(e.title)}</strong><small>${esc(remindText(e.remind) ? "Reminder " + remindText(e.remind) : "")}</small></span></div>`).join("");
+      if (!editing) $("date").value = sel;
+    }
+    function drawUpcoming() {
+      const now = dayKey(new Date()), list = C.events.filter(e => e.date >= now).sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || ""))).slice(0, 8);
+      $("upcoming").innerHTML = list.length ? list.map(e => `<div class="item ev" data-id="${e.id}" style="cursor:pointer"><b>${esc(new Date(e.date + "T00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }))}</b><span><strong>${esc(e.title)}</strong><small>${esc(e.time || "All day")}</small></span></div>`).join("") : `<p class="empty">Nothing coming up.</p>`;
+    }
+    const drawAll = () => { drawGrid(); drawDay(); drawUpcoming(); };
+    function edit(id) {
+      const e = C.events.find(x => x.id === id); if (!e) return;
+      editing = id; sel = e.date; $("title").value = e.title; $("date").value = e.date; $("time").value = e.time || ""; $("remind").value = e.remind == null ? "" : String(e.remind);
+      $("formLbl").textContent = "Edit event"; $("saveBtn").textContent = "Save"; $("cancel").hidden = $("del").hidden = false; drawAll(); $("title").focus();
+    }
+    function resetForm() { editing = null; $("form").reset(); $("date").value = sel; $("formLbl").textContent = "New event"; $("saveBtn").textContent = "Add event"; $("cancel").hidden = $("del").hidden = true; }
+    $("grid").addEventListener("click", e => { const b = e.target.closest("[data-day]"); if (!b) return; sel = b.dataset.day; const d = new Date(sel + "T00:00"); if (d.getMonth() !== view.getMonth()) { view = new Date(d.getFullYear(), d.getMonth(), 1); } if (!editing) resetForm(); drawAll(); });
+    $("events").addEventListener("click", e => { const it = e.target.closest("[data-id]"); if (it) edit(it.dataset.id); });
+    $("upcoming").addEventListener("click", e => { const it = e.target.closest("[data-id]"); if (it) { const ev = C.events.find(x => x.id === it.dataset.id); view = new Date(+ev.date.slice(0, 4), +ev.date.slice(5, 7) - 1, 1); edit(it.dataset.id); } });
+    $("form").addEventListener("submit", e => {
+      e.preventDefault();
+      const ev = { title: $("title").value.trim(), date: $("date").value, time: $("time").value || null, remind: $("remind").value === "" ? null : +$("remind").value, fired: false };
+      if (!ev.title || !ev.date) return;
+      if (editing) Object.assign(C.events.find(x => x.id === editing), ev); else C.events.push({ id: uid(), ...ev });
+      if (ev.remind != null && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
+      sel = ev.date; save(); resetForm(); drawAll();
+    });
+    $("cancel").addEventListener("click", () => { resetForm(); drawAll(); });
+    $("del").addEventListener("click", () => { C.events = C.events.filter(x => x.id !== editing); save(); resetForm(); drawAll(); });
+    $("prev").addEventListener("click", () => { view = new Date(view.getFullYear(), view.getMonth() - 1, 1); drawGrid(); });
+    $("next").addEventListener("click", () => { view = new Date(view.getFullYear(), view.getMonth() + 1, 1); drawGrid(); });
+    $("today").addEventListener("click", () => { const d = new Date(); view = new Date(d.getFullYear(), d.getMonth(), 1); sel = dayKey(d); if (!editing) resetForm(); drawAll(); });
+    resetForm(); drawAll();
+  </script>
+</body>
+</html>

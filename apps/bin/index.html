@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bin · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  .head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .head .lcd { font-size: 20px; line-height: 26px; padding: 0 10px; margin-left: auto; }
+  .bin { flex: 1; overflow: auto; align-content: start; }
+  .bin .item { cursor: default; }
+  .bin .item input { accent-color: var(--ball); }
+  .kind { font: 11px/1 var(--font-ui, inherit); letter-spacing: .12em; text-transform: uppercase; color: var(--ball); min-width: 64px; }
+  .left { font: 18px/1 var(--font-lcd); color: var(--ink-faint); min-width: 60px; text-align: right; }
+  .left.soon { color: var(--danger); }
+  #empty { flex: 1; }
+</style>
+</head>
+<body class="app">
+  <div class="head">
+    <div class="seg" id="kinds" role="group" aria-label="Show">
+      <button class="btn" data-k="" aria-pressed="true">All</button>
+      <button class="btn" data-k="song" aria-pressed="false">Songs</button>
+      <button class="btn" data-k="playlist" aria-pressed="false">Playlists</button>
+      <button class="btn" data-k="note" aria-pressed="false">Notes</button>
+      <button class="btn" data-k="photo" aria-pressed="false">Pictures</button>
+    </div>
+    <span class="lcd" id="count">0 ITEMS</span>
+  </div>
+  <div class="list bin" id="list" role="list"></div>
+  <p class="empty" id="empty">The Bin is empty. Songs, playlists, notes and pictures you delete wait here for 30 days.</p>
+  <div class="row">
+    <button class="btn" id="selAll">Select all</button>
+    <button class="btn" id="restore" disabled>Put back</button>
+    <button class="btn" id="forever" disabled style="color:var(--danger)">Delete for good</button>
+    <button class="btn" id="emptyBtn" style="margin-left:auto;color:var(--danger)">Empty the Bin</button>
+  </div>
+  <p class="hint">Items go for good after 30 days. A song you put back returns to the playlists it was in.</p>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { esc, toast, dialog } from "../../style-kit/ui.js";
+    import { binList, binRemove, binEmpty, binPurge, daysLeft, onBinChange } from "../../core/bin.js";
+    import { makeLocalStore } from "../../core/storage.js";
+    import { notifyLibraryChange } from "../../core/backup.js";
+    import { loadNotebook, saveNotebook } from "../../core/notebook.js";
+    import { putPic } from "../../core/photos.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id), KEY = "neon-os:bin-view";
+    const NAMES = { song: "Song", playlist: "Playlist", note: "Note", photo: "Picture" };
+    let items = [], sel = new Set(), kind = "";
+    try { kind = localStorage.getItem(KEY) || ""; } catch (e) {}
+
+    async function load() { try { await binPurge(); items = await binList(); } catch (e) { items = []; } sel = new Set([...sel].filter(id => items.some(i => i.id === id))); draw(); }
+    const shown = () => items.filter(i => !kind || i.kind === kind);
+    function draw() {
+      document.querySelectorAll("#kinds [data-k]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.k === kind)));
+      const list = shown();
+      $("list").innerHTML = list.map(i => { const d = daysLeft(i); return `<label class="item${sel.has(i.id) ? " sel" : ""}" role="listitem" data-id="${esc(i.id)}">
+        <input type="checkbox" ${sel.has(i.id) ? "checked" : ""} aria-label="Select ${esc(i.title)}"><span class="kind">${NAMES[i.kind] || esc(i.kind)}</span>
+        <span><strong>${esc(i.title || "Untitled")}</strong><small>${esc(i.sub || "")}${i.sub ? " · " : ""}deleted ${esc(new Date(i.deletedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" }))}</small></span>
+        <span class="left${d <= 3 ? " soon" : ""}" title="Days until it goes for good">${d} DAY${d === 1 ? "" : "S"}</span></label>`; }).join("");
+      $("empty").hidden = !!list.length;
+      $("count").textContent = `${list.length} ITEM${list.length === 1 ? "" : "S"}`;
+      const n = [...sel].filter(id => list.some(i => i.id === id)).length;
+      $("restore").disabled = $("forever").disabled = !n;
+      $("restore").textContent = n > 1 ? `Put back ${n}` : "Put back";
+      $("selAll").textContent = n && n === list.length ? "Select none" : "Select all";
+      $("emptyBtn").disabled = !items.length; $("selAll").disabled = !list.length;
+    }
+    $("kinds").addEventListener("click", e => { const b = e.target.closest("[data-k]"); if (!b) return; kind = b.dataset.k; try { localStorage.setItem(KEY, kind); } catch (err) {} draw(); });
+    $("list").addEventListener("change", e => { const it = e.target.closest("[data-id]"); if (!it) return; e.target.checked ? sel.add(it.dataset.id) : sel.delete(it.dataset.id); draw(); });
+    $("selAll").addEventListener("click", () => { const list = shown(); const all = list.every(i => sel.has(i.id)); sel = all ? new Set() : new Set(list.map(i => i.id)); draw(); });
+
+    // putting things back: each kind returns to where it came from
+    let store = null;
+    const lib = async () => { if (!store) { store = makeLocalStore(); await store.init(); } return store; };
+    async function restoreOne(i) {
+      if (i.kind === "song") {
+        const s = await lib(), { track, playlists = [] } = i.data || {};
+        if (!track) throw new Error("nothing to restore");
+        await s.putTrack(track);
+        for (const pid of playlists) { const p = s.playlists.find(x => x.id === pid); if (p && !p.tracks.includes(track.id)) await s.updatePlaylist(pid, { tracks: [...p.tracks, track.id] }); }
+        return "song";
+      }
+      if (i.kind === "playlist") {
+        const s = await lib(), p = { ...i.data };
+        if (s.playlists.some(x => x.id === p.id)) p.id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        if (s.playlists.some(x => x.name === p.name)) p.name += " (put back)";
+        await s.putPlaylist(p); return "song";
+      }
+      if (i.kind === "note") {
+        const nb = loadNotebook(), n = { ...i.data };
+        if (nb.notes.some(x => x.id === n.id)) n.id = "n" + Date.now().toString(36);
+        if (n.folder && !nb.folders.includes(n.folder)) nb.folders.push(n.folder);
+        nb.notes.push(n); saveNotebook(nb); return "note";
+      }
+      if (i.kind === "photo") { await putPic({ ...i.data }); return "photo"; }
+      throw new Error("unknown kind");
+    }
+    $("restore").addEventListener("click", async () => {
+      const chosen = shown().filter(i => sel.has(i.id)); let ok = 0, libChanged = false;
+      for (const i of chosen) { try { if (await restoreOne(i) === "song") libChanged = true; await binRemove(i.id); sel.delete(i.id); ok++; } catch (e) {} }
+      if (libChanged) notifyLibraryChange("edit");
+      toast(ok === chosen.length ? (ok === 1 ? `${chosen[0].title} is back` : `${ok} items are back`) : `Put back ${ok} of ${chosen.length}`, ok < chosen.length);
+      load();
+    });
+    $("forever").addEventListener("click", async () => {
+      const chosen = shown().filter(i => sel.has(i.id));
+      const ok = await dialog({ title: "Delete for good", text: `${chosen.length === 1 ? chosen[0].title : chosen.length + " items"} can't be put back after this.`, confirm: "Delete for good", danger: true });
+      if (!ok) return;
+      for (const i of chosen) { await binRemove(i.id); sel.delete(i.id); }
+      load();
+    });
+    $("emptyBtn").addEventListener("click", async () => {
+      const ok = await dialog({ title: "Empty the Bin", text: `All ${items.length} item${items.length === 1 ? "" : "s"} go for good. This can't be undone.`, confirm: "Empty the Bin", danger: true });
+      if (!ok) return;
+      await binEmpty(); sel.clear(); load();
+    });
+    onBinChange(load);
+    load();
+  </script>
+</body>
+</html>

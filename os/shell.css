@@ -41,8 +41,13 @@ body { overflow: hidden; user-select: none; }
 .clock { font-size: 22px; line-height: 26px; padding: 0 10px; min-width: 70px; text-align: center; }
 
 /* start menu */
-.startmenu { position: fixed; left: 8px; bottom: 46px; z-index: 9600; width: 280px; }
-.startmenu .wbody { padding: 8px; gap: 6px; }
+.startmenu { position: fixed; left: 8px; bottom: 46px; z-index: 9600; width: 580px; max-width: calc(100vw - 16px); }
+.startmenu .wbody { padding: 8px; gap: 6px; max-height: calc(100vh - 90px); overflow: auto; }
+.sm-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+.sm-col { display: flex; flex-direction: column; min-width: 0; }
+.sm-h { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); padding: 8px 10px 3px; }
+.sm-h:first-child { padding-top: 2px; }
+@media (max-width: 620px) { .sm-cols { grid-template-columns: 1fr; } }
 .startmenu .hero { padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
 .startmenu .hero b { font-size: 26px; line-height: 1; letter-spacing: 2px; }
 .startmenu .hero i { width: 16px; height: 16px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 12px 3px var(--ball-dim); }

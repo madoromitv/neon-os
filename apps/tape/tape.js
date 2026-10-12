@@ -6,7 +6,7 @@ import { applyTheme, onTheme } from "../../core/theme.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, dialog, esc } from "../../style-kit/ui.js";
 import { notify } from "../../core/notify.js";
-import { toWav, download } from "../../core/wav.js";
+import { toWav, saveTarget } from "../../core/wav.js";
 import { openDb, all } from "../../core/backup.js";
 import { fileOf } from "../../core/linked.js";
 import { LANES, readRack, patternMarks, createRack } from "../../core/rack.js";
@@ -214,6 +214,7 @@ addEventListener("keydown", e => {
 // ---------- export: the whole arrangement to WAV ----------
 $("wav").addEventListener("click", async () => {
   const n = songBars(); if (!n) { toast("Nothing to export yet: click some bars first."); return; }
+  const target = await saveTarget(`tape-${Math.round(S.bpm)}bpm-${n}bars.wav`, { description: "WAV audio", accept: { "audio/wav": [".wav"] } }); if (!target) return;
   const btn = $("wav"); btn.disabled = true; btn.textContent = "Rendering…";
   try {
     ensureAudio(); rack = readRack(); await loadChopSong(true);
@@ -222,9 +223,8 @@ $("wav").addEventListener("click", async () => {
     const ofx = createFx(off, { bpm: S.bpm, params: S.fx }); m.connect(ofx.input); ofx.output.connect(off.destination);
     const e = createRack(off, m, rack, chopSong, S.bpm); e.setChop(chopSong, S.bpm); laneGains(e, off);
     for (let a = 0; a < n * STEPS; a++) e.step(cellsAt(Math.floor(a / STEPS)), a % STEPS, 0.05 + a * stepDur(), stepDur());
-    const name = `tape-${Math.round(S.bpm)}bpm-${n}bars.wav`;
-    download(toWav(await off.startRendering()), name);
-    if (!notify("Track saved", `${name} (${fmt(n * barDur())}) is in your downloads folder.`, "tape")) toast(`Saved ${name}`);
+    await target.write(toWav(await off.startRendering()));
+    if (!notify("Track saved", `${fmt(n * barDur())} long. ${target.picked ? `Saved as ${target.name}.` : `${target.name} is in your downloads folder.`}`, "tape")) toast(`Saved ${target.name}`);
   } catch (err) { toast("Couldn't render the WAV. Try again.", true); }
   btn.disabled = false; btn.textContent = "Export WAV";
 });

@@ -9,42 +9,104 @@
 <link rel="stylesheet" href="../../style-kit/tokens.css">
 <link rel="stylesheet" href="../../style-kit/base.css">
 <link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
 <style>
-  body { padding: 10px; display: flex; flex-direction: column; gap: 8px; height: 100%; }
-  .bar { display: flex; align-items: center; gap: 6px; }
+  body.app { padding: 10px; gap: 8px; }
+  .wrap { flex: 1; min-height: 0; display: grid; grid-template-columns: 150px 210px minmax(0, 1fr); gap: 8px; }
+  .col { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+  .col .list { flex: 1; overflow: auto; align-content: start; }
+  .fold { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 2px; font-size: 12.5px; text-align: left; width: 100%; }
+  .fold[aria-current="true"] { background: var(--sel); color: var(--ink); }
+  .fold .n { margin-left: auto; font: 15px/1 var(--font-lcd); color: var(--ink-faint); }
+  .note { cursor: pointer; display: grid; gap: 1px; }
+  .bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .bar .lcd { margin-left: auto; font-size: 18px; line-height: 22px; padding: 0 8px; }
-  textarea { flex: 1; width: 100%; resize: none; padding: 10px 12px; font-family: var(--font-lcd); font-size: 21px; line-height: 1.25;
+  textarea#pad { flex: 1; width: 100%; resize: none; padding: 10px 12px; font-family: var(--font-lcd); font-size: 21px; line-height: 1.25;
     color: var(--ball); background: var(--lcd); border: 1px solid #000; border-radius: 2px; text-shadow: 0 0 6px var(--ball-dim);
     box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #3a3450, inset 0 0 24px var(--ball-faint); outline: none; }
-  textarea:focus { box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #3a3450, inset 0 0 24px var(--ball-faint), 0 0 0 1px var(--ball); }
-  textarea::placeholder { color: var(--ball); opacity: .4; }
+  textarea#pad:focus { box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #3a3450, inset 0 0 24px var(--ball-faint), 0 0 0 1px var(--ball); }
+  textarea#pad::placeholder { color: var(--ball); opacity: .4; }
+  @media (max-width: 640px) { .wrap { grid-template-columns: 1fr; } .col.f { display: none; } .col.l .list { max-height: 160px; } }
 </style>
 </head>
-<body>
-  <div class="bar">
-    <button class="btn" id="stamp" title="Add today's date">Stamp</button>
-    <button class="btn" id="copy">Copy</button>
-    <span class="lcd" id="state">SAVED</span>
+<body class="app">
+  <div class="wrap">
+    <div class="col f"><span class="lbl">Folders</span><div class="list" id="folders"></div><button class="btn" id="newFolder">New folder</button></div>
+    <div class="col l"><input type="search" id="q" placeholder="Search notes" aria-label="Search notes"><div class="list" id="notes"></div><button class="btn" id="newNote">New note</button></div>
+    <div class="col">
+      <div class="bar">
+        <select id="moveTo" aria-label="Folder for this note"></select>
+        <button class="btn" id="stamp" title="Add today's date">Stamp</button>
+        <button class="btn" id="copy">Copy</button>
+        <button class="btn" id="export" title="Save this note as a text file">Export</button>
+        <button class="btn" id="del" title="Move this note to the Bin">Delete</button>
+        <span class="lcd" id="state">SAVED</span>
+      </div>
+      <textarea id="pad" aria-label="Note" placeholder="Type anything. The first line is the note's title, and it saves as you go." spellcheck="true"></textarea>
+    </div>
   </div>
-  <textarea id="pad" aria-label="Notes" placeholder="Type anything. It saves as you go." spellcheck="true"></textarea>
   <script type="module">
     import "../../core/os-link.js";
     import { applyTheme, onTheme } from "../../core/theme.js";
+    import { esc, toast, dialog } from "../../style-kit/ui.js";
+    import { loadNotebook, saveNotebook, noteTitle, NB_KEY } from "../../core/notebook.js";
+    import { binPut } from "../../core/bin.js";
+    import { notify } from "../../core/notify.js";
     applyTheme(); onTheme(applyTheme);
-    const KEY = "neon-os:notes", pad = document.getElementById("pad"), state = document.getElementById("state");
-    try { pad.value = localStorage.getItem(KEY) || ""; } catch (e) {}
+    const $ = id => document.getElementById(id), pad = $("pad"), state = $("state");
+    let NB = loadNotebook(), folder = NB.view || null, cur = NB.cur && NB.notes.some(n => n.id === NB.cur) ? NB.cur : (NB.notes[0] || {}).id || null;
+    const note = () => NB.notes.find(n => n.id === cur) || null;
     let t = null;
-    const save = () => { state.textContent = "SAVING"; clearTimeout(t); t = setTimeout(() => { try { localStorage.setItem(KEY, pad.value); state.textContent = "SAVED"; } catch (e) { state.textContent = "NOT SAVED"; } }, 300); };
-    pad.addEventListener("input", save);
-    document.getElementById("stamp").addEventListener("click", () => {
-      const d = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-      const s = pad.selectionStart; pad.setRangeText(`${s && pad.value[s - 1] !== "\n" ? "\n" : ""}— ${d} —\n`, s, pad.selectionEnd, "end"); pad.focus(); save();
+    const persist = () => { NB.cur = cur; NB.view = folder; saveNotebook(NB); state.textContent = "SAVED"; };
+    const saveSoon = () => { state.textContent = "SAVING"; clearTimeout(t); t = setTimeout(persist, 300); };
+    const when = ms => { const d = new Date(ms), today = new Date().toDateString() === d.toDateString(); return today ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString(undefined, { day: "numeric", month: "short" }); };
+
+    function drawFolders() {
+      const count = f => NB.notes.filter(n => f == null || n.folder === f).length;
+      $("folders").innerHTML = [[null, "All notes"], ...NB.folders.map(f => [f, f])].map(([f, name]) => `<button class="fold" data-f="${f == null ? "" : esc(f)}" aria-current="${folder === f}">${esc(name)}<span class="n">${count(f)}</span></button>`).join("");
+      $("moveTo").innerHTML = `<option value="">No folder</option>` + NB.folders.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join("");
+      $("moveTo").value = note() ? note().folder || "" : "";
+    }
+    function drawNotes() {
+      const q = $("q").value.trim().toLowerCase();
+      const list = NB.notes.filter(n => (folder == null || n.folder === folder) && (!q || n.text.toLowerCase().includes(q))).sort((a, b) => b.updated - a.updated);
+      $("notes").innerHTML = list.length ? list.map(n => `<div class="item note${n.id === cur ? " sel" : ""}" data-id="${n.id}"><strong>${esc(noteTitle(n))}</strong><small>${esc(when(n.updated))}${n.folder && folder == null ? " · " + esc(n.folder) : ""}</small></div>`).join("") : `<p class="empty">${q ? "No notes match." : "No notes here yet."}</p>`;
+    }
+    function open(id) { cur = id; const n = note(); pad.value = n ? n.text : ""; pad.disabled = !n; drawNotes(); drawFolders(); persist(); }
+    function newNote() { const n = { id: "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), text: "", folder: folder || "", updated: Date.now() }; NB.notes.push(n); open(n.id); pad.focus(); }
+
+    pad.addEventListener("input", () => { let n = note(); if (!n) { newNote(); n = note(); } n.text = pad.value; n.updated = Date.now(); saveSoon(); drawNotes(); });
+    $("notes").addEventListener("click", e => { const it = e.target.closest("[data-id]"); if (it) open(it.dataset.id); });
+    $("folders").addEventListener("click", e => { const b = e.target.closest("[data-f]"); if (!b) return; folder = b.dataset.f || null; drawFolders(); drawNotes(); persist(); });
+    $("newNote").addEventListener("click", newNote);
+    $("newFolder").addEventListener("click", async () => {
+      const r = await dialog({ title: "New folder", fields: [{ label: "Name" }], confirm: "Create" }); const name = r && r[0];
+      if (!name || NB.folders.includes(name)) return;
+      NB.folders.push(name); folder = name; persist(); drawFolders(); drawNotes();
     });
-    document.getElementById("copy").addEventListener("click", async e => {
+    $("moveTo").addEventListener("change", () => { const n = note(); if (!n) return; n.folder = $("moveTo").value; n.updated = Date.now(); persist(); drawFolders(); drawNotes(); });
+    $("q").addEventListener("input", drawNotes);
+    $("stamp").addEventListener("click", () => {
+      const d = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+      const s = pad.selectionStart; pad.setRangeText(`${s && pad.value[s - 1] !== "\n" ? "\n" : ""}— ${d} —\n`, s, pad.selectionEnd, "end"); pad.focus(); pad.dispatchEvent(new Event("input"));
+    });
+    $("copy").addEventListener("click", async e => {
       try { await navigator.clipboard.writeText(pad.value); e.target.textContent = "Copied"; } catch (err) { pad.select(); e.target.textContent = "Ctrl+C"; }
       setTimeout(() => e.target.textContent = "Copy", 1500);
     });
-    addEventListener("storage", e => { if (e.key === KEY && document.activeElement !== pad) pad.value = e.newValue || ""; });
+    $("export").addEventListener("click", async () => {
+      const n = note(); if (!n) return;
+      const { saveAs } = await import("../../core/wav.js");
+      await saveAs(new Blob([n.text], { type: "text/plain" }), `${noteTitle(n).replace(/[\\/:*?"<>|]+/g, "").slice(0, 60) || "note"}.txt`, { description: "Text file", accept: { "text/plain": [".txt"] } });
+    });
+    $("del").addEventListener("click", async () => {
+      const n = note(); if (!n) return;
+      try { await binPut("note", noteTitle(n), n, n.folder ? `Notes · ${n.folder}` : "Notes"); } catch (e) { toast("Couldn't move it to the Bin.", true); return; }
+      NB.notes = NB.notes.filter(x => x.id !== n.id); const next = NB.notes.filter(x => folder == null || x.folder === folder).sort((a, b) => b.updated - a.updated)[0];
+      open(next ? next.id : null); if (!notify("Note moved to the Bin", `${noteTitle(n)} can be restored for 30 days.`, "bin")) toast("Moved to the Bin");
+    });
+    addEventListener("storage", e => { if (e.key === NB_KEY && document.activeElement !== pad) { NB = loadNotebook(); const n = note(); pad.value = n ? n.text : ""; drawFolders(); drawNotes(); } });
+    drawFolders(); open(cur);
   </script>
 </body>
 </html>

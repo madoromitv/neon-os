@@ -41,6 +41,14 @@ export function makeLocalStore() {
       const { coverUrl, ...rec } = t;
       await tx("tracks", "readwrite", s => s.put(rec));
     },
+    // puts a whole song record back as it was, id and all (the Bin restoring a deleted song)
+    async putTrack(rec) {
+      const { coverUrl, ...clean } = rec; void coverUrl;
+      await tx("tracks", "readwrite", s => s.put(clean));
+      const t = { ...clean, coverUrl: clean.coverBlob ? URL.createObjectURL(clean.coverBlob) : null };
+      const i = st.tracks.findIndex(x => x.id === t.id); if (i >= 0) st.tracks[i] = t; else st.tracks.push(t);
+      return t;
+    },
     async deleteTrack(t) {
       await tx("tracks", "readwrite", s => s.delete(t.id));
       st.tracks = st.tracks.filter(x => x.id !== t.id);

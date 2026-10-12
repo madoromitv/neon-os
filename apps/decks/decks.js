@@ -12,6 +12,7 @@ import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, esc, dialog } from "../../style-kit/ui.js";
 import { notify } from "../../core/notify.js";
 import { fileOf } from "../../core/linked.js";
+import { saveTarget, download } from "../../core/wav.js";
 applyTheme(); onTheme(applyTheme);
 
 const $ = id => document.getElementById(id);
@@ -209,18 +210,24 @@ Slider($("master"), { min: 0, max: 1, step: 0.01, value: mix.master, label: "Mas
 
 // record the mix as it plays
 let rec = null, recStart = 0, chunks = [];
-$("rec").addEventListener("click", () => {
+let recTarget = null;
+$("rec").addEventListener("click", async () => {
   ensure();
-  if (rec) { rec.stop(); return; }
+  if (rec) { // stopping is a click, so this is when to ask where to save
+    const ext = (rec.mimeType || "").includes("ogg") ? "ogg" : "webm", stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    recTarget = await saveTarget(`decks-mix-${stamp}.${ext}`, { description: "Recorded mix", accept: { [ext === "ogg" ? "audio/ogg" : "audio/webm"]: ["." + ext] } });
+    rec.stop(); return;
+  }
   if (!window.MediaRecorder) { toast("This browser can't record audio.", true); return; }
   const type = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"].find(t => MediaRecorder.isTypeSupported(t)) || "";
   rec = new MediaRecorder(recDest.stream, type ? { mimeType: type } : undefined); chunks = [];
   rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   rec.onstop = () => {
-    const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" }), a = document.createElement("a"), stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-    a.href = URL.createObjectURL(blob); a.download = `decks-mix-${stamp}.${(rec.mimeType || "").includes("ogg") ? "ogg" : "webm"}`;
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-    if (!notify("Mix saved", `${a.download} is in your downloads folder.`, "decks")) toast(`Saved ${a.download}`); rec = null; $("rec").setAttribute("aria-pressed", "false"); $("recTime").textContent = "0:00";
+    const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" }), stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    const target = recTarget || { name: `decks-mix-${stamp}.${(rec.mimeType || "").includes("ogg") ? "ogg" : "webm"}`, write: async b => download(b, target.name), picked: false };
+    recTarget = null;
+    target.write(blob).then(() => { if (!notify("Mix saved", target.picked ? `Saved as ${target.name}.` : `${target.name} is in your downloads folder.`, "decks")) toast(`Saved ${target.name}`); }).catch(() => toast("Couldn't save the mix.", true));
+    rec = null; $("rec").setAttribute("aria-pressed", "false"); $("recTime").textContent = "0:00";
   };
   rec.start(1000); recStart = performance.now(); $("rec").setAttribute("aria-pressed", "true");
 });

@@ -32,7 +32,7 @@ function find(q) {
   q = fold(q.trim());
   // the name may match anywhere; the extra words (descriptions, artists, albums) only from the start of a word
   const rank = texts => Math.max(score(texts[0], q), ...texts.slice(1).map(t => { const v = score(t, q); return v >= 2 ? v - 1 : 0; }));
-  const out = [], add = (kind, items) => { const hits = items.map(it => ({ ...it, kind, s: rank(it.texts) })).filter(h => h.s > 0).sort((a, b) => b.s - a.s || a.title.localeCompare(b.title)); out.push(...hits.slice(0, LIMIT[kind])); };
+  const groups = [], add = (kind, items) => { const hits = items.map(it => ({ ...it, kind, s: rank(it.texts) })).filter(h => h.s > 0).sort((a, b) => b.s - a.s || a.title.localeCompare(b.title)); if (hits.length) groups.push(hits.slice(0, LIMIT[kind])); };
   if (!q) { // nothing typed yet: the apps, then a few things to do
     return [...opts.apps.map(a => ({ kind: "app", title: a.name, sub: a.desc, run: () => opts.openApp(a.id) })), ...opts.actions.slice(0, 4).map(a => ({ kind: "action", ...a }))];
   }
@@ -45,7 +45,8 @@ function find(q) {
     add("genre", lib.genres.map(g => ({ title: g.name, sub: `${g.ids.length} song${g.ids.length === 1 ? "" : "s"} · play all`, texts: [g.name], run: () => opts.play(g.ids) })));
     add("playlist", lib.playlists.map(p => ({ title: p.name, sub: `${p.ids.length} song${p.ids.length === 1 ? "" : "s"} · play`, texts: [p.name], run: () => opts.play(p.ids) })));
   }
-  return out;
+  // the group with the best match comes first (apps before things to do before the library when equal)
+  return groups.map((g, i) => ({ g, i })).sort((a, b) => b.g[0].s - a.g[0].s || a.i - b.i).flatMap(x => x.g);
 }
 
 function draw() {

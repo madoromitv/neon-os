@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System monitor · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  .gauges { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+  .gauge { display: grid; gap: 6px; }
+  .gauge .val { font: 34px/1 var(--font-lcd); color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .gauge .val small { font-size: 20px; opacity: .7; }
+  .meter { height: 8px; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--ball); box-shadow: 0 0 8px var(--ball-dim); transition: width .4s; }
+  .meter.hot i { background: var(--danger); }
+  .spark { width: 100%; height: 34px; display: block; }
+  .spark polyline { fill: none; stroke: var(--ball); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .task b { font: 20px/1 var(--font-lcd); color: var(--ink-dim); min-width: 70px; text-align: right; }
+  .task .prob { color: var(--danger); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+  .stat { padding: 8px 10px; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; display: grid; gap: 2px; }
+  .stat b { font: 24px/1 var(--font-lcd); color: var(--ball); }
+  .stat small { font-size: 11px; color: var(--ink-faint); }
+</style>
+</head>
+<body class="app">
+  <div class="gauges">
+    <div class="card gauge"><span class="lbl">Memory</span><div class="val" id="memVal">—</div><div class="meter" id="memBar"><i></i></div><svg class="spark" id="memSpark" viewBox="0 0 60 34" preserveAspectRatio="none" aria-hidden="true"><polyline points=""/></svg><small class="hint" id="memNote"></small></div>
+    <div class="card gauge"><span class="lbl">Storage</span><div class="val" id="stoVal">—</div><div class="meter" id="stoBar"><i></i></div><small class="hint" id="stoNote"></small></div>
+    <div class="card gauge"><span class="lbl">Responsiveness</span><div class="val" id="lagVal">—</div><div class="meter" id="lagBar"><i></i></div><svg class="spark" id="lagSpark" viewBox="0 0 60 34" preserveAspectRatio="none" aria-hidden="true"><polyline points=""/></svg><small class="hint">How late the desktop answered in the last few seconds.</small></div>
+  </div>
+  <span class="lbl">Open apps</span>
+  <div class="list" id="tasks"></div>
+  <p class="empty" id="noTasks"></p>
+  <p class="hint">Restart reloads an app that's stuck or acting up. Close shuts it like its X does.</p>
+  <span class="lbl">What's stored here</span>
+  <div class="stats" id="stats"></div>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { esc, toast } from "../../style-kit/ui.js";
+    import { binList } from "../../core/bin.js";
+    import { loadNotebook } from "../../core/notebook.js";
+    import { loadCalendar, loadClock } from "../../core/reminders.js";
+    import { listPics, listPicFolders } from "../../core/photos.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id);
+    const inOs = window.parent !== window;
+    const size = b => b >= 1e9 ? (b / 1e9).toFixed(2) + " GB" : b >= 1e6 ? (b / 1e6).toFixed(1) + " MB" : Math.round(b / 1e3) + " KB";
+    const up = ms => { const m = Math.floor(ms / 60000); return m < 1 ? "<1 MIN" : m < 60 ? m + " MIN" : Math.floor(m / 60) + " H " + (m % 60) + " M"; };
+    const meter = (id, frac, hot) => { const m = $(id); m.querySelector("i").style.width = Math.round(Math.min(1, frac) * 100) + "%"; m.classList.toggle("hot", !!hot); };
+    const hist = { mem: [], lag: [] };
+    function spark(id, arr, max) { const pts = arr.map((v, i) => `${i + 60 - arr.length},${(34 - Math.min(1, v / max) * 32 - 1).toFixed(1)}`).join(" "); $(id).querySelector("polyline").setAttribute("points", pts); }
+
+    // ---------- open apps (asked of the desktop) ----------
+    let tasks = [];
+    function drawTasks() {
+      $("tasks").innerHTML = tasks.map(t => `<div class="item task" data-app="${esc(t.id)}"><span><strong>${esc(t.name)}</strong><small>${t.windows} window${t.windows === 1 ? "" : "s"}${t.min ? " · minimised" : ""}${t.errors ? ` · <span class="prob">${t.errors} problem${t.errors === 1 ? "" : "s"}</span>` : ""}</small></span>
+        <b title="Open for">${t.since ? up(Date.now() - t.since) : ""}</b>
+        <button class="btn mini" data-act="show">Show</button>${t.native ? "" : `<button class="btn mini" data-act="restart">Restart</button>`}<button class="btn mini" data-act="close" style="color:var(--danger)">Close</button></div>`).join("");
+      $("noTasks").hidden = !!tasks.length;
+      $("noTasks").textContent = inOs ? "Nothing open." : "Open System monitor from the Neon OS desktop to see open apps.";
+    }
+    addEventListener("message", e => {
+      if (e.origin !== location.origin || !e.data || !e.data.neonOsTasks) return;
+      tasks = e.data.neonOsTasks; drawTasks();
+      if (e.data.done === "restart") toast("Restarted");
+      if ("lag" in e.data) {
+        const lag = e.data.lag; hist.lag = [...hist.lag, lag].slice(-60); spark("lagSpark", hist.lag, 400);
+        $("lagVal").innerHTML = `${lag}<small> ms</small>`; meter("lagBar", lag / 400, lag > 200);
+        if (e.data.memory) showMem(e.data.memory);
+      }
+    });
+    $("tasks").addEventListener("click", e => { const b = e.target.closest("[data-act]"), it = e.target.closest("[data-app]"); if (b && it) parent.postMessage({ neonOs: "task", app: it.dataset.app, act: b.dataset.act }, location.origin); });
+    const ask = () => { if (inOs) parent.postMessage({ neonOs: "tasks" }, location.origin); else { drawTasks(); if (performance.memory) showMem({ used: performance.memory.usedJSHeapSize, limit: performance.memory.jsHeapSizeLimit }); } };
+
+    function showMem(m) {
+      hist.mem = [...hist.mem, m.used].slice(-60); spark("memSpark", hist.mem, Math.max(...hist.mem) * 1.2);
+      $("memVal").innerHTML = `${(m.used / 1e6).toFixed(0)}<small> MB</small>`; meter("memBar", m.used / m.limit, m.used / m.limit > 0.8);
+      $("memNote").textContent = `${Math.round(m.used / m.limit * 100)}% of the ${size(m.limit)} this tab may use`;
+    }
+    if (!performance.memory) { $("memVal").textContent = "—"; $("memNote").textContent = "This browser doesn't share memory figures."; $("memSpark").style.display = "none"; }
+
+    // ---------- storage ----------
+    async function drawStorage() {
+      try {
+        const est = await navigator.storage.estimate(), d = est.usageDetails || {};
+        $("stoVal").innerHTML = `${size(est.usage).replace(/ (\w+)$/, "<small> $1</small>")}`; meter("stoBar", est.usage / est.quota, est.usage / est.quota > 0.8);
+        const parts = [d.indexedDB && `library and data ${size(d.indexedDB)}`, d.caches && `offline copy ${size(d.caches)}`].filter(Boolean).join(" · ");
+        $("stoNote").textContent = `${Math.round(est.usage / est.quota * 1000) / 10}% of ${size(est.quota)} available${parts ? " · " + parts : ""}`;
+      } catch (e) { $("stoNote").textContent = "This browser doesn't share storage figures."; }
+      const stat = (n, label, note = "") => `<div class="stat"><small>${label}</small><b>${n.toLocaleString()}</b>${note ? `<small>${note}</small>` : ""}</div>`;
+      const lib = await new Promise(res => {
+        try { const r = indexedDB.open("neon-orbit-player"); r.onupgradeneeded = () => { r.transaction.abort(); res(null); };
+          r.onsuccess = () => { const db = r.result; try { const t = db.transaction(["tracks", "playlists"]), out = { linked: 0, copied: 0, playlists: 0 };
+            t.objectStore("tracks").openCursor().onsuccess = e => { const c = e.target.result; if (c) { c.value.link && !c.value.blob ? out.linked++ : out.copied++; c.continue(); } };
+            const pq = t.objectStore("playlists").count(); t.oncomplete = () => { out.playlists = pq.result; db.close(); res(out); }; t.onerror = () => { db.close(); res(null); }; } catch (e) { db.close(); res(null); } };
+          r.onerror = () => res(null); } catch (e) { res(null); }
+      });
+      const nb = loadNotebook(), cal = loadCalendar(), clk = loadClock();
+      const [bin, pics, pf] = await Promise.all([binList().catch(() => []), listPics().catch(() => []), listPicFolders().catch(() => [])]);
+      $("stats").innerHTML = [
+        lib ? stat(lib.linked + lib.copied, "Songs", `${lib.linked.toLocaleString()} linked · ${lib.copied.toLocaleString()} copied`) : "",
+        lib ? stat(lib.playlists, "Playlists") : "",
+        stat(nb.notes.length, "Notes", `${nb.folders.length} folder${nb.folders.length === 1 ? "" : "s"}`),
+        stat(cal.events.length, "Calendar events"),
+        stat(clk.alarms.length, "Alarms", `${clk.alarms.filter(a => a.on).length} on`),
+        stat(pics.length, "Pictures added", pf.length ? `${pf.length} folder${pf.length === 1 ? "" : "s"} linked` : ""),
+        stat(bin.length, "In the Bin"),
+      ].join("");
+    }
+    ask(); setInterval(ask, 2000);
+    drawStorage(); setInterval(drawStorage, 15000);
+  </script>
+</body>
+</html>

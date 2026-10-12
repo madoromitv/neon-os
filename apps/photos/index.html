@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photos · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  body.app { padding: 10px; gap: 8px; }
+  .bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .bar .slider { width: 110px; }
+  .bar .lcd { font-size: 18px; line-height: 24px; padding: 0 8px; min-width: 52px; text-align: center; }
+  .bar .count { margin-left: auto; }
+  .grid { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--cell, 140px), 1fr)); gap: 6px; align-content: start;
+    background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; padding: 6px; }
+  .pic { position: relative; aspect-ratio: 1; border-radius: 2px; overflow: hidden; background: #0d0b14; border: 1px solid transparent; padding: 0; cursor: zoom-in; }
+  .pic img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity .2s; }
+  .pic img.ok { opacity: 1; }
+  .pic:hover, .pic:focus-visible { border-color: var(--ball); outline: none; box-shadow: 0 0 10px var(--ball-dim); }
+  .pic .nm { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 6px; font-size: 10.5px; text-align: left; background: linear-gradient(transparent, #000c); color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .15s; }
+  .pic:hover .nm, .pic:focus-visible .nm { opacity: 1; }
+  .warn { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--ball); border-radius: 2px; font-size: 12px; }
+  .warn[hidden] { display: none; }
+  .viewer { position: fixed; inset: 0; z-index: 50; background: #050409f2; display: grid; grid-template-rows: auto 1fr auto; }
+  .viewer[hidden] { display: none; }
+  .viewer .top, .viewer .bottom { display: flex; align-items: center; gap: 6px; padding: 8px 10px; flex-wrap: wrap; }
+  .viewer .top strong { font-size: 13px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .viewer .stage { position: relative; min-height: 0; display: grid; place-items: center; overflow: hidden; }
+  .viewer .stage img { max-width: 100%; max-height: 100%; object-fit: contain; transition: opacity .35s; }
+  .viewer .nav { position: absolute; top: 50%; transform: translateY(-50%); min-width: 40px; min-height: 64px; font-size: 22px; }
+  .viewer .nav.l { left: 8px; } .viewer .nav.r { right: 8px; }
+  .viewer .bottom .lcd { font-size: 18px; line-height: 24px; padding: 0 8px; }
+  .viewer .bottom .spacer { flex: 1; }
+  #empty { flex: 1; }
+  .drop { outline: 2px dashed var(--ball); outline-offset: -6px; }
+</style>
+</head>
+<body class="app">
+  <div class="bar">
+    <select id="src" aria-label="Show pictures from"></select>
+    <select id="sort" aria-label="Sort by"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="name">Name</option></select>
+    <span class="lbl">Size</span><div class="slider h" id="size"></div><span class="lcd" id="sizePct">100%</span>
+    <button class="btn" id="add">Add pictures</button>
+    <button class="btn" id="link">Link a folder</button>
+    <button class="btn" id="unlink" hidden>Unlink folder</button>
+    <button class="btn" id="show" title="Play every picture shown, one after another">Slideshow</button>
+    <span class="lcd count" id="count">0</span>
+  </div>
+  <div class="warn" id="warn" hidden><span id="warnTxt"></span><button class="btn mini" id="reconnect">Reconnect</button></div>
+  <div class="grid" id="grid" role="list" aria-label="Pictures"></div>
+  <p class="empty" id="empty" hidden></p>
+  <input type="file" id="fileIn" accept="image/*" multiple hidden>
+
+  <div class="viewer" id="viewer" hidden role="dialog" aria-label="Picture">
+    <div class="top"><strong id="vName"></strong><span class="lcd" id="vPos" style="font-size:18px;line-height:24px;padding:0 8px"></span><button class="btn" id="vClose" aria-label="Close">✕</button></div>
+    <div class="stage"><img id="vImg" alt=""><button class="btn nav l" id="vPrev" aria-label="Previous picture">‹</button><button class="btn nav r" id="vNext" aria-label="Next picture">›</button></div>
+    <div class="bottom">
+      <button class="btn" id="vPlay" aria-pressed="false"><i class="led"></i>Slideshow</button>
+      <span class="lbl">Every</span><select id="speed" aria-label="Seconds per picture"><option value="3">3 seconds</option><option value="5">5 seconds</option><option value="8">8 seconds</option><option value="15">15 seconds</option></select>
+      <span class="spacer"></span>
+      <button class="btn" id="vWall">Set as wallpaper</button>
+      <button class="btn" id="vDel" style="color:var(--danger)">Remove</button>
+    </div>
+  </div>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme, setTheme } from "../../core/theme.js";
+    import { esc, toast, dialog, Slider } from "../../style-kit/ui.js";
+    import { listPics, addPic, removePic, listPicFolders, addPicFolder, removePicFolder, folderAccess, scanPicFolder, IMAGE_EXT } from "../../core/photos.js";
+    import { setWallImage } from "../../core/desk.js";
+    import { binPut, onBinChange } from "../../core/bin.js";
+    import { notify } from "../../core/notify.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id), KEY = "neon-os:photos";
+    let S = { src: "all", sort: "new", size: 1, speed: 5 };
+    try { S = { ...S, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) {}
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+    const canLink = "showDirectoryPicker" in window;
+
+    // every picture: { id, name, modified, kind: "added" | "folder", blob? | handle?, folder? }
+    let pics = [], folders = [], locked = [], shown = [];
+    const urls = new Map();
+    async function blobOf(p) { if (p.blob) return p.blob; return await p.handle.getFile(); }
+    async function urlOf(p) { if (!urls.has(p.id)) urls.set(p.id, URL.createObjectURL(await blobOf(p))); return urls.get(p.id); }
+
+    async function load() {
+      const added = (await listPics().catch(() => [])).map(p => ({ ...p, kind: "added" }));
+      folders = await listPicFolders().catch(() => []); locked = [];
+      const fromFolders = [];
+      for (const f of folders) {
+        if (!(await folderAccess(f))) { locked.push(f); continue; }
+        try {
+          const found = await scanPicFolder(f);
+          for (let i = 0; i < found.length; i += 64) await Promise.all(found.slice(i, i + 64).map(async p => { try { const file = await p.handle.getFile(); p.modified = file.lastModified; p.size = file.size; } catch (e) { p.modified = 0; } }));
+          fromFolders.push(...found.map(p => ({ ...p, kind: "folder" })));
+        } catch (e) { locked.push(f); }
+      }
+      pics = [...added, ...fromFolders];
+      drawSources(); draw();
+    }
+    function drawSources() {
+      const opts = [["all", "All pictures"], ["added", "Added here"], ...folders.map(f => [f.id, "Folder: " + f.name])];
+      if (!opts.some(o => o[0] === S.src)) S.src = "all";
+      $("src").innerHTML = opts.map(([v, n]) => `<option value="${esc(v)}">${esc(n)}</option>`).join("");
+      $("src").value = S.src;
+      $("unlink").hidden = !folders.some(f => f.id === S.src);
+      $("link").hidden = !canLink;
+      $("warn").hidden = !locked.length;
+      $("warnTxt").textContent = locked.length ? `${locked.map(f => f.name).join(", ")} need${locked.length === 1 ? "s" : ""} permission again to show ${locked.length === 1 ? "its" : "their"} pictures.` : "";
+    }
+    const cmp = { new: (a, b) => (b.modified || 0) - (a.modified || 0), old: (a, b) => (a.modified || 0) - (b.modified || 0), name: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }) };
+    let io = null;
+    function draw() {
+      shown = pics.filter(p => S.src === "all" || (S.src === "added" ? p.kind === "added" : p.folder === S.src)).sort(cmp[S.sort] || cmp.new);
+      $("count").textContent = `${shown.length} PIC${shown.length === 1 ? "" : "S"}`;
+      $("sort").value = S.sort;
+      document.body.style.setProperty("--cell", Math.round(140 * S.size) + "px");
+      if (io) io.disconnect();
+      $("grid").innerHTML = shown.map((p, i) => `<button class="pic" role="listitem" data-i="${i}" title="${esc(p.name)}"><img alt="${esc(p.name)}"><span class="nm">${esc(p.name)}</span></button>`).join("");
+      $("grid").hidden = !shown.length; $("empty").hidden = !!shown.length;
+      $("empty").innerHTML = pics.length ? "No pictures here." : `No pictures yet. ${canLink ? "Link a folder of pictures to see them in place, or add" : "Add"} some to keep them here. You can also drop pictures on this window.`;
+      // load each thumbnail only when it scrolls into view
+      io = new IntersectionObserver(es => es.forEach(async e => {
+        if (!e.isIntersecting) return; io.unobserve(e.target);
+        const p = shown[+e.target.dataset.i], img = e.target.querySelector("img");
+        try { img.onload = () => img.classList.add("ok"); img.src = await urlOf(p); } catch (err) { e.target.querySelector(".nm").textContent = p.name + " (can't open)"; }
+      }), { root: $("grid"), rootMargin: "300px" });
+      $("grid").querySelectorAll(".pic").forEach(b => io.observe(b));
+    }
+
+    Slider($("size"), { min: 0.5, max: 2, step: 0.05, value: S.size, label: "Thumbnail size", text: v => Math.round(v * 100) + "%",
+      onInput: v => { S.size = v; $("sizePct").textContent = Math.round(v * 100) + "%"; document.body.style.setProperty("--cell", Math.round(140 * v) + "px"); }, onChange: save });
+    $("sizePct").textContent = Math.round(S.size * 100) + "%";
+    $("src").addEventListener("change", () => { S.src = $("src").value; save(); drawSources(); draw(); });
+    $("sort").addEventListener("change", () => { S.sort = $("sort").value; save(); draw(); });
+    $("add").addEventListener("click", () => $("fileIn").click());
+    async function addFiles(files) {
+      const imgs = [...files].filter(f => f.type.startsWith("image/") || IMAGE_EXT.test(f.name)); let n = 0;
+      for (const f of imgs) { try { await addPic(f); n++; } catch (e) {} }
+      if (n) { toast(n === 1 ? `Added ${imgs[0].name}` : `Added ${n} pictures`); if (S.src !== "all" && S.src !== "added") { S.src = "added"; save(); } load(); }
+      else if (files.length) toast("Those aren't pictures.", true);
+    }
+    $("fileIn").addEventListener("change", e => { const f = e.target.files; addFiles(f).then(() => { e.target.value = ""; }); });
+    addEventListener("dragover", e => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); document.body.classList.add("drop"); } });
+    addEventListener("dragleave", e => { if (!e.relatedTarget) document.body.classList.remove("drop"); });
+    addEventListener("drop", e => { e.preventDefault(); document.body.classList.remove("drop"); addFiles(e.dataTransfer.files); });
+    $("link").addEventListener("click", async () => {
+      let h; try { h = await showDirectoryPicker({ id: "neon-os-photos", mode: "read" }); } catch (e) { return; }
+      const f = await addPicFolder(h); S.src = f.id; save(); toast(`Linked ${f.name}`); load();
+    });
+    $("unlink").addEventListener("click", async () => {
+      const f = folders.find(x => x.id === S.src); if (!f) return;
+      const ok = await dialog({ title: "Unlink folder", text: `Photos stops showing ${f.name}. The pictures stay in the folder on your computer.`, confirm: "Unlink" });
+      if (!ok) return; await removePicFolder(f.id); S.src = "all"; save(); load();
+    });
+    $("reconnect").addEventListener("click", async () => { for (const f of locked) await folderAccess(f, true); load(); });
+
+    // ---------- viewer and slideshow ----------
+    let at = -1, timer = null;
+    async function view(i) {
+      if (!shown.length) return;
+      at = (i + shown.length) % shown.length; const p = shown[at];
+      $("viewer").hidden = false; $("vName").textContent = p.name; $("vPos").textContent = `${at + 1} / ${shown.length}`;
+      $("vDel").hidden = p.kind !== "added";
+      const img = $("vImg"); img.style.opacity = 0; img.alt = p.name;
+      try { const u = await urlOf(p); if (shown[at] !== p) return; img.onload = () => { img.style.opacity = 1; }; img.src = u; } catch (e) { toast("Couldn't open that picture.", true); }
+      // keep the next one ready so the slideshow doesn't wait
+      const n = shown[(at + 1) % shown.length]; if (n) urlOf(n).catch(() => {});
+    }
+    function closeView() { $("viewer").hidden = true; play(false); const b = $("grid").querySelector(`[data-i="${at}"]`); if (b) b.focus(); }
+    function play(on) {
+      clearInterval(timer); timer = null; $("vPlay").setAttribute("aria-pressed", String(on));
+      if (on) timer = setInterval(() => view(at + 1), S.speed * 1000);
+    }
+    $("grid").addEventListener("click", e => { const b = e.target.closest(".pic"); if (b) view(+b.dataset.i); });
+    $("vPrev").addEventListener("click", () => { view(at - 1); if (timer) play(true); });
+    $("vNext").addEventListener("click", () => { view(at + 1); if (timer) play(true); });
+    $("vClose").addEventListener("click", closeView);
+    $("vPlay").addEventListener("click", () => play(!timer));
+    $("show").addEventListener("click", () => { if (!shown.length) return; view(0); play(true); });
+    $("speed").value = String(S.speed);
+    $("speed").addEventListener("change", () => { S.speed = +$("speed").value; save(); if (timer) play(true); });
+    addEventListener("keydown", e => {
+      if ($("viewer").hidden || e.target.closest("select")) return;
+      if (e.key === "Escape") { e.preventDefault(); closeView(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); $("vNext").click(); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); $("vPrev").click(); }
+      else if (e.key === " ") { e.preventDefault(); play(!timer); }
+    });
+    $("vWall").addEventListener("click", async () => {
+      const p = shown[at]; if (!p) return;
+      try { await setWallImage(await blobOf(p)); setTheme({ wall: "image", wallStamp: Date.now() }); if (!notify("Wallpaper changed", p.name, "photos")) toast("Wallpaper changed"); }
+      catch (e) { toast("Couldn't use that picture. Try a smaller one.", true); }
+    });
+    $("vDel").addEventListener("click", async () => {
+      const p = shown[at]; if (!p || p.kind !== "added") return;
+      const { kind, ...rec } = p; void kind;
+      try { await binPut("photo", p.name, rec, "Photos"); await removePic(p.id); } catch (e) { toast("Couldn't move it to the Bin.", true); return; }
+      const u = urls.get(p.id); if (u) { URL.revokeObjectURL(u); urls.delete(p.id); }
+      pics = pics.filter(x => x.id !== p.id); const keep = at; draw();
+      if (shown.length) view(Math.min(keep, shown.length - 1)); else closeView();
+      if (!notify("Picture moved to the Bin", `${p.name} can be put back for 30 days.`, "bin")) toast("Moved to the Bin");
+    });
+    onBinChange(() => { if ($("viewer").hidden) load(); }); // a picture put back from the Bin
+    load();
+  </script>
+</body>
+</html>

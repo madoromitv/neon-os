@@ -55,6 +55,7 @@
     import { esc, toast, dialog } from "../../style-kit/ui.js";
     import { fileOf } from "../../core/linked.js";
     import { editDetails, tidyNames } from "../../core/details.js";
+    import { loadNotebook, noteTitle, notebookText } from "../../core/notebook.js";
     applyTheme(); onTheme(applyTheme);
 
     const $ = id => document.getElementById(id);
@@ -92,11 +93,11 @@
       $("back").hidden = !["artist", "album", "genre"].includes(view.type);
       $("tidy").hidden = !["artists", "albums", "genres"].includes(view.type);
       if (view.type === "notes") {
-        let txt = ""; try { txt = localStorage.getItem("neon-os:notes") || ""; } catch (e) {}
+        const nb = loadNotebook();
         $("list").classList.add("groups");
-        $("rows").innerHTML = `<div class="note">${esc(txt) || "Notes is empty."}</div>`;
-        $("status").textContent = `${txt.length} characters · open Notes to edit`;
-        ["play", "rename", "del"].forEach(id => $(id).disabled = true); $("save").disabled = !txt;
+        $("rows").innerHTML = nb.notes.length ? nb.notes.slice().sort((a, b) => b.updated - a.updated).map(n => `<div class="note"><b>${esc(noteTitle(n))}</b>${n.folder ? ` <small>· ${esc(n.folder)}</small>` : ""}\n${esc(n.text.split("\n").slice(1).join("\n").trim().slice(0, 400))}</div>`).join("") : `<div class="note">Notes is empty.</div>`;
+        $("status").textContent = `${nb.notes.length} note${nb.notes.length === 1 ? "" : "s"} · open Notes to edit · Download saves them all as one text file`;
+        ["play", "rename", "del"].forEach(id => $(id).disabled = true); $("save").disabled = !nb.notes.length;
         return;
       }
       const grp = isGroupView(view);
@@ -179,13 +180,13 @@
     $("play").addEventListener("click", () => playIds([...sel]));
     $("save").addEventListener("click", async () => {
       let blob, name;
-      if (view.type === "notes") { blob = new Blob([localStorage.getItem("neon-os:notes") || ""], { type: "text/plain" }); name = "notes.txt"; }
+      if (view.type === "notes") { blob = new Blob([notebookText(loadNotebook())], { type: "text/plain" }); name = "notes.txt"; }
       else {
         const t = byId([...sel][0]); if (!t) return;
         try { blob = await fileOf(t, true); } catch (e) { toast(e.code === "needs_permission" ? "Neon OS needs permission to read your music folder. Try again and choose Allow." : `Couldn't find ${t.title} in your linked folder.`, true); return; }
         name = `${[t.artist, t.title].filter(Boolean).join(" - ").replace(/[\\/:*?"<>|]+/g, "")}.${ext(t.mime).toLowerCase()}`;
       }
-      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      const { saveAs } = await import("../../core/wav.js"); await saveAs(blob, name);
     });
     // details, cover art and tidying names (core/details.js)
     async function saveDetails(t, patch) {
@@ -207,14 +208,18 @@
       const pl = view.type === "pl" ? playlists.find(p => p.id === view.id) : null, ids = [...sel];
       const ok = await dialog(pl
         ? { title: "Remove from playlist", text: `Remove ${ids.length === 1 ? byId(ids[0]).title : ids.length + " songs"} from ${pl.name}? They stay in your library.`, confirm: "Remove" }
-        : { title: "Delete songs", text: `Delete ${ids.length === 1 ? byId(ids[0]).title : ids.length + " songs"}? They're removed from your library and every playlist. A backup brings them back.`, confirm: "Delete", danger: true });
+        : { title: "Move to the Bin", text: `${ids.length === 1 ? byId(ids[0]).title + " goes" : ids.length + " songs go"} to the Bin, out of your library and playlists. The Bin keeps them for 30 days.`, confirm: "Move to the Bin", danger: true });
       if (!ok) return;
       try {
         const db = await openDb();
         if (pl) await put(db, "playlists", { ...pl, tracks: pl.tracks.filter(id => !ids.includes(id)) });
         else {
           for (const p of playlists.filter(p => p.tracks.some(id => ids.includes(id)))) await put(db, "playlists", { ...p, tracks: p.tracks.filter(id => !ids.includes(id)) });
-          for (const id of ids) await del(db, "tracks", id);
+          const { binPut } = await import("../../core/bin.js");
+          for (const id of ids) {
+            const t = byId(id); if (t) { const { coverUrl, ...rec } = t; void coverUrl; await binPut("song", t.title, { track: rec, playlists: playlists.filter(p => p.tracks.includes(id)).map(p => p.id) }, [t.artist, t.album].filter(Boolean).join(" · ")); }
+            await del(db, "tracks", id);
+          }
         }
         db.close(); sel.clear(); notifyLibraryChange(pl ? "edit" : "delete"); await load();
       } catch (e) { toast("Couldn't change the library. Try again.", true); }
@@ -225,7 +230,7 @@
     const soon = () => { clearTimeout(reloadT); reloadT = setTimeout(load, 400); }; // a burst of changes reloads once
     onLibraryChange(soon);
     addEventListener("focus", soon);
-    addEventListener("storage", e => { if (e.key === "neon-os:notes" && view.type === "notes") render(true); });
+    addEventListener("storage", e => { if (e.key === "neon-os:notebook" && view.type === "notes") render(true); });
     load();
   </script>
 </body>

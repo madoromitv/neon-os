@@ -9,7 +9,7 @@ import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, dialog, esc } from "../../style-kit/ui.js";
 import { vlist } from "../../style-kit/vlist.js";
 import { notify } from "../../core/notify.js";
-import { toWav, download } from "../../core/wav.js";
+import { toWav, saveTarget } from "../../core/wav.js";
 import { createFx, fxOf } from "../../core/fx.js";
 import { fxPanel } from "../../style-kit/fx-panel.js";
 import { openDb, all, onLibraryChange } from "../../core/backup.js";
@@ -254,6 +254,7 @@ addEventListener("keydown", e => {
 // ---------- export: four bars to WAV ----------
 $("wav").addEventListener("click", async () => {
   if (!buffer) { toast("Load a song first."); return; }
+  const target = await saveTarget(`chop-${S.cur}-${Math.round(S.bpm)}bpm.wav`, { description: "WAV audio", accept: { "audio/wav": [".wav"] } }); if (!target) return;
   const btn = $("wav"); btn.disabled = true; btn.textContent = "Rendering…";
   try {
     const SR = 44100, bars = 4, len = bars * STEPS * stepDur() + 2 + (S.fx.reverb ? 1 + S.fx.size * 4.5 : 0) + (S.fx.delay ? 3 : 0);
@@ -261,9 +262,8 @@ $("wav").addEventListener("click", async () => {
     const ofx = createFx(off, { bpm: S.bpm, params: S.fx }); m.connect(ofx.input); ofx.output.connect(off.destination);
     let last = null; const p = pat(), r = rate();
     for (let n = 0; n < bars * STEPS; n++) { const v = p[n % STEPS]; if (v < 0) continue; const t = 0.02 + n * stepDur(); if (S.choke && last) last(t); last = playSlice(off, m, buffer, slices[v], t, r, 0.9); }
-    const name = `chop-${S.cur}-${Math.round(S.bpm)}bpm.wav`;
-    download(toWav(await off.startRendering()), name);
-    if (!notify("Pattern saved", `${name} is in your downloads folder.`, "chop")) toast(`Saved ${name}`);
+    await target.write(toWav(await off.startRendering()));
+    if (!notify("Pattern saved", `${target.picked ? `Saved as ${target.name}.` : `${target.name} is in your downloads folder.`}`, "chop")) toast(`Saved ${target.name}`);
   } catch (e) { toast("Couldn't render the WAV. Try again.", true); }
   btn.disabled = false; btn.textContent = "Export WAV";
 });
