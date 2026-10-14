@@ -7,7 +7,9 @@ import { getTheme, setTheme, applyTheme, onTheme, ballHex, calmOn } from "../cor
 import { osAction } from "../core/shortcuts.js";
 import { getWallImage } from "../core/desk.js";
 import { createGlow, createGlow2D } from "../core/glow.js";
-import { initNotices, addNotice, toggleNotices, closeNotices } from "./notices.js";
+import { initNotices, addNotice, toggleNotices, closeNotices, isQuiet, setQuiet } from "./notices.js";
+import { createQuick } from "./quick.js";
+import { initWidgets, WIDGETS } from "./widgets.js";
 import { VERSION, CHANGES } from "../core/version.js";
 import { initSearch, openSearch, closeSearch } from "./search.js";
 import { dueNow } from "../core/reminders.js";
@@ -850,7 +852,7 @@ $("icons").addEventListener("click", e => {
 });
 // a box dragged on the empty desktop selects every icon it touches (Ctrl or Shift keeps what was selected)
 desk.addEventListener("pointerdown", e => {
-  if (e.button !== 0 || compact || (e.target !== desk && e.target !== $("icons"))) return;
+  if (e.button !== 0 || compact || (e.target !== desk && e.target !== $("icons") && e.target !== $("widgets"))) return;
   const keep = e.ctrlKey || e.metaKey || e.shiftKey ? new Set(selIcons) : new Set();
   const r0 = desk.getBoundingClientRect(), ox = e.clientX - r0.left + desk.scrollLeft, oy = e.clientY - r0.top + desk.scrollTop;
   let box = null;
@@ -933,6 +935,7 @@ addEventListener("contextmenu", e => {
       { text: "Tidy windows", run: tidy },
       { text: "Arrange icons", run: arrangeIcons },
       ...(wallMode === "slideshow" ? [{ text: "Next wallpaper picture", run: () => wallPic.next() }] : []),
+      "-", { label: "Add a widget" }, ...Object.entries(WIDGETS).filter(([k]) => !widgets.has(k) || k === "note").map(([k, n]) => ({ text: "+ " + n, run: () => widgets.add(k) })),
       { text: "Desktop and colour…", run: () => openApp("settings") },
       { text: "Keyboard shortcuts", key: "?", run: () => openApp("help") },
       { text: "Restart Neon OS", run: () => location.reload() },
@@ -1173,6 +1176,13 @@ binPurge().catch(() => {}); setInterval(() => binPurge().catch(() => {}), 4 * 36
 // ---------- start ----------
 setCompact(); syncWco();
 initNotices({ bellBtn: $("bellBtn"), stackEl: $("notices"), nameOf: id => (appById(id) || { name: id }).name, openApp: id => appById(id) && openApp(id) });
+// quick settings (the clock) and desktop widgets
+createQuick($("clock"), {
+  music: { get: () => musicVol, set: v => { musicVol = v; dispatchEvent(new CustomEvent("neonos:volume", { detail: v })); renderVolIcon(); } },
+  quiet: { get: isQuiet, set: setQuiet }, lock: () => doAction("lock"), wallNext: () => wallPic.next(), slideshow: () => wallMode === "slideshow",
+  openApp: id => openApp(id), showDesktop: () => showDesktop(), sfx,
+});
+const widgets = initWidgets({ layer: $("widgets"), nowPlaying: () => mounted.has("amp") && !closed.has("amp") ? nowPlaying : null, transport, openApp: id => openApp(id), tasks: () => taskList().length });
 lockApi = initLock({ nowPlaying: () => mounted.has("amp") && !closed.has("amp") ? nowPlaying : null, transport, sfx, onChange: m => { if (m) { closeMenu(); closeTray(); closeNotices(); closeSearch(); } } });
 applyTheme();
 onTheme(t => {

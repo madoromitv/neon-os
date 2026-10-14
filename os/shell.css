@@ -278,3 +278,43 @@ body.wco #wall { top: var(--wco-top, 32px); height: calc(100% - var(--wco-top, 3
 .lockscreen[data-mode="saver"] .lk-date { font-size: 12px; }
 .lockscreen[data-mode="saver"] { cursor: none; }
 @media (max-width: 640px) { .lk-time { font-size: 88px; } .lk-np { bottom: 130px; } }
+
+/* quick settings (the clock) */
+.tray .clock { cursor: pointer; border: 0; }
+.tray .clock:hover, .tray .clock[aria-expanded="true"] { box-shadow: 0 0 0 1px var(--ball); }
+.qs { width: 330px; right: 8px; left: auto; z-index: 9700; }
+.qs .wbody { display: grid; gap: 10px; }
+.qs-top { display: flex; align-items: center; gap: 12px; }
+.qs-time { font-size: 30px; line-height: 34px; padding: 2px 10px; }
+.qs-date { display: grid; font-size: 12px; color: var(--ink-dim); } .qs-date b { color: var(--ink); font-size: 13px; }
+.qs-next { display: grid; gap: 2px; }
+.qs-next button { text-align: left; font-size: 12px; padding: 4px 6px; border-radius: 2px; display: block; } .qs-next button:hover { background: #ffffff0d; }
+.qs-next b { color: var(--ball); font-weight: 600; } .qs-next small { color: var(--ink-faint); margin-left: 6px; }
+.qs-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.qs-tile { display: grid; justify-items: center; gap: 4px; padding: 8px 2px; border-radius: 3px; background: linear-gradient(180deg, var(--metal-1), var(--metal-2)); border: 1px solid var(--edge); font-size: 10.5px; color: var(--ink-dim); line-height: 1.15; text-align: center; }
+.qs-tile svg { width: 18px; height: 18px; fill: currentColor; }
+.qs-tile[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); background: linear-gradient(180deg, #1c1926, #2b2736); box-shadow: inset 1px 1px 0 #0b0910, 0 0 8px -2px var(--ball-dim); }
+.qs-tile[aria-pressed="true"] svg { filter: drop-shadow(0 0 4px var(--ball-dim)); }
+body.compact .qs { left: 4px; right: 4px; width: auto; }
+/* desktop widgets */
+.widgets { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+.widget { position: absolute; pointer-events: auto; border-radius: 4px; background: linear-gradient(180deg, #16131fe6, #0c0a12e6); border: 1px solid var(--edge); box-shadow: inset 1px 1px 0 #ffffff12, 0 12px 30px -14px #000; backdrop-filter: blur(6px); }
+.widget.lifting { box-shadow: 0 0 0 1px var(--ball), 0 16px 40px -12px #000; }
+.wg-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 2px 10px; cursor: grab; font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); }
+.wg-x { opacity: 0; font-size: 11px; color: var(--ink-faint); padding: 0 4px; border-radius: 2px; } .widget:hover .wg-x, .wg-x:focus-visible { opacity: 1; } .wg-x:hover { color: var(--ink); background: #ffffff14; }
+.wg-body { padding: 2px 12px 12px; display: grid; gap: 6px; cursor: default; }
+.wg-time { font: 52px/1 var(--font-lcd); color: var(--ball); text-shadow: 0 0 10px var(--ball-dim); } .wg-time small { font-size: 26px; opacity: .55; margin-left: 4px; }
+.wg-sub { font-size: 12px; color: var(--ink-dim); }
+.wg-song { display: grid; min-width: 0; } .wg-song b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .wg-song small { color: var(--ink-faint); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wg-ctl { display: flex; gap: 6px; } .wg-ctl svg { width: 16px; height: 16px; fill: currentColor; }
+.wg-empty { font-size: 12px; color: var(--ink-dim); text-align: left; padding: 4px 0; } .wg-empty:hover { color: var(--ink); }
+.wg-month { font-size: 12.5px; font-weight: 600; }
+.wg-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font: 15px/20px var(--font-lcd); }
+.wg-cal i { font: 10px/16px inherit; font-style: normal; color: var(--ink-faint); font-family: var(--font-ui, inherit); }
+.wg-cal span { color: var(--ink-dim); border-radius: 2px; position: relative; } .wg-cal span.on { background: var(--ball); color: #000; box-shadow: 0 0 8px var(--ball-dim); }
+.wg-cal span.ev::after { content: ""; position: absolute; left: 50%; bottom: 1px; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: var(--ball); }
+.wg-cal span.on.ev::after { background: #000; }
+.wg-ev { font-size: 12px; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .wg-ev b { color: var(--ball); font-weight: 600; }
+.wg-note { font: 18px/1.2 var(--font-lcd); color: var(--ball); white-space: pre-wrap; max-height: 220px; overflow: hidden; display: grid; gap: 4px; cursor: pointer; } .wg-note b { font-size: 21px; }
+.wg-stat { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-dim); } .wg-stat b { font: 18px/1 var(--font-lcd); color: var(--ball); }
+body.compact .widgets { display: none; }

@@ -195,6 +195,27 @@ const tests = {
     check(!(await p.$(".dicon.sel")), "clicking the empty desktop clears the selection");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "quick settings and desktop widgets"() {
+    const p = await page(); await desk(p);
+    await p.click("#clock"); await p.waitForSelector(".qs");
+    check(/Quick settings/.test(await p.$eval(".qs", e => e.getAttribute("aria-label"))) && (await p.$$eval(".qs-tile", e => e.length)) === 8, "clicking the clock opens quick settings");
+    await p.click('[data-q="quiet"]'); check(await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:notices")).quiet === true), "Do not disturb turns on from quick settings");
+    await p.click('[data-q="calm"]'); check(await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:theme")).calm === true), "Reduce motion turns on from quick settings");
+    await p.click('[data-q="wall"]'); check(await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:theme")).wall === "fog"), "Change wallpaper moves to the next wallpaper");
+    await p.keyboard.press("Escape"); check(!(await p.$(".qs")), "Esc closes quick settings");
+    for (const w of ["Clock", "Calendar", "Now playing"]) { await p.click("#desktop", { button: "right", position: { x: 500, y: 300 } }); await p.click(`.pop .mi:has-text("+ ${w}")`); await p.waitForTimeout(150); }
+    check((await p.$$eval(".widget", e => e.map(x => x.dataset.type))).join() === "clock,calendar,music", "widgets are added from the desktop menu");
+    const boxes = await p.$$eval(".widget", e => e.map(x => x.getBoundingClientRect()).map(r => [r.left, r.top, r.right, r.bottom]));
+    check(!boxes.some((a, i) => boxes.some((b, j) => i < j && a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3])), "new widgets don't overlap");
+    const head = await (await p.$('.widget[data-type="clock"] .wg-head')).boundingBox();
+    await p.mouse.move(head.x + 20, head.y + 6); await p.mouse.down(); await p.mouse.move(head.x - 300, head.y + 200, { steps: 5 }); await p.mouse.up();
+    await p.reload(); await p.waitForTimeout(1200);
+    const saved = await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:widgets")));
+    check(saved.length === 3 && (await p.$$eval(".widget", e => e.length)) === 3 && saved[0].y > 150, "widgets stay where they're put after a reload");
+    await p.hover('.widget[data-type="calendar"]'); await p.click('.widget[data-type="calendar"] .wg-x');
+    check((await p.$$eval(".widget", e => e.length)) === 2, "a widget's X removes it");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "Auto DJ mixes on the beat"() {
     const p = await page(); await desk(p); await amp(p, ["beat120.wav", "beat124.wav"]);
     await p.waitForFunction(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return s.tracks.length === 2 && s.tracks.every(t => t.analysis && t.analysis.beats && t.analysis.beats.length > 40); }, null, { timeout: 60000, polling: 1000 });

@@ -64,6 +64,9 @@ function renderList() {
     : `<p class="nempty">No notifications.</p>`;
   pop.querySelector("#nQuiet").setAttribute("aria-pressed", String(state.quiet));
 }
+// Do not disturb (quiet): notices go to the bell's list without popping up
+export const isQuiet = () => state.quiet;
+export function setQuiet(on) { state.quiet = !!on; save(); renderBell(); if (pop) renderList(); }
 export function closeNotices() { if (!pop) return; pop.remove(); pop = null; bell.setAttribute("aria-expanded", "false"); }
 export function openNotices() {
   if (pop) return;
