@@ -11,3 +11,19 @@ tone("quiet.wav", 0.05, 220, 8)
 tone("loud.wav", 0.7, 440, 8)
 tone("mid.wav", 0.25, 550, 8)
 print("fixtures written")
+
+# drum loops for Auto DJ: a kick on every beat and a hat between, at two close tempos
+def beats(name, bpm, secs, rate=22050):
+    w = wave.open(f"tests/.fixtures/{name}", "w"); w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+    n, beat = int(secs * rate), 60 / bpm
+    out = bytearray()
+    for i in range(n):
+        t = i / rate; ph = t % beat; v = 0.0
+        if ph < 0.15: v += 0.8 * math.sin(2 * math.pi * (60 + 90 * math.exp(-ph * 30)) * ph) * math.exp(-ph * 18)
+        h = (t + beat / 2) % beat
+        if h < 0.03: v += 0.25 * (((i * 7919) % 200) / 100 - 1) * math.exp(-h * 120)
+        v += 0.12 * math.sin(2 * math.pi * 220 * t)
+        out += struct.pack("<h", int(max(-1, min(1, v)) * 30000))
+    w.writeframes(bytes(out)); w.close()
+beats("beat120.wav", 120, 40)
+beats("beat124.wav", 124, 40)

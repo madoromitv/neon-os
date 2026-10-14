@@ -195,6 +195,23 @@ const tests = {
     check(!(await p.$(".dicon.sel")), "clicking the empty desktop clears the selection");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "Auto DJ mixes on the beat"() {
+    const p = await page(); await desk(p); await amp(p, ["beat120.wav", "beat124.wav"]);
+    await p.waitForFunction(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return s.tracks.length === 2 && s.tracks.every(t => t.analysis && t.analysis.beats && t.analysis.beats.length > 40); }, null, { timeout: 60000, polling: 1000 });
+    for (let i = 0; i < 5; i++) await p.click("#bFade");
+    check((await p.$eval("#fadeTxt", e => e.textContent)) === "Auto DJ", "Fade's last setting is Auto DJ");
+    await p.click("#bRep"); // repeat all, so there's always a next song whatever order they were added in
+    await p.dblclick('#mlRows .trow:has-text("beat120")'); await p.waitForTimeout(800);
+    await p.evaluate(() => document.activeElement && document.activeElement.blur()); // arrow keys in the song list move the selection, not the song
+    for (let i = 0; i < 6; i++) { await p.keyboard.press("ArrowRight"); await p.waitForTimeout(80); }
+    await p.waitForFunction(() => /Mixing in/.test(document.getElementById("fadeTxt").title || ""), null, { timeout: 10000 }).catch(() => {});
+    const plan = await p.$eval("#fadeTxt", e => e.title);
+    check(/Mixing in 8 beats/.test(plan), `it plans a beat-matched mix (${plan || "none"})`);
+    await p.waitForFunction(() => /BEAT124/.test(document.getElementById("marqueeText").textContent), null, { timeout: 15000 }).catch(() => {});
+    const mq = await p.$eval("#marqueeText", e => e.textContent), at = await p.$eval("#bigTime", e => e.textContent);
+    check(/BEAT124/.test(mq), `the next song takes over during the mix, before the first ends (${mq.slice(0, 30)} · ${at})`);
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "Files: folders on the computer"() {
     const p = await page();
     await p.goto(URL + "apps/files/"); await p.waitForTimeout(500);

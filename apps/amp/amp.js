@@ -689,19 +689,41 @@ async function checkPreload() {
   if (Eng.state !== "playing" || loading || preloading || !loadedId) return;
   const i = upcoming();
   if (pending) { if (i === pending.i && pl[i] === pending.id && pending.xf === S.xfade && pending.lv === S.level) return; Eng.cancelNext(); pending = null; }
-  if (i < 0 || Eng.duration - Eng.time() > 25 + S.xfade) return;
+  const djAhead = S.xfade === "dj" ? 45 : 0; // Auto DJ mixes start earlier, so the next song loads earlier
+  if (i < 0 || Eng.duration - Eng.time() > 25 + (+S.xfade || 0) + djAhead) return;
   const t = byId(pl[i]); if (!t) return;
   preloading = true;
   const was = loadedId;
   try {
     const [ab, an] = await Promise.all([trackBytes(t), getAnalysis(t)]);
     const buf = await Eng.decode(ab);
-    if (loadedId === was && Eng.state === "playing" && pl[i] === t.id && upcoming() === i && Eng.queueNext(buf, levelFor(t, buf), S.xfade))
-      pending = { i, id: t.id, an, kbps: Math.round(ab.byteLength * 8 / buf.duration / 1000), xf: S.xfade, lv: S.level };
+    let xf = +S.xfade || 0, dj = null;
+    if (S.xfade === "dj") { const cur0 = curTrack(), plan = djPlan(cur0 && await getAnalysis(cur0), an, Eng.duration, buf.duration); if (plan) { dj = plan; xf = plan.xf; } else xf = 6; }
+    if (loadedId === was && Eng.state === "playing" && pl[i] === t.id && upcoming() === i && Eng.queueNext(buf, levelFor(t, buf), xf, dj)) {
+      pending = { i, id: t.id, an, kbps: Math.round(ab.byteLength * 8 / buf.duration / 1000), xf: S.xfade, lv: S.level, dj };
+      if (dj) $("fadeTxt").title = `Mixing in ${dj.beats} beats at ${fmt(dj.at)}`;
+    }
   } catch (e) {} // can't load it ahead (e.g. the folder needs permission): it loads when the song ends instead
   finally { preloading = false; }
 }
 setInterval(checkPreload, 1000);
+// Auto DJ: where to mix. The mix ends on the last full bar near the end of this song and lasts 16, 8 or 4 beats
+// depending on how close the two tempos are (half or double time counts as close); the next song comes in on its
+// first downbeat, lined up with this song's beat. Without beats for both songs it falls back to a 6 s crossfade.
+function djPlan(A, B, durA, durB) {
+  if (!A || !B || !A.beats || !B.beats || A.beats.length < 40 || B.beats.length < 16 || !A.bpm || !B.bpm) return null;
+  const tb = [B.bpm, B.bpm * 2, B.bpm / 2].reduce((x, y) => Math.abs(y - A.bpm) < Math.abs(x - A.bpm) ? y : x);
+  const diff = Math.abs(tb - A.bpm) / A.bpm, beats = diff < 0.03 ? 16 : diff < 0.06 ? 8 : 4;
+  const off = a => typeof a.offset === "number" ? a.offset : 1024 / 22050; // beats are stored from the analysis frame's start
+  const bA = A.beats.map(b => b + off(A)), bB = B.beats.map(b => b + off(B)), period = 60 / A.bpm;
+  let end = bA.length - 1; while (end > 0 && bA[end] > durA - 0.4) end--; // the last beat that really plays
+  let start = end - beats; while (start > 0 && start % 4) start--; // start on a bar
+  if (start < bA.length * 0.5) return null;
+  const at = bA[start], xf = Math.min(bA[Math.min(end, start + beats)] - at, beats * period * 1.05);
+  const from = bB[0] > 0 && bB[0] < durB / 4 ? bB[0] : 0;
+  if (!(xf > 1) || at + xf > durA) return null;
+  return { at, from, xf, beats };
+}
 Eng.onAdvance = () => {
   const p = pending; pending = null; shufflePick = null; countedId = null;
   if (!p) return;
@@ -712,12 +734,12 @@ Eng.onAdvance = () => {
   const t = byId(p.id); if (t) t.kbps = p.kbps;
   renderPl(); renderMl(); setNowPlaying(); save();
 };
-const FADES = [0, 3, 6, 9, 12];
+const FADES = [0, 3, 6, 9, 12, "dj"];
 function renderModes() {
   $("bLevel").setAttribute("aria-pressed", String(!!S.level));
-  $("bFade").setAttribute("aria-pressed", String(S.xfade > 0));
-  $("fadeTxt").textContent = S.xfade ? `Fade ${S.xfade}s` : "Fade";
-  $("bFade").setAttribute("aria-label", S.xfade ? `Crossfade: ${S.xfade} seconds` : "Crossfade: off, songs play back to back");
+  $("bFade").setAttribute("aria-pressed", String(!!S.xfade));
+  $("fadeTxt").textContent = S.xfade === "dj" ? "Auto DJ" : S.xfade ? `Fade ${S.xfade}s` : "Fade";
+  $("bFade").setAttribute("aria-label", S.xfade === "dj" ? "Auto DJ: songs mix into each other on the beat" : S.xfade ? `Crossfade: ${S.xfade} seconds` : "Crossfade: off, songs play back to back");
   $("bShuf").setAttribute("aria-pressed", String(S.shuffle));
   $("bRep").setAttribute("aria-pressed", String(S.repeat !== "off"));
   $("repTxt").textContent = S.repeat === "one" ? "Repeat 1" : "Repeat";
@@ -725,7 +747,7 @@ function renderModes() {
 }
 $("bShuf").addEventListener("click", () => { S.shuffle = !S.shuffle; history = []; shufflePick = null; renderModes(); save(); });
 $("bLevel").addEventListener("click", () => { S.level = !S.level; Eng.setLevel(levelFor(curTrack(), Eng.buf)); renderModes(); save(); toast(S.level ? "Volume levelling on: songs play at the same loudness" : "Volume levelling off"); });
-$("bFade").addEventListener("click", () => { S.xfade = FADES[(FADES.indexOf(S.xfade) + 1) % FADES.length]; renderModes(); save(); toast(S.xfade ? `Crossfade: ${S.xfade} seconds` : "Crossfade off: songs play back to back with no gap"); });
+$("bFade").addEventListener("click", () => { S.xfade = FADES[(FADES.indexOf(S.xfade) + 1) % FADES.length]; renderModes(); save(); toast(S.xfade === "dj" ? "Auto DJ: songs mix into each other on the beat, with the bass swapped halfway" : S.xfade ? `Crossfade: ${S.xfade} seconds` : "Crossfade off: songs play back to back with no gap"); });
 $("bRep").addEventListener("click", () => { S.repeat = S.repeat === "off" ? "all" : S.repeat === "all" ? "one" : "off"; renderModes(); save(); });
 
 const volS = Slider($("vol"), { min: 0, max: 1, step: 0.01, value: S.vol, label: "Volume", text: v => Math.round(v * 100) + "%", onInput: v => { S.vol = v; Eng.setVolume(v); showVol(); dispatchEvent(new CustomEvent("neonos:volume-changed", { detail: v })); }, onChange: save });

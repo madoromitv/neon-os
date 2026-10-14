@@ -53,10 +53,10 @@ export const Eng = {
     if (!this.buf || !this.ensure()) return;
     this.stopSrc();
     from = Math.max(0, Math.min(from == null ? this.offset : from, this.buf.duration - 0.05));
-    const s = this.ctx.createBufferSource(), g = this.ctx.createGain();
-    s.buffer = this.buf; g.gain.value = this.level; s.connect(g); g.connect(this.nodes.pre);
+    const s = this.ctx.createBufferSource(), g = this.ctx.createGain(), sh = this.shelfNode();
+    s.buffer = this.buf; g.gain.value = this.level; s.connect(sh); sh.connect(g); g.connect(this.nodes.pre);
     s.start(0, from);
-    this.src = s; this.gain = g; this.startAt = this.ctx.currentTime - from; this.state = "playing";
+    this.src = s; this.gain = g; this.shelf = sh; this.startAt = this.ctx.currentTime - from; this.state = "playing";
     this.watchEnd();
   },
   watchEnd() {
@@ -67,25 +67,35 @@ export const Eng = {
       this.state = "stopped"; this.offset = 0; this.src = null; this.gain = null; this.onEnded && this.onEnded();
     };
   },
+  // each song has its own bass control, so Auto DJ can swap the bass from one song to the other mid-mix
+  shelfNode() { const f = this.ctx.createBiquadFilter(); f.type = "lowshelf"; f.frequency.value = 180; f.gain.value = 0; return f; },
   // a song's level: a gain that brings it to the same loudness as the others (1 = unchanged)
   setLevel(level) { this.level = level; if (this.gain && !this.next) { try { this.gain.gain.cancelScheduledValues(this.ctx.currentTime); this.gain.gain.setTargetAtTime(level, this.ctx.currentTime, 0.05); } catch (e) {} } },
   // Queues buf to follow the current song. xf: seconds of crossfade (0 = gapless). Returns false when it's too late.
-  queueNext(buf, level = 1, xf = 0) {
+  // dj (Auto DJ): { at: when in the current song the mix starts, from: where in the next song it starts } — the next
+  // song comes in on the beat part-way through this one, and the bass swaps over halfway through the mix.
+  queueNext(buf, level = 1, xf = 0, dj = null) {
     if (this.state !== "playing" || !this.buf || !this.ctx) return false;
     this.cancelNext();
-    xf = Math.max(0, Math.min(xf, this.buf.duration / 3, buf.duration / 3));
-    const end = this.startAt + this.buf.duration, when = end - xf, now = this.ctx.currentTime;
+    xf = dj ? Math.max(0.5, Math.min(xf, buf.duration / 2)) : Math.max(0, Math.min(xf, this.buf.duration / 3, buf.duration / 3));
+    const end = this.startAt + this.buf.duration, when = dj ? this.startAt + dj.at : end - xf, now = this.ctx.currentTime, from = dj ? dj.from : 0;
     if (when < now + 0.15) return false;
-    const s = this.ctx.createBufferSource(), g = this.ctx.createGain();
-    s.buffer = buf; s.connect(g); g.connect(this.nodes.pre);
+    const s = this.ctx.createBufferSource(), g = this.ctx.createGain(), sh = this.shelfNode();
+    s.buffer = buf; s.connect(sh); sh.connect(g); g.connect(this.nodes.pre);
+    if (dj && this.shelf) { // the bass swap: the new song's bass waits, then the two trade places in the middle of the mix
+      const a = when + xf * 0.45, b = when + xf * 0.55;
+      sh.gain.setValueAtTime(-26, now); sh.gain.setValueAtTime(-26, a); sh.gain.linearRampToValueAtTime(0, b);
+      this.shelf.gain.cancelScheduledValues(when); this.shelf.gain.setValueAtTime(0, a); this.shelf.gain.linearRampToValueAtTime(-26, b);
+    }
     if (xf > 0) { // equal-power curves, so the overlap doesn't dip or bulge
       const N = 32, up = new Float32Array(N), down = new Float32Array(N);
       for (let i = 0; i < N; i++) { const k = i / (N - 1); up[i] = Math.sin(k * Math.PI / 2) * level; down[i] = Math.cos(k * Math.PI / 2) * this.level; }
       g.gain.setValueAtTime(0, now); g.gain.setValueCurveAtTime(up, when, xf);
       this.gain.gain.cancelScheduledValues(when); this.gain.gain.setValueCurveAtTime(down, when, xf); // leaves a fade-in still running alone
     } else g.gain.value = level;
-    s.start(when);
-    this.next = { buf, src: s, gain: g, level, when, xf };
+    s.start(when, from);
+    if (dj) try { this.src.stop(when + xf + 0.05); } catch (e) {} // the old song ends where the mix does
+    this.next = { buf, src: s, gain: g, shelf: sh, level, when, xf, from, dj: !!dj };
     clearTimeout(this.advT); this.advT = setTimeout(() => this.time(), (when - now) * 1000 + 20);
     return true;
   },
@@ -95,6 +105,8 @@ export const Eng = {
     this.next = null;
     try { n.src.stop(); n.src.disconnect(); n.gain.disconnect(); } catch (e) {}
     if (this.gain && this.ctx && n.when > this.ctx.currentTime) this.gain.gain.cancelScheduledValues(n.when); // drop the fade-out, keep any fade-in
+    if (this.shelf && this.ctx && n.when > this.ctx.currentTime) { this.shelf.gain.cancelScheduledValues(this.ctx.currentTime); this.shelf.gain.setValueAtTime(0, this.ctx.currentTime); }
+    if (n.dj && this.src && this.buf) { try { this.src.stop(this.startAt + this.buf.duration + 0.05); } catch (e) {} } // an Auto DJ mix had cut this song short: its natural end again (the last stop() wins)
   },
   // the queued song has started: it becomes the current one; the old one finishes its fade on its own
   advance() {
@@ -104,7 +116,7 @@ export const Eng = {
       const old = { src: this.src, gain: this.gain }; this.tails.push(old);
       this.token++; old.src.onended = () => { this.tails = this.tails.filter(t => t !== old); try { old.src.disconnect(); old.gain.disconnect(); } catch (e) {} };
     }
-    this.buf = n.buf; this.src = n.src; this.gain = n.gain; this.level = n.level; this.startAt = n.when; this.offset = 0; this.state = "playing";
+    this.buf = n.buf; this.src = n.src; this.gain = n.gain; this.shelf = n.shelf; this.level = n.level; this.startAt = n.when - (n.from || 0); this.offset = 0; this.state = "playing";
     this.watchEnd();
     this.onAdvance && this.onAdvance();
   },
