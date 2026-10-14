@@ -195,6 +195,26 @@ const tests = {
     check(!(await p.$(".dicon.sel")), "clicking the empty desktop clears the selection");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "Terminal and Recorder"() {
+    const p = await page({ permissions: ["microphone"] }); await desk(p); await amp(p, ["song.wav"]);
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="terminal"]'); await p.waitForTimeout(1000);
+    const tf = p.frame({ url: /terminal/ }), run = async c => { await tf.fill("#cmd", c); await tf.press("#cmd", "Enter"); await p.waitForTimeout(500); }, said = () => tf.$eval("#out", e => e.textContent);
+    await run("help"); check(/open <app>/.test(await said()), "Terminal: help lists the commands");
+    await run("calc (2+3)*4^2"); check(/\n80\n/.test(await said()), "Terminal: calc works out sums");
+    await run("note From the terminal"); check(await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:notebook")).notes.some(n => n.text === "From the terminal")), "Terminal: note adds a note");
+    await run("play song"); await p.waitForTimeout(800); check(/Playing/.test(await said()) && (await p.title()).startsWith("song"), "Terminal: play plays a song in Amp");
+    await run("open clock"); await p.waitForTimeout(800); check(!!(await p.$('[data-wid="clock"]')), "Terminal: open opens an app");
+    await run("alarm 07:30 Wake"); check(await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:clock")).alarms.some(a => a.time === "07:30" && a.label === "Wake")), "Terminal: alarm sets an alarm");
+    await run("frobnicate"); check(/Unknown command/.test(await said()), "Terminal: unknown commands say so");
+    // Recorder: the test browser's fake microphone
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="recorder"]'); await p.waitForTimeout(1000);
+    const rf = p.frame({ url: /recorder/ });
+    await rf.click("#rec"); await p.waitForTimeout(2200); await rf.click("#rec"); await p.waitForTimeout(1500);
+    check((await rf.$$eval("#list .item", e => e.length)) === 1 && !(await rf.$eval("#edit", e => e.hidden)), "Recorder records and opens the recording");
+    await rf.click("#lib"); await p.waitForTimeout(1200);
+    check(await p.evaluate(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return s.tracks.some(t => t.album === "Recordings"); }), "Recorder adds a recording to the library");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "synced lyrics in Amp"() {
     const p = await page(); await desk(p); await amp(p, ["song.wav"]);
     await p.click("#bPlay"); await p.waitForTimeout(500);

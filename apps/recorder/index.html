@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recorder · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  .deck { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; }
+  .rec { width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; letter-spacing: .1em; background: radial-gradient(circle at 40% 35%, #ff6a6a, #b01c1c 60%, #5a0b0b); border: 2px solid #000; box-shadow: 0 0 0 2px #2a2433, 0 0 18px -4px #ff4040; color: #fff; }
+  .rec[aria-pressed="true"] { animation: recPulse 1.2s ease-in-out infinite; }
+  @keyframes recPulse { 50% { box-shadow: 0 0 0 2px #2a2433, 0 0 30px 2px #ff4040; } }
+  .time { font-size: 44px; line-height: 48px; padding: 2px 12px; }
+  .meter { height: 10px; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--ball) 70%, #ffd23d 85%, #ff4040); transition: width .05s; }
+  canvas.wave { width: 100%; height: 110px; display: block; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; cursor: crosshair; touch-action: none; }
+  .recs { max-height: 260px; overflow: auto; }
+  .recs .item { cursor: pointer; }
+  .recs .item b { font: 20px/1 var(--font-lcd); color: var(--ball); min-width: 60px; text-align: right; }
+  .sel { color: var(--ball); }
+  .ctl { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .ctl .lcd { font-size: 17px; line-height: 22px; padding: 0 8px; }
+</style>
+</head>
+<body class="app">
+  <div class="card deck">
+    <button class="rec" id="rec" aria-pressed="false" title="Record (R)">REC</button>
+    <div style="display:grid;gap:8px">
+      <div class="row"><span class="lcd time" id="time">0:00</span><select id="input" aria-label="Record from"></select></div>
+      <div class="meter" aria-hidden="true"><i id="lvl"></i></div>
+      <p class="hint" id="hint">Press REC (or R) to record from the microphone or line-in. Recordings stay in this browser until you save or delete them.</p>
+    </div>
+  </div>
+  <div class="card" id="edit" hidden>
+    <div class="row"><strong id="eName"></strong><span class="lcd" id="eSel" style="margin-left:auto;font-size:17px;line-height:22px;padding:0 8px"></span></div>
+    <canvas class="wave" id="wave" aria-label="Waveform: drag to choose the part to keep"></canvas>
+    <div class="ctl">
+      <button class="btn" id="play">Play</button>
+      <button class="btn" id="trim" title="Keep only the chosen part">Trim to selection</button>
+      <button class="btn" id="all">Select all</button>
+      <span style="flex:1"></span>
+      <button class="btn" id="wav">Save as WAV…</button>
+      <button class="btn" id="lib" title="Add it to the library, for Amp, Chop and Decks">Add to library</button>
+      <button class="btn" id="chop">Open in Chop</button>
+    </div>
+  </div>
+  <span class="lbl">Recordings</span>
+  <div class="list recs" id="list"></div>
+  <p class="empty" id="empty">Nothing recorded yet.</p>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { esc, toast, dialog, openMenu } from "../../style-kit/ui.js";
+    import { toWav } from "../../core/wav.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id), KEY = "neon-os:recorder";
+    const fmt = s => { s = Math.max(0, s || 0); const m = Math.floor(s / 60), x = (s % 60).toFixed(s < 60 ? 1 : 0).padStart(s < 60 ? 4 : 2, "0"); return `${m}:${x}`; };
+    let S = { input: "" }; try { S = { ...S, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) {}
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+    // recordings live in their own small IndexedDB: { id, name, blob, duration, at }
+    const idb = () => new Promise((res, rej) => { const r = indexedDB.open("neon-os-recorder", 1); r.onupgradeneeded = () => r.result.createObjectStore("recs", { keyPath: "id" }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+    async function tx(mode, fn) { const db = await idb(); try { return await new Promise((res, rej) => { const t = db.transaction("recs", mode), q = fn(t.objectStore("recs")); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); } finally { db.close(); } }
+    let recs = [], cur = null, ac = null;
+    const ctx = () => ac || (ac = new AudioContext());
+
+    async function loadList() { recs = ((await tx("readonly", s => s.getAll()).catch(() => [])) || []).sort((a, b) => b.at - a.at); drawList(); }
+    function drawList() {
+      $("list").innerHTML = recs.map(r => `<div class="item${cur && cur.id === r.id ? " sel" : ""}" data-id="${r.id}"><span><strong>${esc(r.name)}</strong><small>${esc(new Date(r.at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><b>${fmt(r.duration)}</b></div>`).join("");
+      $("empty").hidden = !!recs.length;
+    }
+
+    // ---------- inputs and the level meter ----------
+    async function inputs() {
+      let list = []; try { list = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput"); } catch (e) {}
+      $("input").innerHTML = `<option value="">Default input</option>` + list.map((d, i) => `<option value="${esc(d.deviceId)}">${esc(d.label || "Input " + (i + 1))}</option>`).join("");
+      $("input").value = list.some(d => d.deviceId === S.input) ? S.input : "";
+    }
+    $("input").addEventListener("change", () => { S.input = $("input").value; save(); });
+
+    // ---------- recording ----------
+    let mr = null, stream = null, chunks = [], t0 = 0, tick = 0, meterRaf = 0, an = null;
+    async function start() {
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: S.input ? { exact: S.input } : undefined, echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); }
+      catch (e) { toast(e && e.name === "NotAllowedError" ? "Neon OS needs permission to use the microphone. Allow it in the address bar, then try again." : "No microphone or input found.", true); return; }
+      inputs();
+      const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find(t => MediaRecorder.isTypeSupported(t)) || "";
+      mr = new MediaRecorder(stream, type ? { mimeType: type } : undefined); chunks = [];
+      mr.ondataavailable = e => e.data.size && chunks.push(e.data);
+      mr.onstop = finish; mr.start(250); t0 = performance.now();
+      const src = ctx().createMediaStreamSource(stream); an = ctx().createAnalyser(); an.fftSize = 1024; src.connect(an);
+      const buf = new Float32Array(an.fftSize);
+      const meter = () => { an.getFloatTimeDomainData(buf); let pk = 0; for (const v of buf) pk = Math.max(pk, Math.abs(v)); $("lvl").style.width = Math.min(100, Math.sqrt(pk) * 100) + "%"; meterRaf = requestAnimationFrame(meter); };
+      meter(); tick = setInterval(() => { $("time").textContent = fmt((performance.now() - t0) / 1000); }, 100);
+      $("rec").setAttribute("aria-pressed", "true"); $("rec").textContent = "STOP"; $("hint").textContent = "Recording… press STOP (or R) to finish.";
+    }
+    function stop() { if (mr && mr.state !== "inactive") mr.stop(); }
+    async function finish() {
+      clearInterval(tick); cancelAnimationFrame(meterRaf); $("lvl").style.width = "0"; stream.getTracks().forEach(t => t.stop());
+      $("rec").setAttribute("aria-pressed", "false"); $("rec").textContent = "REC"; $("hint").textContent = "Press REC (or R) to record again.";
+      const blob = new Blob(chunks, { type: mr.mimeType || "audio/webm" }); mr = null;
+      let duration = (performance.now() - t0) / 1000;
+      try { duration = (await ctx().decodeAudioData(await blob.arrayBuffer())).duration; } catch (e) {}
+      const d = new Date(), r = { id: "r" + Date.now().toString(36), name: `Recording ${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${String(d.getHours()).padStart(2, "0")}.${String(d.getMinutes()).padStart(2, "0")}`, blob, duration, at: Date.now() };
+      await tx("readwrite", s => s.put(r)); await loadList(); open(r);
+    }
+    $("rec").addEventListener("click", () => mr ? stop() : start());
+    addEventListener("keydown", e => { if (e.target.closest("input, select, textarea, .dialog") || e.ctrlKey || e.metaKey || e.altKey) return; if (e.key.toLowerCase() === "r") { e.preventDefault(); $("rec").click(); } else if (e.key === " " && cur) { e.preventDefault(); $("play").click(); } });
+
+    // ---------- the chosen recording: waveform, selection, trim ----------
+    let audio = null, selA = 0, selB = 1, player = null, playAt = 0, raf = 0;
+    async function open(r) {
+      stopPlay(); cur = r; drawList(); $("edit").hidden = false; $("eName").textContent = r.name;
+      try { audio = await ctx().decodeAudioData(await r.blob.arrayBuffer()); } catch (e) { audio = null; toast("Couldn't read that recording.", true); return; }
+      selA = 0; selB = 1; drawWave();
+    }
+    function drawWave(pos) {
+      const cv = $("wave"), d = Math.min(2, devicePixelRatio || 1), w = cv.clientWidth * d, h = cv.clientHeight * d; cv.width = w; cv.height = h;
+      const g = cv.getContext("2d"), col = getComputedStyle(document.documentElement).getPropertyValue("--ball").trim() || "#3ff2ff";
+      g.fillStyle = "#000"; g.fillRect(0, 0, w, h); if (!audio) return;
+      const data = audio.getChannelData(0), step = Math.max(1, Math.floor(data.length / w));
+      g.fillStyle = "rgba(255,255,255,.06)"; g.fillRect(selA * w, 0, (selB - selA) * w, h);
+      for (let x = 0; x < w; x++) { let lo = 1, hi = -1; for (let i = x * step, e = Math.min(data.length, i + step); i < e; i += 4) { const v = data[i]; if (v < lo) lo = v; if (v > hi) hi = v; } const inSel = x >= selA * w && x <= selB * w; g.fillStyle = inSel ? col : "#5e5775"; g.fillRect(x, (1 - hi) * h / 2, 1, Math.max(1, (hi - lo) * h / 2)); }
+      g.fillStyle = col; g.fillRect(selA * w - 1, 0, 2, h); g.fillRect(selB * w - 1, 0, 2, h);
+      if (pos != null) { g.fillStyle = "#fff"; g.fillRect(pos * w, 0, 1.5, h); }
+      $("eSel").textContent = `${fmt(selA * audio.duration)} → ${fmt(selB * audio.duration)} · ${fmt((selB - selA) * audio.duration)}`;
+    }
+    addEventListener("resize", () => drawWave());
+    $("wave").addEventListener("pointerdown", e => {
+      if (!audio) return; const r = $("wave").getBoundingClientRect(), at = x => Math.max(0, Math.min(1, (x - r.left) / r.width));
+      const x0 = at(e.clientX), near = Math.abs(x0 - selA) < 0.02 ? "a" : Math.abs(x0 - selB) < 0.02 ? "b" : null;
+      $("wave").setPointerCapture(e.pointerId);
+      const mv = ev => { const x = at(ev.clientX); if (near === "a") selA = Math.min(x, selB - 0.005); else if (near === "b") selB = Math.max(x, selA + 0.005); else { selA = Math.min(x0, x); selB = Math.max(x0, x, selA + 0.005); } drawWave(); };
+      const up = () => { $("wave").removeEventListener("pointermove", mv); $("wave").removeEventListener("pointerup", up); };
+      $("wave").addEventListener("pointermove", mv); $("wave").addEventListener("pointerup", up); mv(e);
+    });
+    function stopPlay() { if (player) { try { player.stop(); } catch (e) {} player = null; } cancelAnimationFrame(raf); $("play").textContent = "Play"; drawWave(); }
+    $("play").addEventListener("click", () => {
+      if (player) { stopPlay(); return; } if (!audio) return;
+      player = ctx().createBufferSource(); player.buffer = audio; player.connect(ctx().destination);
+      const from = selA * audio.duration, len = (selB - selA) * audio.duration; player.start(0, from, len); playAt = ctx().currentTime;
+      player.onended = () => { player = null; stopPlay(); }; $("play").textContent = "Stop";
+      const anim = () => { if (!player) return; drawWave(selA + (ctx().currentTime - playAt) / audio.duration); raf = requestAnimationFrame(anim); }; anim();
+    });
+    $("all").addEventListener("click", () => { selA = 0; selB = 1; drawWave(); });
+    // the chosen part as an AudioBuffer
+    function part() { const sr = audio.sampleRate, a = Math.floor(selA * audio.length), b = Math.max(a + 1, Math.floor(selB * audio.length)), out = new AudioBuffer({ length: b - a, numberOfChannels: audio.numberOfChannels, sampleRate: sr }); for (let c = 0; c < audio.numberOfChannels; c++) out.copyToChannel(audio.getChannelData(c).subarray(a, b), c); return out; }
+    $("trim").addEventListener("click", async () => {
+      if (!audio || (selA === 0 && selB === 1)) { toast("Drag across the waveform to choose the part to keep.", true); return; }
+      const buf = part(), blob = toWav(buf); cur.blob = blob; cur.duration = buf.duration; await tx("readwrite", s => s.put(cur)); await loadList(); open(cur); toast(`Trimmed to ${fmt(buf.duration)}`);
+    });
+    $("wav").addEventListener("click", async () => { if (!audio) return; const { saveAs } = await import("../../core/picker.js"); await saveAs(toWav(part()), `${cur.name}.wav`, { description: "WAV audio", accept: { "audio/wav": [".wav"] } }); });
+    async function toLibrary() {
+      const { makeLocalStore } = await import("../../core/storage.js"), { notifyLibraryChange } = await import("../../core/backup.js");
+      const s = makeLocalStore(); await s.init(); if (!s.canWrite) { toast("The library can't be changed here.", true); return null; }
+      const blob = toWav(part()), t = await s.addTrack({ blob, mime: "audio/wav", meta: { title: cur.name, artist: "Recorder", album: "Recordings", genre: "", duration: (selB - selA) * audio.duration }, analysis: null });
+      notifyLibraryChange("add"); return t;
+    }
+    $("lib").addEventListener("click", async () => { if (audio && await toLibrary()) toast(`${cur.name} is in the library (album: Recordings)`); });
+    $("chop").addEventListener("click", async () => { if (!audio || !(await toLibrary())) return; toast("Added to the library: pick it in Chop"); if (parent !== window) parent.postMessage({ neonOs: "open", app: "chop" }, location.origin); });
+    $("list").addEventListener("click", e => { const it = e.target.closest("[data-id]"); if (it) open(recs.find(r => r.id === it.dataset.id)); });
+    $("list").addEventListener("contextmenu", e => {
+      const it = e.target.closest("[data-id]"); if (!it) return; e.preventDefault(); const r = recs.find(x => x.id === it.dataset.id);
+      openMenu(null, [{ text: "Rename", run: async () => { const v = await dialog({ title: "Rename", fields: [{ label: "Name", value: r.name }], confirm: "Rename" }); if (v && v[0]) { r.name = v[0]; await tx("readwrite", s => s.put(r)); await loadList(); if (cur && cur.id === r.id) $("eName").textContent = r.name; } } },
+        "-", { text: "Delete", danger: true, run: async () => { if (!(await dialog({ title: "Delete recording", text: `${r.name} can't be got back.`, confirm: "Delete", danger: true }))) return; await tx("readwrite", s => s.delete(r.id)); if (cur && cur.id === r.id) { cur = null; audio = null; $("edit").hidden = true; } loadList(); } }], { x: e.clientX, y: e.clientY });
+    });
+    inputs(); loadList();
+  </script>
+</body>
+</html>

@@ -28,11 +28,13 @@
 "apps/pulse/index.html": "adc881c365fc",
 "apps/pulse/pulse.css": "2130eaf19bf5",
 "apps/pulse/pulse.js": "5eb1d42d8394",
-"apps/registry.js": "55490989fb9c",
+"apps/recorder/index.html": "cd8f84158be3",
+"apps/registry.js": "c52430c72e8f",
 "apps/settings/index.html": "add722108c0c",
 "apps/tape/index.html": "b22478de9062",
 "apps/tape/tape.css": "0b08cf5f7aa8",
 "apps/tape/tape.js": "ae64a6e10aa5",
+"apps/terminal/index.html": "a033ff03907c",
 "apps/video/index.html": "30ff782ead1d",
 "core/analyser.js": "98c9c57dd440",
 "core/analysis-worker.js": "49a98cea4ac6",
@@ -85,7 +87,7 @@
 "os/quick.js": "03686d7387e3",
 "os/search.js": "af8347f20e9c",
 "os/shell.css": "bd03460e4de8",
-"os/shell.js": "5da5a4b31ce7",
+"os/shell.js": "cdf80706b382",
 "os/wallpic.js": "621151d22b33",
 "os/widgets.js": "40ab3b155aef",
 "style-kit/apps.css": "1d92e00d41e4",
@@ -98,5 +100,5 @@
 "style-kit/ui.js": "21ed4e6a5302",
 "style-kit/vlist.js": "32be7a331f52"
 },
-"version": "d79e501172"
+"version": "2f69d1d732"
 }

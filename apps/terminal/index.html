@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terminal · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<style>
+  html, body { height: 100%; }
+  body { margin: 0; background: #030206; color: var(--ball); font: 20px/1.15 var(--font-lcd); text-shadow: 0 0 6px var(--ball-dim); overflow: hidden; }
+  .term { height: 100%; overflow: auto; padding: 10px 14px; box-sizing: border-box; cursor: text; background: repeating-linear-gradient(0deg, #ffffff04 0 1px, transparent 1px 3px); }
+  .out { white-space: pre-wrap; word-break: break-word; }
+  .out .dim { color: var(--ink-faint); text-shadow: none; } .out .err { color: #ff6a6a; text-shadow: 0 0 6px #ff404066; } .out .ok { color: var(--ink); text-shadow: none; }
+  .line { display: flex; gap: 8px; }
+  .prompt { white-space: nowrap; }
+  #cmd { flex: 1; background: none; border: 0; outline: none; color: inherit; font: inherit; text-shadow: inherit; caret-color: var(--ball); padding: 0; min-width: 0; }
+</style>
+</head>
+<body>
+  <div class="term" id="term"><div class="out" id="out"></div><div class="line"><span class="prompt" id="prompt">neon:~$</span><input id="cmd" autocomplete="off" spellcheck="false" aria-label="Command"></div></div>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme, setTheme, getTheme } from "../../core/theme.js";
+    import { APPS } from "../registry.js";
+    import { VERSION } from "../../core/version.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id), out = $("out"), cmd = $("cmd"), KEY = "neon-os:terminal";
+    const inOs = parent !== window, send = m => inOs && parent.postMessage(m, location.origin);
+    const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    let hist = []; try { hist = JSON.parse(localStorage.getItem(KEY) || "{}").hist || []; } catch (e) {}
+    let hi = hist.length;
+    const print = (t, cls = "") => { out.insertAdjacentHTML("beforeend", `<span class="${cls}">${esc(t)}</span>\n`); $("term").scrollTop = 1e9; };
+    const table = rows => { const w = rows[0].map((_, i) => Math.max(...rows.map(r => String(r[i]).length))); rows.forEach(r => print(r.map((c, i) => String(c).padEnd(w[i] + 2)).join("").trimEnd())); };
+    const appOf = name => { const n = (name || "").toLowerCase(); return APPS.find(a => a.id === n || a.name.toLowerCase() === n) || APPS.find(a => a.name.toLowerCase().startsWith(n) || a.id.startsWith(n)); };
+    const ask = () => new Promise(res => { const h = e => { if (e.origin === location.origin && e.data && e.data.neonOsStatus) { removeEventListener("message", h); res(e.data.neonOsStatus); } }; addEventListener("message", h); send({ neonOs: "status" }); setTimeout(() => { removeEventListener("message", h); res(null); }, 800); });
+    async function library() { const { openDb, all } = await import("../../core/backup.js"); const db = await openDb(); const tracks = await all(db, "tracks"), playlists = await all(db, "playlists"); db.close(); return { tracks, playlists }; }
+    const fmt = s => { s = Math.round(s || 0); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+    // the files side: the folders linked in Files, Amp and Photos
+    let place = null, path = []; const where = () => place ? `${place.name}${path.length ? "/" + path.join("/") : ""}` : "~";
+    async function dirHandle() { let d = place.handle; for (const p of path) d = await d.getDirectoryHandle(p); return d; }
+    const prompt = () => { $("prompt").textContent = `neon:${where()}$`; };
+
+    // a small calculator that reads + − × ÷ ^ and brackets (no eval)
+    function calc(src) {
+      const t = src.replace(/×/g, "*").replace(/÷/g, "/").match(/\d*\.?\d+(e[+-]?\d+)?|[-+*/^%()]/gi) || []; let i = 0;
+      const peek = () => t[i], next = () => t[i++];
+      const atom = () => { const x = next(); if (x === "-") return -atom(); if (x === "(") { const v = add(); next(); return v; } const v = parseFloat(x); if (isNaN(v)) throw 0; return v; };
+      const pow = () => { let v = atom(); while (peek() === "^") { next(); v = Math.pow(v, atom()); } return v; };
+      const mul = () => { let v = pow(); while ("*/%".includes(peek() || "x")) { const o = next(), r = pow(); v = o === "*" ? v * r : o === "/" ? v / r : v % r; } return v; };
+      const add = () => { let v = mul(); while (peek() === "+" || peek() === "-") { const o = next(), r = mul(); v = o === "+" ? v + r : v - r; } return v; };
+      const v = add(); if (i !== t.length) throw 0; return v;
+    }
+
+    const CMDS = {
+      help: ["List the commands", () => { table(Object.entries(CMDS).map(([k, [d]]) => [k, d])); print("Tab completes commands and app names; ↑ and ↓ go through what you've typed.", "dim"); }],
+      apps: ["Every app, and which are open", async () => { const st = await ask(), open = new Set(st ? st.apps : []); table(APPS.map(a => [a.id, a.name, open.has(a.name) ? "open" : ""])); }],
+      open: ["open <app>: open an app", a => { const app = appOf(a[0]); if (!app) return print(`No app called "${a[0] || ""}". Try apps.`, "err"); send({ neonOs: "open", app: app.id }); print(`Opening ${app.name}`, "ok"); }],
+      close: ["close <app>: close an app", a => { const app = appOf(a[0]); if (!app) return print(`No app called "${a[0] || ""}".`, "err"); send({ neonOs: "close", app: app.id }); print(`Closed ${app.name}`, "ok"); }],
+      play: ["play [song, artist, album or playlist]: play it in Amp (nothing: play or pause)", async a => {
+        if (!a.length) { send({ neonOs: "transport", act: "toggle" }); return print("Play/pause", "ok"); }
+        const q = a.join(" ").toLowerCase(), { tracks, playlists } = await library();
+        const pl = playlists.find(p => p.name.toLowerCase() === q) || playlists.find(p => p.name.toLowerCase().includes(q));
+        let ids = pl ? pl.tracks : null, what = pl ? `playlist ${pl.name}` : "";
+        if (!ids) { const hit = tracks.filter(t => [t.title, t.artist, t.album, t.genre].some(x => (x || "").toLowerCase().includes(q))); ids = hit.map(t => t.id); what = hit.length === 1 ? hit[0].title : `${hit.length} songs`; }
+        if (!ids || !ids.length) return print(`Nothing in the library matches "${a.join(" ")}".`, "err");
+        send({ neonOs: "play", ids }); print(`Playing ${what}`, "ok");
+      }],
+      pause: ["Pause the music", () => { send({ neonOs: "transport", act: "pause" }); print("Paused", "ok"); }],
+      next: ["Next song", () => { send({ neonOs: "transport", act: "next" }); print("Next", "ok"); }],
+      prev: ["Previous song", () => { send({ neonOs: "transport", act: "prev" }); print("Previous", "ok"); }],
+      np: ["What's playing", async () => { const st = await ask(); print(st && st.playing ? `${st.playing.state === "playing" ? "▶" : "❚❚"} ${st.playing.title}${st.playing.artist ? " · " + st.playing.artist : ""}` : "Nothing playing", st && st.playing ? "ok" : "dim"); }],
+      volume: ["volume [0-100]: the music volume", async a => { if (!a.length) { const st = await ask(); return print(st ? `Volume ${Math.round(st.volume * 100)}%` : "Volume: open Neon OS's desktop to set it", "ok"); } const v = Math.max(0, Math.min(100, parseFloat(a[0]))); if (isNaN(v)) return print("volume takes a number from 0 to 100", "err"); send({ neonOs: "volume", v: v / 100 }); print(`Volume ${v}%`, "ok"); }],
+      songs: ["songs [words]: songs in the library", async a => { const q = a.join(" ").toLowerCase(), { tracks } = await library(); const hit = tracks.filter(t => !q || [t.title, t.artist, t.album].some(x => (x || "").toLowerCase().includes(q))).slice(0, 50); if (!hit.length) return print("No songs match.", "dim"); table(hit.map(t => [t.title || "", t.artist || "", fmt(t.duration), t.bpm ? Math.round(t.bpm) + " BPM" : ""])); if (hit.length === 50) print("(the first 50)", "dim"); }],
+      playlists: ["Your playlists", async () => { const { playlists } = await library(); if (!playlists.length) return print("No playlists yet.", "dim"); table(playlists.map(p => [p.name, `${p.tracks.length} songs`])); }],
+      stats: ["The library in numbers", async () => { const { tracks, playlists } = await library(); const secs = tracks.reduce((s, t) => s + (t.duration || 0), 0), artists = new Set(tracks.map(t => t.artist).filter(Boolean)); table([["Songs", tracks.length], ["Artists", artists.size], ["Playlists", playlists.length], ["Hours of music", (secs / 3600).toFixed(1)], ["Linked", tracks.filter(t => t.link && !t.blob).length], ["Most played", (tracks.slice().sort((a, b) => (b.plays || 0) - (a.plays || 0))[0] || {}).title || "-"]]); }],
+      note: ["note <text>: add a note", async a => { if (!a.length) return print("note takes the text to write", "err"); const { loadNotebook, saveNotebook } = await import("../../core/notebook.js"); const nb = loadNotebook(); nb.notes.push({ id: "n" + Date.now().toString(36), text: a.join(" "), folder: "", updated: Date.now() }); saveNotebook(nb); print("Saved in Notes", "ok"); }],
+      notes: ["Your notes", async () => { const { loadNotebook, noteTitle } = await import("../../core/notebook.js"); const nb = loadNotebook(); if (!nb.notes.length) return print("No notes yet.", "dim"); nb.notes.slice().sort((a, b) => b.updated - a.updated).slice(0, 30).forEach(n => print("• " + noteTitle(n))); }],
+      alarm: ["alarm <HH:MM> [label]: set a one-off alarm", async a => { if (!/^\d{1,2}:\d\d$/.test(a[0] || "")) return print("alarm takes a time, like alarm 07:30 Wake up", "err"); const { loadClock, saveClock, uid } = await import("../../core/reminders.js"); const c = loadClock(); const [h, m] = a[0].split(":"); c.alarms.push({ id: uid(), time: `${h.padStart(2, "0")}:${m}`, label: a.slice(1).join(" "), days: [], on: true }); saveClock(c); print(`Alarm set for ${h.padStart(2, "0")}:${m}`, "ok"); }],
+      timer: ["timer <5m | 90s | 1h>: start a timer", async a => { const m = (a[0] || "").match(/^(\d+(?:\.\d+)?)(s|m|h)?$/i); if (!m) return print("timer takes a length, like timer 5m or timer 90s", "err"); const ms = +m[1] * ({ s: 1, m: 60, h: 3600 }[(m[2] || "m").toLowerCase()]) * 1000; const { loadClock, saveClock } = await import("../../core/reminders.js"); const c = loadClock(); c.timer = { label: a.slice(1).join(" "), endsAt: Date.now() + ms, left: ms, total: ms }; saveClock(c); print(`Timer: ${fmt(ms / 1000)}`, "ok"); }],
+      date: ["Today's date and the time", () => print(new Date().toLocaleString(undefined, { dateStyle: "full", timeStyle: "medium" }), "ok")],
+      cal: ["This month", async () => { const { loadCalendar, dayKey } = await import("../../core/reminders.js"); const d = new Date(), first = new Date(d.getFullYear(), d.getMonth(), 1), days = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(), has = new Set(loadCalendar().events.map(e => e.date)); print(d.toLocaleDateString(undefined, { month: "long", year: "numeric" }).padStart(20)); print("Mo Tu We Th Fr Sa Su", "dim"); let row = "   ".repeat((first.getDay() + 6) % 7); for (let i = 1; i <= days; i++) { const k = dayKey(new Date(d.getFullYear(), d.getMonth(), i)); row += (i === d.getDate() ? "[" + String(i).padStart(2) : String(i).padStart(2) + (has.has(k) ? "*" : " ")).padEnd(3); if (row.length >= 21) { print(row.trimEnd()); row = ""; } } if (row) print(row.trimEnd()); print("* has an event", "dim"); }],
+      calc: ["calc <sum>: work out a sum", a => { try { const v = calc(a.join(" ")); print(String(+v.toPrecision(12)), "ok"); } catch (e) { print("That isn't a sum I can read.", "err"); } }],
+      bpm: ["bpm <tempo>: note lengths in milliseconds", a => { const b = parseFloat(a[0]); if (!(b > 0)) return print("bpm takes a tempo, like bpm 128", "err"); const beat = 60000 / b; table([["1 bar", (beat * 4).toFixed(1) + " ms"], ["1/4", beat.toFixed(1) + " ms"], ["1/8", (beat / 2).toFixed(1) + " ms"], ["1/16", (beat / 4).toFixed(1) + " ms"], ["dotted 1/8", (beat * 0.75).toFixed(1) + " ms"], ["1/8 triplet", (beat / 3).toFixed(1) + " ms"]]); }],
+      colour: ["colour <violet | magenta | cyan | #rrggbb>: the orb colour", a => { const c = (a[0] || "").toLowerCase(); if (!/^(violet|magenta|cyan|#[0-9a-f]{6})$/.test(c)) return print("colour takes violet, magenta, cyan or a #rrggbb colour", "err"); setTheme({ ball: c }); print(`Orb colour: ${c}`, "ok"); }],
+      wallpaper: ["wallpaper <orb | haze | plain | next>", a => { const w = (a[0] || "").toLowerCase(); if (w === "next") { send({ neonOs: "wall-next" }); return print("Next picture", "ok"); } const map = { orb: "orb", haze: "fog", plain: "plain" }; if (!map[w]) return print("wallpaper takes orb, haze, plain or next", "err"); setTheme({ wall: map[w] }); print(`Wallpaper: ${w}`, "ok"); }],
+      desktop: ["desktop <1-4>: go to a desktop", a => { const n = parseInt(a[0], 10); if (!(n >= 1 && n <= 4)) return print("desktop takes a number from 1 to 4", "err"); send({ neonOs: "desk", n: n - 1 }); print(`Desktop ${n}`, "ok"); }],
+      lock: ["Lock the screen", () => send({ neonOs: "lock" })],
+      places: ["Folders you can ls and cd into", async () => { const { listPlaces } = await import("../files/fm.js"); const ps = await listPlaces(); if (!ps.length) return print("No linked folders. Link one in Files (Computer).", "dim"); ps.forEach(p => print(`${p.name}${p.from ? "  (from " + p.from + ")" : ""}`)); }],
+      cd: ["cd <folder | .. | ~>: move between linked folders", async a => {
+        const to = a.join(" "); if (!to || to === "~") { place = null; path = []; return prompt(); }
+        if (to === "..") { if (path.length) path.pop(); else place = null; return prompt(); }
+        if (!place) { const { listPlaces } = await import("../files/fm.js"); const p = (await listPlaces()).find(x => x.name.toLowerCase() === to.toLowerCase()); if (!p) return print(`No linked folder called "${to}". Try places.`, "err"); if (await p.handle.queryPermission({ mode: "read" }) !== "granted" && await p.handle.requestPermission({ mode: "read" }) !== "granted") return print("Neon OS needs permission to read that folder.", "err"); place = p; path = []; return prompt(); }
+        try { const d = await dirHandle(); let name = to; for await (const [n, h] of d.entries()) if (h.kind === "directory" && n.toLowerCase() === to.toLowerCase()) name = n; await d.getDirectoryHandle(name); path.push(name); prompt(); } catch (e) { print(`No folder called "${to}" here.`, "err"); }
+      }],
+      ls: ["What's in this folder", async () => { if (!place) return CMDS.places[1](); const d = await dirHandle(), rows = []; for await (const [n, h] of d.entries()) { if (n.startsWith(".")) continue; let size = ""; if (h.kind === "file") { try { const f = await h.getFile(); size = f.size >= 1e6 ? (f.size / 1e6).toFixed(1) + " MB" : Math.round(f.size / 1e3) + " KB"; } catch (e) {} } rows.push([h.kind === "directory" ? n + "/" : n, size]); } if (!rows.length) return print("(empty)", "dim"); table(rows.sort((x, y) => (y[0].endsWith("/") - x[0].endsWith("/")) || x[0].localeCompare(y[0]))); }],
+      cat: ["cat <file>: show a text file", async a => { if (!place) return print("cd into a folder first", "err"); try { const f = await (await (await dirHandle()).getFileHandle(a.join(" "))).getFile(); if (f.size > 200000) return print("That file is too big to show here.", "err"); print(await f.text()); } catch (e) { print(`No file called "${a.join(" ")}" here.`, "err"); } }],
+      pwd: ["Where you are", () => print(where())],
+      echo: ["echo <text>", a => print(a.join(" "))],
+      clear: ["Clear the screen", () => { out.innerHTML = ""; }],
+      about: ["About Neon OS", () => print(`Neon OS ${VERSION} · ${APPS.length} apps · ${navigator.userAgent.includes("Electron") ? "desktop app" : "in the browser"}`, "ok")],
+      history: ["What you've typed before", () => hist.slice(-30).forEach((h, i) => print(`${String(hist.length - Math.min(30, hist.length) + i + 1).padStart(4)}  ${h}`))],
+    };
+    async function run(line) {
+      print(`neon:${where()}$ ${line}`, "dim");
+      const parts = line.match(/"[^"]*"|\S+/g) || []; if (!parts.length) return;
+      const [name, ...args] = parts.map(p => p.replace(/^"|"$/g, ""));
+      const c = CMDS[name.toLowerCase()];
+      if (!c) { const app = appOf(name); if (app && !args.length) { send({ neonOs: "open", app: app.id }); return print(`Opening ${app.name}`, "ok"); } return print(`Unknown command "${name}". Type help.`, "err"); }
+      try { await c[1](args); } catch (e) { print("That didn't work: " + (e && e.message || e), "err"); }
+    }
+    cmd.addEventListener("keydown", e => {
+      if (e.key === "Enter") { const v = cmd.value; cmd.value = ""; if (v.trim()) { hist.push(v); hist = hist.slice(-200); hi = hist.length; try { localStorage.setItem(KEY, JSON.stringify({ hist })); } catch (err) {} } run(v.trim()); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); if (hi > 0) cmd.value = hist[--hi]; }
+      else if (e.key === "ArrowDown") { e.preventDefault(); if (hi < hist.length - 1) cmd.value = hist[++hi]; else { hi = hist.length; cmd.value = ""; } }
+      else if (e.key === "Tab") {
+        e.preventDefault(); const v = cmd.value, sp = v.lastIndexOf(" "), word = v.slice(sp + 1).toLowerCase();
+        const pool = sp < 0 ? Object.keys(CMDS) : (/^(open|close)\s/i.test(v) ? APPS.map(a => a.id) : []);
+        const m = pool.filter(x => x.startsWith(word)); if (m.length === 1) cmd.value = v.slice(0, sp + 1) + m[0] + " "; else if (m.length > 1) print(m.join("  "), "dim");
+      }
+      else if (e.key === "l" && e.ctrlKey) { e.preventDefault(); out.innerHTML = ""; }
+    });
+    $("term").addEventListener("mouseup", () => { if (!getSelection().toString()) cmd.focus(); });
+    print(`Neon OS ${VERSION} terminal. Type help for the commands.`, "dim"); prompt(); cmd.focus();
+  </script>
+</body>
+</html>

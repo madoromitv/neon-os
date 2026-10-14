@@ -518,6 +518,12 @@ addEventListener("message", async e => {
   if (d.neonOs === "welcome") { showWelcome(); return; }
   if (d.neonOs === "lock") { doAction("lock"); return; }
   if (d.neonOs === "wall-next") { wallPic.next(); return; }
+  // the Terminal (and other apps) can ask for these
+  if (d.neonOs === "close" && appById(d.app)) { closeApp(d.app); return; }
+  if (d.neonOs === "transport" && ["toggle", "next", "prev", "pause", "stop"].includes(d.act)) { transport(d.act); return; }
+  if (d.neonOs === "desk" && Number.isInteger(d.n)) { if (d.n >= desks.n && desks.n < DESK_MAX) addDesk(); else goDesk(d.n); return; }
+  if (d.neonOs === "volume" && typeof d.v === "number") { musicVol = clamp(d.v, 0, 1); dispatchEvent(new CustomEvent("neonos:volume", { detail: musicVol })); renderVolIcon(); return; }
+  if (d.neonOs === "status") { e.source.postMessage({ neonOsStatus: { apps: taskList().map(t => t.name), desk: desks.cur + 1, desks: desks.n, playing: nowPlaying && mounted.has("amp") && !closed.has("amp") ? { title: nowPlaying.title, artist: nowPlaying.artist, state: nowPlaying.state } : null, volume: musicVol } }, location.origin); return; }
   if (d.neonOs === "open-files" && Array.isArray(d.files)) { openFiles(d.files); return; } // Files opening songs or videos
   if (d.neonOs === "open-url" && typeof d.url === "string") { await openApp("browser"); sendTo("browser", { neonOsBrowserOpen: d.url }); return; }
   if (d.neonOs === "pause-music") { if (mounted.has("amp") && !closed.has("amp")) dispatchEvent(new CustomEvent("neonos:transport", { detail: "pause" })); return; }
