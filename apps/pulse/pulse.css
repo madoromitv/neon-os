@@ -34,3 +34,7 @@ body { padding: 10px; display: flex; flex-direction: column; gap: 10px; min-heig
 .heads span.b { color: var(--ink-dim); }
 .heads span.now { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
 .hint { margin: 0; color: var(--ink-faint); font-size: 11.5px; }
+
+.chain { width: 160px; background: #000; color: var(--ball); font: 18px/1 var(--font-lcd); letter-spacing: 3px; text-transform: uppercase; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; padding: 3px 8px; outline: none; }
+.chain:focus { box-shadow: 0 0 0 1px var(--ball); }
+.name.smp::after { content: " ●"; color: var(--ball); font-size: 9px; vertical-align: middle; }

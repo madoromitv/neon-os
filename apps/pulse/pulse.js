@@ -3,7 +3,8 @@
 // and export of four bars to a WAV file. Everything saves in this browser as you go.
 import "../../core/os-link.js";
 import { applyTheme, onTheme } from "../../core/theme.js";
-import { VOICES, play as hit } from "../../core/drums.js";
+import { VOICES, play as hit, loadSamples, sampleList, setSample, clearSample } from "../../core/drums.js";
+import { openMenu } from "../../style-kit/ui.js";
 import { clock } from "../../core/clock.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, dialog } from "../../style-kit/ui.js";
@@ -33,6 +34,10 @@ S.fx = fxOf(S);
 let saveT = null;
 const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }, 200); };
 const pat = () => S.patterns[S.cur];
+// the chain: letters A–D, one bar each, played in order and round again
+const chainOf = () => (S.chain || "").toUpperCase().replace(/[^ABCD]/g, "").split("");
+const chainLive = () => S.chainOn && chainOf().length > 0;
+const patAt = bar => chainLive() ? S.patterns[chainOf()[((bar % chainOf().length) + chainOf().length) % chainOf().length]] : pat();
 
 // ---------- audio ----------
 let ctx = null, master = null, buses = [], fx = null;
@@ -42,6 +47,7 @@ function ensureAudio() {
     master = ctx.createGain(); master.gain.value = S.master;
     fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); master.connect(fx.input); fx.output.connect(ctx.destination);
     buses = VOICES.map((_, i) => { const g = ctx.createGain(); g.gain.value = S.mute[i] ? 0 : S.vol[i]; g.connect(master); return g; });
+    loadSamples(ctx);
   }
   if (ctx.state !== "running") ctx.resume().catch(() => {});
   return ctx;
@@ -58,7 +64,8 @@ function schedule() {
   if (fx) fx.setBpm(S.bpm);
   while (nextTime < ctx.currentTime + 0.12) {
     if (following()) { const c = clock.state, ms = 60000 / c.bpm / 4; nextTime = clock.toAudio(ctx, c.origin + absStep * ms); } // locked to the shared clock, no drift
-    const t = stepTime(nextTime, nextStep), p = pat();
+    const t = stepTime(nextTime, nextStep), p = patAt(Math.floor(absStep / STEPS));
+    if (nextStep === 0) queue.push({ bar: Math.floor(absStep / STEPS), time: t });
     VOICES.forEach((v, i) => { const s = p[i][nextStep]; if (s) hit(ctx, buses[i], v.id, t, s === 2 ? 1 : 0.62); });
     queue.push({ step: nextStep, time: t });
     nextTime += stepDur(); nextStep = (nextStep + 1) % STEPS; absStep++;
@@ -134,8 +141,8 @@ function draw() {
   if (fx) panel.meter(fx.reduction);
   if (!playing) return;
   const now = ctx.currentTime - (ctx.outputLatency || 0);
-  while (queue.length > 1 && queue[1].time <= now) queue.shift();
-  if (queue.length && queue[0].time <= now) showNow(queue[0].step);
+  while (queue.length > 1 && queue[1].time <= now) { const q = queue.shift(); if (q.bar != null && chainLive()) { const c = chainOf(); $("patLcd").textContent = c[q.bar % c.length]; } }
+  if (queue.length && queue[0].time <= now && queue[0].step != null) showNow(queue[0].step);
   requestAnimationFrame(draw);
 }
 
@@ -180,12 +187,12 @@ $("wav").addEventListener("click", async () => {
   const target = await saveTarget(`pulse-${S.cur}-${Math.round(S.bpm)}bpm.wav`, { description: "WAV audio", accept: { "audio/wav": [".wav"] } }); if (!target) return; // Save as, before rendering
   const btn = $("wav"); btn.disabled = true; btn.textContent = "Rendering…";
   try {
-    const SR = 44100, bars = 4, len = bars * STEPS * stepDur() + 1.2 + (S.fx.reverb ? 1 + S.fx.size * 4.5 : 0) + (S.fx.delay ? 3 : 0);
+    const SR = 44100, bars = chainLive() ? chainOf().length : 4, len = bars * STEPS * stepDur() + 1.2 + (S.fx.reverb ? 1 + S.fx.size * 4.5 : 0) + (S.fx.delay ? 3 : 0);
     const off = new OfflineAudioContext(2, Math.ceil(len * SR), SR), m = off.createGain(); m.gain.value = S.master;
     const ofx = createFx(off, { bpm: S.bpm, params: S.fx }); m.connect(ofx.input); ofx.output.connect(off.destination);
     const bs = VOICES.map((_, i) => { const g = off.createGain(); g.gain.value = S.mute[i] ? 0 : S.vol[i]; g.connect(m); return g; });
-    const p = pat();
-    for (let n = 0; n < bars * STEPS; n++) { const s = n % STEPS, t = stepTime(0.02 + n * stepDur(), s); VOICES.forEach((v, i) => { if (p[i][s]) hit(off, bs[i], v.id, t, p[i][s] === 2 ? 1 : 0.62); }); }
+    await loadSamples(off);
+    for (let n = 0; n < bars * STEPS; n++) { const s = n % STEPS, p = patAt(Math.floor(n / STEPS)), t = stepTime(0.02 + n * stepDur(), s); VOICES.forEach((v, i) => { if (p[i][s]) hit(off, bs[i], v.id, t, p[i][s] === 2 ? 1 : 0.62); }); }
     await target.write(toWav(await off.startRendering()));
     if (!notify("Pattern saved", `${target.picked ? `Saved as ${target.name}.` : `${target.name} is in your downloads folder.`}`, "pulse")) toast(`Saved ${target.name}`);
   } catch (e) { toast("Couldn't render the WAV. Try again.", true); }
@@ -197,5 +204,41 @@ $("reset").addEventListener("click", async () => {
   if (!ok) return;
   stopLocal(); try { localStorage.removeItem(KEY); } catch (e) {} clearTimeout(saveT); location.reload();
 });
-build(); renderTransport();
+// ---------- the chain ----------
+$("chain").value = S.chain || "";
+const syncChain = () => { $("chainOn").setAttribute("aria-pressed", String(!!S.chainOn)); const c = chainOf(); $("chainHint").textContent = c.length ? `${c.length} bar${c.length === 1 ? "" : "s"}: ${c.join(" ")}` : "Bars in order, one letter each"; if (!chainLive()) $("patLcd").textContent = S.cur; };
+$("chain").addEventListener("input", () => { S.chain = $("chain").value.toUpperCase().replace(/[^ABCD]/g, ""); $("chain").value = S.chain; syncChain(); save(); });
+$("chainOn").addEventListener("click", () => { S.chainOn = !S.chainOn; if (S.chainOn && !chainOf().length) { toast("Type a chain first, like AABA", true); S.chainOn = false; } syncChain(); save(); });
+syncChain();
+
+// ---------- MIDI: the beat (four bars, or the chain) as a General MIDI drum track ----------
+const GM = { kick: 36, snare: 38, clap: 39, chh: 42, ohh: 46, tom: 45, rim: 37, bell: 56 };
+function midiFile() {
+  const PPQ = 96, tick16 = PPQ / 4, bars = chainLive() ? chainOf().length : 4, ev = [];
+  for (let n = 0; n < bars * STEPS; n++) {
+    const s = n % STEPS, p = patAt(Math.floor(n / STEPS)), at = Math.round(n * tick16 + (s % 2 ? S.swing * tick16 * 0.5 : 0));
+    VOICES.forEach((v, i) => { const x = p[i][s]; if (x && !S.mute[i]) { const vel = Math.round((x === 2 ? 118 : 82) * Math.max(0.2, S.vol[i])); ev.push([at, 0x99, GM[v.id], Math.min(127, vel)], [at + tick16 - 2, 0x89, GM[v.id], 0]); } });
+  }
+  ev.sort((a, b) => a[0] - b[0] || (a[1] === 0x89 ? -1 : 1));
+  const vlq = n => { const b = [n & 0x7f]; while ((n >>= 7)) b.unshift((n & 0x7f) | 0x80); return b; };
+  const us = Math.round(60e6 / S.bpm), data = [0, 0xff, 0x51, 3, (us >> 16) & 255, (us >> 8) & 255, us & 255, 0, 0xff, 0x58, 4, 4, 2, 24, 8];
+  let last = 0; for (const [t, st, note, vel] of ev) { data.push(...vlq(t - last), st, note, vel); last = t; }
+  data.push(...vlq(Math.max(0, bars * STEPS * tick16 - last)), 0xff, 0x2f, 0);
+  const head = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1, PPQ >> 8, PPQ & 255], trk = [0x4d, 0x54, 0x72, 0x6b, (data.length >>> 24) & 255, (data.length >>> 16) & 255, (data.length >>> 8) & 255, data.length & 255];
+  return new Blob([new Uint8Array([...head, ...trk, ...data])], { type: "audio/midi" });
+}
+$("midi").addEventListener("click", async () => {
+  const name = `pulse-${chainLive() ? "chain" : S.cur}-${Math.round(S.bpm)}bpm.mid`, t = await saveTarget(name, { description: "MIDI file", accept: { "audio/midi": [".mid"] } }); if (!t) return;
+  await t.write(midiFile()); if (!notify("MIDI saved", `${t.picked ? `Saved as ${t.name}.` : `${t.name} is in your downloads folder.`} Drums are on channel 10.`, "pulse")) toast(`Saved ${t.name}`);
+});
+
+// ---------- your own samples: right-click a drum's name ----------
+async function markSamples() { const list = await sampleList().catch(() => ({})); grid.querySelectorAll("[data-audition]").forEach(n => { const v = VOICES[+n.dataset.audition], smp = list[v.id]; n.classList.toggle("smp", !!smp); n.title = smp ? `${v.name}: your sample ${smp.name}. Right-click to change` : `Play ${v.name}. Right-click to use your own sample`; }); }
+grid.addEventListener("contextmenu", async e => {
+  const nm = e.target.closest("[data-audition]"); if (!nm) return; e.preventDefault();
+  const v = VOICES[+nm.dataset.audition], list = await sampleList().catch(() => ({}));
+  const pick = () => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = "audio/*"; inp.onchange = async () => { const f = inp.files[0]; if (!f) return; if (f.size > 8e6) { toast("Pick a short sound (under 8 MB).", true); return; } await setSample(v.id, f.name, f); if (ctx) await loadSamples(ctx); markSamples(); toast(`${v.name} now plays ${f.name}`); }; inp.click(); };
+  openMenu(null, [{ text: `Use a sample for ${v.name}…`, run: pick }, ...(list[v.id] ? [{ text: `Back to the built-in ${v.name}`, run: async () => { await clearSample(v.id); if (ctx) await loadSamples(ctx); markSamples(); } }] : []), { note: "Tape and exports use it too." }], { x: e.clientX, y: e.clientY });
+});
+build(); renderTransport(); markSamples();
 const panel = fxPanel($("fx"), S.fx, (p, done) => { if (fx) fx.set(p); if (done) save(); });

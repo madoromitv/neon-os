@@ -11,6 +11,7 @@ import { openDb, all } from "../../core/backup.js";
 import { fileOf } from "../../core/linked.js";
 import { LANES, readRack, patternMarks, createRack } from "../../core/rack.js";
 import { createFx, fxOf } from "../../core/fx.js";
+import { loadSamples } from "../../core/drums.js";
 import { fxPanel } from "../../style-kit/fx-panel.js";
 applyTheme(); onTheme(applyTheme);
 
@@ -64,6 +65,7 @@ function ensureAudio() {
     fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); master.connect(fx.input); fx.output.connect(ctx.destination);
   }
   if (ctx.state !== "running") ctx.resume().catch(() => {});
+  if (!ctx.samplesLoaded) { ctx.samplesLoaded = true; loadSamples(ctx); }
   return ctx;
 }
 function laneGains(e, c) { for (const l of LANES) e.lane[l.id].gain.setValueAtTime(S.lmute[l.id] ? 0 : S.lvol[l.id], c.currentTime); }
@@ -221,6 +223,7 @@ $("wav").addEventListener("click", async () => {
     const SR = 44100, len = n * barDur() + 2.5 + 5.5; // room for echoes and reverb to fade
     const off = new OfflineAudioContext(2, Math.ceil(len * SR), SR), m = off.createGain(); m.gain.value = S.vol;
     const ofx = createFx(off, { bpm: S.bpm, params: S.fx }); m.connect(ofx.input); ofx.output.connect(off.destination);
+    await loadSamples(off); // Pulse's own samples, if any
     const e = createRack(off, m, rack, chopSong, S.bpm); e.setChop(chopSong, S.bpm); laneGains(e, off);
     for (let a = 0; a < n * STEPS; a++) e.step(cellsAt(Math.floor(a / STEPS)), a % STEPS, 0.05 + a * stepDur(), stepDur());
     await target.write(toWav(await off.startRendering()));

@@ -36,7 +36,23 @@ function noise(ctx, out, t, ftype, freq, q, level, decay, offset = 0) {
   s.start(t, offset); s.stop(t + decay + 0.05);
 }
 
+// your own sounds: a sample can stand in for any drum (Pulse: right-click a drum's name). They're kept in their own
+// small IndexedDB and decoded once per audio context; loadSamples(ctx) before playing or rendering uses them.
+const SDB = "neon-os-pulse-samples";
+const sdb = () => new Promise((res, rej) => { const r = indexedDB.open(SDB, 1); r.onupgradeneeded = () => r.result.createObjectStore("s"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+async function stx(mode, fn) { const db = await sdb(); try { return await new Promise((res, rej) => { const t = db.transaction("s", mode), q = fn(t.objectStore("s")); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); } finally { db.close(); } }
+export const sampleList = async () => { const out = {}; const db = await sdb(); try { await new Promise(res => { const t = db.transaction("s"), c = t.objectStore("s").openCursor(); c.onsuccess = () => { const k = c.result; if (k) { out[k.key] = k.value; k.continue(); } }; t.oncomplete = res; t.onerror = res; }); } finally { db.close(); } return out; };
+export const setSample = (id, name, blob) => stx("readwrite", s => s.put({ name, blob }, id));
+export const clearSample = id => stx("readwrite", s => s.delete(id));
+const loaded = new WeakMap(); // ctx → Map(id → AudioBuffer)
+export async function loadSamples(ctx) {
+  const m = new Map(), list = await sampleList().catch(() => ({}));
+  for (const [id, v] of Object.entries(list)) { try { m.set(id, await ctx.decodeAudioData(await v.blob.arrayBuffer())); } catch (e) {} }
+  loaded.set(ctx, m); return m;
+}
 export function play(ctx, out, id, t, level = 1) {
+  const smp = loaded.get(ctx) && loaded.get(ctx).get(id);
+  if (smp) { const s = ctx.createBufferSource(), g = ctx.createGain(); s.buffer = smp; g.gain.value = level; s.connect(g); g.connect(out); s.start(t); return; }
   const L = level;
   switch (id) {
     case "kick": osc(ctx, out, t, "sine", 160, 42, 0.11, 0.95 * L, 0.42); noise(ctx, out, t, "highpass", 3000, 0.7, 0.18 * L, 0.012); break;

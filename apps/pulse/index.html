@@ -32,12 +32,19 @@
       <button class="btn" id="copy" title="Copy this pattern to the next slot">Copy to next</button>
       <button class="btn" id="clear">Clear</button>
       <button class="btn" id="reset" title="Back to the starting beat and default settings">Reset</button>
-      <button class="btn" id="wav" title="Save 4 bars of this pattern as a WAV file">Export WAV</button>
+      <button class="btn" id="wav" title="Save 4 bars of this pattern (or the whole chain) as a WAV file">Export WAV</button>
+      <button class="btn" id="midi" title="Save the beat as a MIDI file for another music app">Export MIDI</button>
+    </div>
+    <div class="tools">
+      <span class="lbl">Chain</span>
+      <input type="text" id="chain" class="chain" maxlength="64" placeholder="e.g. AABA" aria-label="Pattern chain: letters A to D, played one bar each" spellcheck="false">
+      <button class="btn" id="chainOn" aria-pressed="false" title="Play the chain instead of one pattern"><i class="led"></i>Play chain</button>
+      <span class="hint" id="chainHint">Bars in order, one letter each</span>
     </div>
     <div id="fx" aria-label="Effects"></div>
   </header>
   <div class="grid" id="grid" role="grid" aria-label="Step sequencer"></div>
-  <p class="hint">Click a step to turn it on, again for an accent, again to turn it off. Space plays and stops.</p>
+  <p class="hint">Click a step to turn it on, again for an accent, again to turn it off. Space plays and stops. Right-click a drum's name to use your own sample.</p>
   <script type="module" src="pulse.js"></script>
 </body>
 </html>

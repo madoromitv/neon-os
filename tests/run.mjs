@@ -195,6 +195,20 @@ const tests = {
     check(!(await p.$(".dicon.sel")), "clicking the empty desktop clears the selection");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "Pulse: chains, MIDI and your own samples"() {
+    const p = await page(); await p.goto(URL + "apps/pulse/"); await p.waitForTimeout(600);
+    await p.fill("#chain", "aab-x"); check((await p.$eval("#chain", e => e.value)) === "AAB", "the chain keeps only pattern letters");
+    await p.click("#chainOn"); check(/3 bars/.test(await p.$eval("#chainHint", e => e.textContent)), "Play chain is on with 3 bars");
+    const dl = p.waitForEvent("download"); await p.click("#midi"); const d = await dl, buf = fs.readFileSync(await d.path());
+    const notes = [...buf.subarray(22)].reduce((n, b, i, a) => n + (b === 0x99 && a[i + 2] > 0 ? 1 : 0), 0);
+    check(buf.subarray(0, 4).toString() === "MThd" && buf.subarray(14, 18).toString() === "MTrk" && /chain/.test(d.suggestedFilename()) && notes >= 20, `Export MIDI saves a drum track (${notes} hits)`);
+    await p.evaluate(async () => { const c = new OfflineAudioContext(1, 4410, 44100), o = c.createOscillator(); o.connect(c.destination); o.start(); const b = await c.startRendering(); const { toWav } = await import("/core/wav.js"); const { setSample } = await import("/core/drums.js"); await setSample("kick", "boom.wav", toWav(b)); });
+    await p.reload(); await p.waitForTimeout(700);
+    check(await p.$eval('[data-audition="0"]', e => e.classList.contains("smp") && /boom\.wav/.test(e.title)), "a drum can play your own sample");
+    const dl2 = p.waitForEvent("download"); await p.click("#wav"); const w = await (await dl2).path();
+    check(fs.statSync(w).size > 44100 * 4, "the WAV export still renders (with the sample)");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "Radio and podcasts"() {
     const p = await page();
     const song = fs.readFileSync(FX + "song.wav");

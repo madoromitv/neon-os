@@ -25,16 +25,16 @@
 "apps/notes/index.html": "20c96e465472",
 "apps/photos/editor.js": "c20e758d2556",
 "apps/photos/index.html": "cfdd8ce3dfe2",
-"apps/pulse/index.html": "adc881c365fc",
-"apps/pulse/pulse.css": "2130eaf19bf5",
-"apps/pulse/pulse.js": "5eb1d42d8394",
+"apps/pulse/index.html": "569a3e418b45",
+"apps/pulse/pulse.css": "3fc19df5e158",
+"apps/pulse/pulse.js": "6e2c6d30e9fd",
 "apps/radio/index.html": "4c3f4b34ab95",
 "apps/recorder/index.html": "cd8f84158be3",
 "apps/registry.js": "c340db9da3f2",
 "apps/settings/index.html": "add722108c0c",
 "apps/tape/index.html": "b22478de9062",
 "apps/tape/tape.css": "0b08cf5f7aa8",
-"apps/tape/tape.js": "ae64a6e10aa5",
+"apps/tape/tape.js": "85b1928be64d",
 "apps/terminal/index.html": "a033ff03907c",
 "apps/video/index.html": "30ff782ead1d",
 "core/analyser.js": "98c9c57dd440",
@@ -46,7 +46,7 @@
 "core/clock.js": "4708943ac952",
 "core/desk.js": "86176df7f1cc",
 "core/details.js": "b2ab69d24aa1",
-"core/drums.js": "a52ede61b82d",
+"core/drums.js": "478055057256",
 "core/engine.js": "e93c1c1a5397",
 "core/fx.js": "d8f023c4b85e",
 "core/glow.js": "d147d410736b",
@@ -101,5 +101,5 @@
 "style-kit/ui.js": "21ed4e6a5302",
 "style-kit/vlist.js": "32be7a331f52"
 },
-"version": "db076f94fd"
+"version": "7d68af0d61"
 }
