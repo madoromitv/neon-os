@@ -33,7 +33,12 @@ function ensure() {
       d.mid = ctx.createBiquadFilter(); d.mid.type = "peaking"; d.mid.frequency.value = 1000; d.mid.Q.value = 0.8;
       d.hi = ctx.createBiquadFilter(); d.hi.type = "highshelf"; d.hi.frequency.value = 4000;
       d.fader = ctx.createGain(); d.xf = ctx.createGain(); d.an = ctx.createAnalyser(); d.an.fftSize = 256;
-      d.low.connect(d.mid); d.mid.connect(d.hi); d.hi.connect(d.fader); d.fader.connect(d.xf); d.xf.connect(master); d.fader.connect(d.an);
+      // the deck's effects: one filter (low-pass one way, high-pass the other) and an echo in time with the deck
+      d.lpf = ctx.createBiquadFilter(); d.lpf.type = "lowpass"; d.lpf.frequency.value = 20000; d.lpf.Q.value = 0.9;
+      d.hpf = ctx.createBiquadFilter(); d.hpf.type = "highpass"; d.hpf.frequency.value = 10; d.hpf.Q.value = 0.9;
+      d.send = ctx.createGain(); d.send.gain.value = 0; d.delay = ctx.createDelay(4); d.fb = ctx.createGain(); d.fb.gain.value = 0.45;
+      d.low.connect(d.mid); d.mid.connect(d.hi); d.hi.connect(d.lpf); d.lpf.connect(d.hpf); d.hpf.connect(d.fader);
+      d.hpf.connect(d.send); d.send.connect(d.delay); d.delay.connect(d.fb); d.fb.connect(d.delay); d.delay.connect(d.fader); d.fader.connect(d.xf); d.xf.connect(master); d.fader.connect(d.an);
       d.meterBuf = new Uint8Array(d.an.fftSize);
     }
     applyMix();
@@ -43,9 +48,9 @@ function ensure() {
 }
 // the mixer, the songs on each deck and their pitch are remembered between visits (saved as you go)
 const DKEY = "neon-os:decks";
-const mix = { xfade: 0.5, master: 0.85, fader: { A: 0.85, B: 0.85 }, eq: { "A-hi": 0, "A-mid": 0, "A-low": 0, "B-hi": 0, "B-mid": 0, "B-low": 0 } };
+const mix = { xfade: 0.5, master: 0.85, fader: { A: 0.85, B: 0.85 }, eq: { "A-hi": 0, "A-mid": 0, "A-low": 0, "B-hi": 0, "B-mid": 0, "B-low": 0 }, filter: { A: 0, B: 0 }, echo: { A: false, B: false }, echoBeats: { A: 0.5, B: 0.5 } };
 let saved = {}; try { saved = JSON.parse(localStorage.getItem(DKEY) || "{}") || {}; } catch (e) {}
-if (saved.mix) { Object.assign(mix, saved.mix, { fader: { ...mix.fader, ...(saved.mix.fader || {}) }, eq: { ...mix.eq, ...(saved.mix.eq || {}) } }); }
+if (saved.mix) { Object.assign(mix, saved.mix, { fader: { ...mix.fader, ...(saved.mix.fader || {}) }, eq: { ...mix.eq, ...(saved.mix.eq || {}) }, filter: { ...mix.filter, ...(saved.mix.filter || {}) }, echo: { ...mix.echo, ...(saved.mix.echo || {}) }, echoBeats: { ...mix.echoBeats, ...(saved.mix.echoBeats || {}) } }); }
 let saveT = null;
 function saveDecks(now) {
   clearTimeout(saveT);
@@ -62,8 +67,21 @@ function applyMix() {
   for (const k of ["A", "B"]) {
     D[k].fader.gain.setTargetAtTime(mix.fader[k] * mix.fader[k], t, 0.01);
     D[k].hi.gain.setTargetAtTime(mix.eq[k + "-hi"], t, 0.01); D[k].mid.gain.setTargetAtTime(mix.eq[k + "-mid"], t, 0.01); D[k].low.gain.setTargetAtTime(mix.eq[k + "-low"], t, 0.01);
+    applyFx(k);
   }
 }
+
+// the filter knob: left of centre closes a low-pass (darker), right opens a high-pass (thinner), centre is off
+function applyFx(k) {
+  if (!ctx || !D[k].lpf) return;
+  const d = D[k], f = mix.filter[k], t = ctx.currentTime;
+  d.lpf.frequency.setTargetAtTime(f < 0 ? 20000 * Math.pow(150 / 20000, -f) : 20000, t, 0.02);
+  d.hpf.frequency.setTargetAtTime(f > 0 ? 10 * Math.pow(6000 / 10, f) : 10, t, 0.02);
+  const bpm = (d.track && d.track.bpm ? d.track.bpm : 120) * (d.rate || 1);
+  d.delay.delayTime.setTargetAtTime(Math.min(4, 60 / bpm * mix.echoBeats[k]), t, 0.02);
+  d.send.gain.setTargetAtTime(mix.echo[k] ? 0.55 : 0, t, 0.02);
+}
+const filterTxt = f => Math.abs(f) < 0.02 ? "OFF" : `${f < 0 ? "LP" : "HP"} ${Math.round(Math.abs(f) * 100)}%`;
 
 // ---------- decks ----------
 function buildDeck(k) {
@@ -115,7 +133,7 @@ function pause(d) { d.pos = position(d); stopSrc(d); d.playing = false; renderDe
 function seek(d, t) { t = Math.max(0, Math.min(t, d.buf.duration - 0.05)); if (d.loop && (t < d.loop.start || t > d.loop.end)) d.loop = null, renderDeck(d); if (d.playing) { d.pos = t; play(d); } else d.pos = t; drawWave(d); saveDecks(); }
 function setRate(d, r) {
   if (d.playing) { d.startPos = position(d); d.startCtx = ctx.currentTime; }
-  d.rate = r; if (d.src) d.src.playbackRate.setTargetAtTime(r, ctx.currentTime, 0.01);
+  d.rate = r; if (d.src) d.src.playbackRate.setTargetAtTime(r, ctx.currentTime, 0.01); applyFx(d.k); // the echo stays in time
   renderDeck(d); saveDecks();
 }
 // beat times in the song, from Amp's analysis
@@ -149,6 +167,7 @@ async function load(k, t, restore = null) {
     const buf = await ctx.decodeAudioData(await (await fileOf(t, !restore)).arrayBuffer());
     const an = t.analysis || {}, off = typeof an.offset === "number" ? an.offset : 1024 / 22050;
     Object.assign(d, { track: t, buf, pos: 0, cue: 0, loop: null, rate: 1, beats: (an.beats || []).map(b => b + off), peaks: peaksFrom(an, off) });
+    applyFx(k);
     d.pitch.set(0); renderDeck(d); drawWave(d);
     if (restore) { d.pitch.set(restore.pitch || 0); setRate(d, 1 + (restore.pitch || 0)); d.pos = Math.min(restore.pos || 0, buf.duration - 1); d.cue = d.pos; renderDeck(d); drawWave(d); }
     saveDecks();
@@ -203,6 +222,9 @@ const eqTxt = v => v === 0 ? "0" : `${v > 0 ? "+" : ""}${v}`, xfTxt = v => v < 0
 document.querySelectorAll("[data-eqv]").forEach(el => { el.textContent = eqTxt(mix.eq[el.dataset.eqv]); });
 document.querySelectorAll("[data-fpct]").forEach(el => { el.textContent = Math.round(mix.fader[el.dataset.fpct] * 100) + "%"; });
 $("masterPct").textContent = Math.round(mix.master * 100) + "%"; $("xfPct").textContent = xfTxt(mix.xfade);
+document.querySelectorAll("[data-filter]").forEach(el => { const k = el.dataset.filter; Slider(el, { min: -1, max: 1, step: 0.01, value: mix.filter[k], label: `Deck ${k} filter (left: low-pass, right: high-pass; double-click to reset)`, text: filterTxt, onInput: v => { mix.filter[k] = Math.abs(v) < 0.03 ? 0 : v; applyFx(k); saveDecks(); document.querySelector(`[data-filterv="${k}"]`).textContent = filterTxt(mix.filter[k]); } }); document.querySelector(`[data-filterv="${k}"]`).textContent = filterTxt(mix.filter[k]); });
+document.querySelectorAll("[data-echo]").forEach(b => { const k = b.dataset.echo; b.setAttribute("aria-pressed", String(!!mix.echo[k])); b.addEventListener("click", () => { ensure(); mix.echo[k] = !mix.echo[k]; b.setAttribute("aria-pressed", String(mix.echo[k])); applyFx(k); saveDecks(); }); });
+document.querySelectorAll("[data-echob]").forEach(s => { const k = s.dataset.echob; s.value = String(mix.echoBeats[k]); s.addEventListener("change", () => { mix.echoBeats[k] = +s.value; applyFx(k); saveDecks(); }); });
 document.querySelectorAll("[data-eq]").forEach(el => { const k = el.dataset.eq; Slider(el, { min: -12, max: 12, step: 0.5, value: mix.eq[k], label: `${k} EQ (double-click to reset)`, text: v => `${v} dB`, onInput: v => { mix.eq[k] = v; applyMix(); document.querySelector(`[data-eqv="${k}"]`).textContent = v === 0 ? "0" : `${v > 0 ? "+" : ""}${v}`; } }); });
 document.querySelectorAll("[data-fader]").forEach(el => { const k = el.dataset.fader; Slider(el, { min: 0, max: 1, step: 0.01, value: mix.fader[k], orient: "v", label: `Deck ${k} volume`, text: v => Math.round(v * 100) + "%", onInput: v => { mix.fader[k] = v; applyMix(); document.querySelector(`[data-fpct="${k}"]`).textContent = Math.round(v * 100) + "%"; } }); });
 Slider($("xfade"), { min: 0, max: 1, step: 0.005, value: mix.xfade, label: "Crossfader", text: v => v < 0.48 ? `${Math.round((1 - v) * 100)}% A` : v > 0.52 ? `${Math.round(v * 100)}% B` : "Centre", onInput: v => { mix.xfade = v; applyMix(); $("xfPct").textContent = v < 0.48 ? `A ${Math.round((1 - v) * 100)}%` : v > 0.52 ? `B ${Math.round(v * 100)}%` : "C"; } });

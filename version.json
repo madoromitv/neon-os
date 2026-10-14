@@ -12,9 +12,9 @@
 "apps/chop/chop.js": "02c57c495cb5",
 "apps/chop/index.html": "75235cf7f1c6",
 "apps/clock/index.html": "9d011a3453ce",
-"apps/decks/decks.css": "fec23c722d5a",
-"apps/decks/decks.js": "91929c66b979",
-"apps/decks/index.html": "efe6efb4b5c7",
+"apps/decks/decks.css": "bf5dc00691ad",
+"apps/decks/decks.js": "3836b68cc57d",
+"apps/decks/index.html": "6d1f768a7327",
 "apps/drift/drift.css": "a4663c7e5748",
 "apps/drift/drift.js": "64bb77d961a8",
 "apps/drift/index.html": "406f78385379",
@@ -101,5 +101,5 @@
 "style-kit/ui.js": "21ed4e6a5302",
 "style-kit/vlist.js": "32be7a331f52"
 },
-"version": "7d68af0d61"
+"version": "401c7ea377"
 }

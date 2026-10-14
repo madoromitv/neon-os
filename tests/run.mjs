@@ -207,6 +207,13 @@ const tests = {
     check(await p.$eval('[data-audition="0"]', e => e.classList.contains("smp") && /boom\.wav/.test(e.title)), "a drum can play your own sample");
     const dl2 = p.waitForEvent("download"); await p.click("#wav"); const w = await (await dl2).path();
     check(fs.statSync(w).size > 44100 * 4, "the WAV export still renders (with the sample)");
+    // Decks: the filter and echo on each deck, remembered
+    await p.goto(URL + "apps/decks/"); await p.waitForTimeout(800);
+    await p.focus('[data-filter="A"]'); for (let i = 0; i < 10; i++) await p.keyboard.press("ArrowLeft");
+    check(/^LP \d+%$/.test(await p.$eval('[data-filterv="A"]', e => e.textContent)), "Decks: turning the filter left shows a low-pass amount");
+    await p.click('[data-echo="B"]'); await p.selectOption('[data-echob="B"]', "0.75"); await p.waitForTimeout(500);
+    const dm = JSON.parse(await p.evaluate(() => localStorage.getItem("neon-os:decks"))).mix;
+    check(dm.filter.A < 0 && dm.echo.B === true && dm.echoBeats.B === 0.75, "Decks: filter and echo settings are remembered");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
   async "Radio and podcasts"() {
