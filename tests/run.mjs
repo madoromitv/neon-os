@@ -195,6 +195,27 @@ const tests = {
     check(!(await p.$(".dicon.sel")), "clicking the empty desktop clears the selection");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "Radio and podcasts"() {
+    const p = await page();
+    const song = fs.readFileSync(FX + "song.wav");
+    await p.context().route(/radio-browser\.info/, r => r.fulfill({ contentType: "application/json", body: JSON.stringify([{ name: "Neon FM", url_resolved: "https://stream.example/neon", favicon: "", countrycode: "GB", codec: "MP3", bitrate: 128, tags: "electronic,synthwave" }]) }));
+    await p.context().route(/stream\.example|cdn\.example/, r => r.fulfill({ contentType: "audio/wav", body: song }));
+    await p.context().route(/itunes\.apple\.com/, r => r.fulfill({ contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify({ results: [{ collectionName: "Synth Talk", artistName: "Madoromi", feedUrl: "https://feeds.example/synth.xml" }] }) }));
+    await p.context().route(/feeds\.example/, r => r.fulfill({ contentType: "application/rss+xml", headers: { "access-control-allow-origin": "*" }, body: `<?xml version="1.0"?><rss><channel><title>Synth Talk</title><item><title>Episode 1</title><pubDate>Mon, 12 Oct 2026 10:00:00 GMT</pubDate><enclosure url="https://cdn.example/ep1.wav" type="audio/wav"/></item></channel></rss>` }));
+    await p.goto(URL + "apps/radio/"); await p.waitForTimeout(500);
+    await p.click('[data-tag="electronic"]'); await p.waitForTimeout(600);
+    check((await p.$$eval("#stations strong", e => e.map(x => x.textContent))).includes("Neon FM"), "Radio finds stations by style");
+    await p.click('#stations [data-fav="0"]'); await p.click('#stations [data-i="0"]'); await p.waitForTimeout(800);
+    check(await p.$eval("#au", a => !a.paused) && /LIVE/.test(await p.$eval("#sub", e => e.textContent)), "a station plays live");
+    await p.click('[data-tag="Favourites"]'); await p.waitForTimeout(300);
+    check((await p.$$eval("#stations strong", e => e.map(x => x.textContent))).join() === "Neon FM", "★ keeps a station in Favourites");
+    await p.click('[data-tab="pods"]'); await p.fill("#pq", "synth"); await p.click("#pgo"); await p.waitForTimeout(600);
+    await p.click('#pods [data-feed]'); await p.waitForTimeout(800);
+    check((await p.$$eval("#pods [data-ep] strong", e => e.map(x => x.textContent))).join() === "Episode 1", "a podcast's episodes load from its feed");
+    await p.click("#podSub"); await p.click('#pods [data-ep="0"]'); await p.waitForTimeout(1000);
+    check(await p.$eval("#au", a => !a.paused) && !(await p.$eval("#seekRow", e => e.hidden)) && JSON.parse(await p.evaluate(() => localStorage.getItem("neon-os:radio"))).subs.length === 1, "subscribe, and an episode plays with a seek bar");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "Terminal and Recorder"() {
     const p = await page({ permissions: ["microphone"] }); await desk(p); await amp(p, ["song.wav"]);
     await p.click("#startBtn"); await p.click('.sm-item[data-app="terminal"]'); await p.waitForTimeout(1000);

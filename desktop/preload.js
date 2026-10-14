@@ -14,4 +14,5 @@ contextBridge.exposeInMainWorld("neonOsDesktop", {
   frameGo: (name, n) => ipcRenderer.invoke("frame-go", name, n),
   onOpenUrl: fn => ipcRenderer.on("open-url", (e, url) => fn(url)),
   openExternal: url => ipcRenderer.invoke("open-external", url),
+  fetchText: url => ipcRenderer.invoke("fetch-text", url),
 });

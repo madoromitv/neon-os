@@ -112,3 +112,9 @@ ipcMain.handle("frame-go", async (e, name, n) => {
   try { await f.executeJavaScript(`history.go(${n === -1 ? -1 : 1})`); return true; } catch (err) { return false; }
 });
 ipcMain.handle("open-external", (e, url) => { if (/^https?:/.test(url)) shell.openExternal(url); });
+// Radio and podcasts: read a feed or directory page that doesn't let web pages read it (text only, up to 5 MB)
+ipcMain.handle("fetch-text", async (e, url) => {
+  if (!/^https?:\/\//.test(url)) throw new Error("bad url");
+  const r = await net.fetch(url, { headers: { "User-Agent": "Neon OS" } }); if (!r.ok) throw new Error("HTTP " + r.status);
+  const t = await r.text(); if (t.length > 5e6) throw new Error("too big"); return t;
+});

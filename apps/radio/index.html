@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radio · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  body.app { gap: 10px; }
+  .now { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+  .now .art { width: 56px; height: 56px; border-radius: 3px; background: #000 center / cover; box-shadow: 0 0 14px -6px var(--ball); display: grid; place-items: center; font: 26px/1 var(--font-lcd); color: var(--ball); overflow: hidden; }
+  .now .art img { width: 100%; height: 100%; object-fit: cover; }
+  .now strong { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .now small { color: var(--ink-faint); font-size: 12px; }
+  .now .ctl { display: flex; align-items: center; gap: 6px; }
+  .now .ctl .slider { width: 90px; }
+  .now .ctl .lcd { font-size: 17px; line-height: 22px; padding: 0 6px; min-width: 46px; text-align: right; }
+  .live { font: 15px/1 var(--font-lcd); color: #ff6060; text-shadow: 0 0 6px #ff404088; }
+  .seekrow { display: flex; align-items: center; gap: 8px; } .seekrow .slider { flex: 1; } .seekrow .lcd { font-size: 16px; line-height: 20px; padding: 0 6px; }
+  .tags { display: flex; gap: 4px; flex-wrap: wrap; }
+  .results { flex: 1; overflow: auto; align-content: start; min-height: 120px; }
+  .st { cursor: pointer; }
+  .st .ic { width: 34px; height: 34px; border-radius: 3px; background: #000; flex: none; display: grid; place-items: center; overflow: hidden; font: 18px/1 var(--font-lcd); color: var(--ball); }
+  .st .ic img { width: 100%; height: 100%; object-fit: cover; }
+  .st .star { font-size: 16px; color: var(--ink-faint); padding: 0 4px; } .st .star[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .st.on strong { color: var(--ball); }
+  .ep .bar { height: 3px; background: #ffffff14; border-radius: 2px; overflow: hidden; margin-top: 3px; } .ep .bar i { display: block; height: 100%; background: var(--ball); }
+  .pane[hidden] { display: none; }
+  .pane { flex: 1; min-height: 0; }
+</style>
+</head>
+<body class="app">
+  <div class="card now">
+    <div class="art" id="art">♪</div>
+    <div style="min-width:0"><strong id="title">Nothing playing</strong><small id="sub">Pick a station or an episode</small>
+      <div class="seekrow" id="seekRow" hidden><span class="lcd" id="pos">0:00</span><span class="slider h" id="seek"></span><span class="lcd" id="len">0:00</span></div></div>
+    <div class="ctl"><button class="btn" id="play" disabled>Play</button><select id="speed" hidden aria-label="Speed"><option>1</option><option>1.25</option><option>1.5</option><option>2</option></select><span class="slider h" id="vol"></span><span class="lcd" id="volPct">80%</span></div>
+  </div>
+  <nav class="tabs" role="tablist"><button class="btn" data-tab="radio" role="tab">Radio</button><button class="btn" data-tab="pods" role="tab">Podcasts</button></nav>
+  <section class="pane" data-pane="radio">
+    <div class="row"><input type="search" id="rq" placeholder="Search stations by name, style or country" aria-label="Search stations"><button class="btn" id="rgo">Search</button></div>
+    <div class="tags" id="tags"></div>
+    <div class="list results" id="stations"></div>
+    <p class="hint" id="rhint">Stations come from the Radio Browser directory. ★ keeps a station in Favourites.</p>
+  </section>
+  <section class="pane" data-pane="pods" hidden>
+    <div class="row"><input type="search" id="pq" placeholder="Find a podcast" aria-label="Find a podcast"><button class="btn" id="pgo">Search</button><button class="btn" id="addFeed" title="Add a podcast by its feed address">Add feed…</button></div>
+    <div class="list results" id="pods"></div>
+    <p class="hint" id="phint">Search for a podcast and subscribe; episodes carry on where you stopped.</p>
+  </section>
+  <audio id="au" preload="none"></audio>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { esc, toast, dialog, Slider } from "../../style-kit/ui.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id), au = $("au"), KEY = "neon-os:radio";
+    let S = { tab: "radio", vol: 0.8, favs: [], subs: [], pos: {}, speed: 1, last: null, tag: "Favourites" };
+    try { S = { ...S, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) {}
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+    const fmt = s => { s = Math.max(0, Math.floor(s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = String(s % 60).padStart(2, "0"); return h ? `${h}:${String(m).padStart(2, "0")}:${x}` : `${m}:${x}`; };
+    const pause = () => parent !== window && parent.postMessage({ neonOs: "pause-music" }, location.origin);
+    // the desktop app can read feeds that block web pages; on the website, only those that allow it
+    let desk = null; try { desk = window.neonOsDesktop || (parent !== window && parent.neonOsDesktop) || null; } catch (e) {}
+    async function getText(url) {
+      try { const r = await fetch(url); if (r.ok) return await r.text(); } catch (e) {}
+      if (desk && desk.fetchText) return await desk.fetchText(url);
+      throw new Error("blocked");
+    }
+    const showTab = t => { S.tab = t; save(); document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === t))); document.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== t); if (t === "pods") drawSubs(); };
+    document.querySelector(".tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) showTab(b.dataset.tab); });
+
+    // ---------- playing: a station (live) or an episode (with a position) ----------
+    let now = null;
+    function play(item) {
+      now = item; au.src = item.url; au.playbackRate = item.kind === "ep" ? S.speed : 1;
+      if (item.kind === "ep" && S.pos[item.url] && S.pos[item.url].t > 5) au.currentTime = S.pos[item.url].t;
+      au.play().catch(() => toast("That stream won't play here. Try another.", true));
+      $("title").textContent = item.name; $("sub").innerHTML = item.kind === "st" ? `<span class="live">● LIVE</span> ${esc(item.sub || "")}` : esc(item.sub || "");
+      $("art").innerHTML = item.img ? `<img src="${esc(item.img)}" alt="" onerror="this.remove()">` : "♪";
+      $("seekRow").hidden = item.kind !== "ep"; $("speed").hidden = item.kind !== "ep"; $("play").disabled = false;
+      S.last = item; save(); pause(); drawStations(); drawEpisodes();
+    }
+    const syncPlay = () => { $("play").textContent = au.paused ? "Play" : "Pause"; };
+    au.addEventListener("play", () => { syncPlay(); pause(); }); au.addEventListener("pause", syncPlay);
+    au.addEventListener("error", () => { if (au.src) toast("That stream isn't available right now.", true); });
+    $("play").addEventListener("click", () => { if (!now) return; au.paused ? au.play().catch(() => {}) : au.pause(); });
+    const vol = Slider($("vol"), { min: 0, max: 1, step: 0.01, value: S.vol, label: "Volume", text: v => Math.round(v * 100) + "%", onInput: v => { S.vol = v; au.volume = v; $("volPct").textContent = Math.round(v * 100) + "%"; }, onChange: save });
+    au.volume = S.vol; $("volPct").textContent = Math.round(S.vol * 100) + "%"; void vol;
+    let seeking = false;
+    const seek = Slider($("seek"), { min: 0, max: 1, step: 0.001, value: 0, label: "Position", text: v => fmt(v * (au.duration || 0)), onInput: v => { seeking = true; if (au.duration) au.currentTime = v * au.duration; }, onChange: () => { seeking = false; } });
+    au.addEventListener("timeupdate", () => {
+      if (!now || now.kind !== "ep") return;
+      $("pos").textContent = fmt(au.currentTime); $("len").textContent = fmt(au.duration);
+      if (!seeking && au.duration) seek.set(au.currentTime / au.duration);
+      if (Math.floor(au.currentTime) % 5 === 0) { S.pos[now.url] = { t: au.currentTime, d: au.duration }; save(); }
+    });
+    au.addEventListener("ended", () => { if (now && now.kind === "ep") { S.pos[now.url] = { t: au.duration, d: au.duration }; save(); drawEpisodes(); } });
+    $("speed").value = String(S.speed); $("speed").addEventListener("change", () => { S.speed = +$("speed").value; au.playbackRate = S.speed; save(); });
+
+    // ---------- radio ----------
+    const API = "https://de1.api.radio-browser.info/json/";
+    const TAGS = ["Favourites", "electronic", "chillout", "lofi", "house", "techno", "ambient", "synthwave", "jazz", "drum and bass", "classical", "pop", "rock", "news"];
+    let stations = [];
+    function drawTags() { $("tags").innerHTML = TAGS.map(t => `<button class="btn mini" data-tag="${esc(t)}" aria-pressed="${t === S.tag}">${t === "Favourites" ? "★ Favourites" : esc(t)}</button>`).join(""); }
+    const isFav = u => S.favs.some(f => f.url === u);
+    function drawStations() {
+      $("stations").innerHTML = stations.length ? stations.map((s, i) => `<div class="item st${now && now.url === s.url ? " on" : ""}" data-i="${i}"><span class="ic">${s.img ? `<img src="${esc(s.img)}" alt="" loading="lazy" onerror="this.remove()">` : "♪"}</span><span><strong>${esc(s.name)}</strong><small>${esc(s.sub)}</small></span><button class="star" data-fav="${i}" aria-pressed="${isFav(s.url)}" aria-label="Favourite">★</button></div>`).join("")
+        : `<p class="empty">${S.tag === "Favourites" ? "No favourites yet: search, or pick a style, and ★ the stations you like." : "No stations found."}</p>`;
+    }
+    const station = s => ({ kind: "st", name: s.name.trim(), url: s.url_resolved || s.url, img: s.favicon || "", sub: [s.countrycode, s.codec, s.bitrate ? s.bitrate + " kbps" : "", (s.tags || "").split(",").slice(0, 3).join(", ")].filter(Boolean).join(" · ") });
+    async function searchStations(q, tag) {
+      if (tag === "Favourites") { stations = S.favs; drawStations(); return; }
+      $("stations").innerHTML = `<p class="empty">Looking…</p>`;
+      try {
+        const u = API + "stations/search?" + new URLSearchParams({ ...(q ? { name: q } : {}), ...(tag ? { tag } : {}), limit: "60", hidebroken: "true", order: "clickcount", reverse: "true" });
+        let list = JSON.parse(await getText(u));
+        if (q && !list.length) list = JSON.parse(await getText(API + "stations/search?" + new URLSearchParams({ tag: q, limit: "60", hidebroken: "true", order: "clickcount", reverse: "true" })));
+        stations = list.filter(s => (s.url_resolved || s.url) && /^https:/.test(s.url_resolved || s.url)).map(station);
+      } catch (e) { stations = []; $("stations").innerHTML = `<p class="empty">Couldn't reach the radio directory. Check the connection and try again.</p>`; return; }
+      drawStations();
+    }
+    $("tags").addEventListener("click", e => { const b = e.target.closest("[data-tag]"); if (!b) return; S.tag = b.dataset.tag; save(); drawTags(); $("rq").value = ""; searchStations("", S.tag); });
+    const rsearch = () => { const q = $("rq").value.trim(); if (!q) return; S.tag = ""; drawTags(); searchStations(q, ""); };
+    $("rgo").addEventListener("click", rsearch); $("rq").addEventListener("keydown", e => { if (e.key === "Enter") rsearch(); });
+    $("stations").addEventListener("click", e => {
+      const f = e.target.closest("[data-fav]"); if (f) { const s = stations[+f.dataset.fav]; S.favs = isFav(s.url) ? S.favs.filter(x => x.url !== s.url) : [...S.favs, s]; save(); if (S.tag === "Favourites") stations = S.favs; drawStations(); return; }
+      const it = e.target.closest("[data-i]"); if (it) play(stations[+it.dataset.i]);
+    });
+
+    // ---------- podcasts: search (Apple's directory), subscribe, episodes from the feed ----------
+    let episodes = [], podView = null;
+    async function parseFeed(url) {
+      const xml = new DOMParser().parseFromString(await getText(url), "text/xml"), ch = xml.querySelector("channel"); if (!ch) throw new Error("not a feed");
+      const txt = (n, s) => (n && n.querySelector(s) || {}).textContent || "";
+      const img = (ch.querySelector("image url") || {}).textContent || ([...ch.children].find(n => n.localName === "image" && n.getAttribute("href")) || { getAttribute: () => "" }).getAttribute("href");
+      const eps = [...xml.querySelectorAll("item")].map(it => { const enc = it.querySelector("enclosure"); return enc && { kind: "ep", name: txt(it, "title"), url: enc.getAttribute("url"), date: txt(it, "pubDate"), sub: "", img }; }).filter(Boolean).slice(0, 100);
+      return { title: txt(ch, "title"), img, url, eps };
+    }
+    function drawSubs() {
+      if (podView) return drawEpisodes();
+      $("pods").innerHTML = S.subs.length ? `<span class="lbl" style="padding:4px 6px">Subscribed</span>` + S.subs.map((p, i) => `<div class="item st" data-sub="${i}"><span class="ic">${p.img ? `<img src="${esc(p.img)}" alt="" onerror="this.remove()">` : "♪"}</span><span><strong>${esc(p.title)}</strong><small>Open episodes</small></span><button class="btn mini" data-unsub="${i}">Unsubscribe</button></div>`).join("") : `<p class="empty">No podcasts yet: search for one above.</p>`;
+    }
+    function drawEpisodes() {
+      if (!podView || S.tab !== "pods") return;
+      $("pods").innerHTML = `<div class="row" style="padding:4px"><button class="btn mini" id="podBack">‹ Back</button><strong style="flex:1">${esc(podView.title)}</strong>${S.subs.some(s => s.url === podView.url) ? "" : `<button class="btn mini" id="podSub">Subscribe</button>`}</div>` +
+        (episodes.length ? episodes.map((ep, i) => { const p = S.pos[ep.url], frac = p && p.d ? Math.min(1, p.t / p.d) : 0; return `<div class="item st ep${now && now.url === ep.url ? " on" : ""}" data-ep="${i}"><span><strong>${esc(ep.name)}</strong><small>${esc(ep.date ? new Date(ep.date).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "")}${frac > 0.97 ? " · played" : p && p.t > 5 ? ` · stopped at ${fmt(p.t)}` : ""}</small>${frac > 0.01 && frac <= 0.97 ? `<span class="bar"><i style="width:${frac * 100}%"></i></span>` : ""}</span></div>`; }).join("") : `<p class="empty">No episodes.</p>`);
+    }
+    async function openPod(url, title, img) {
+      podView = { url, title: title || "Podcast", img }; episodes = []; $("pods").innerHTML = `<p class="empty">Loading episodes…</p>`;
+      try { const f = await parseFeed(url); podView.title = f.title || podView.title; podView.img = f.img || img; episodes = f.eps.map(e => ({ ...e, sub: podView.title, img: podView.img })); drawEpisodes(); }
+      catch (e) { $("pods").innerHTML = `<div class="row" style="padding:4px"><button class="btn mini" id="podBack">‹ Back</button></div><p class="empty">${desk ? "Couldn't read this podcast's feed." : "This podcast's feed doesn't let web pages read it. The Neon OS desktop app can."}</p>`; }
+    }
+    async function searchPods() {
+      const q = $("pq").value.trim(); if (!q) return; podView = null; $("pods").innerHTML = `<p class="empty">Looking…</p>`;
+      try {
+        const r = JSON.parse(await getText("https://itunes.apple.com/search?" + new URLSearchParams({ media: "podcast", term: q, limit: "30" })));
+        const hits = (r.results || []).filter(x => x.feedUrl);
+        $("pods").innerHTML = hits.length ? hits.map(x => `<div class="item st" data-feed="${esc(x.feedUrl)}" data-title="${esc(x.collectionName)}" data-img="${esc(x.artworkUrl100 || "")}"><span class="ic">${x.artworkUrl100 ? `<img src="${esc(x.artworkUrl100)}" alt="" loading="lazy">` : "♪"}</span><span><strong>${esc(x.collectionName)}</strong><small>${esc(x.artistName || "")}</small></span></div>`).join("") : `<p class="empty">No podcasts found.</p>`;
+      } catch (e) { $("pods").innerHTML = `<p class="empty">Couldn't search for podcasts. Check the connection and try again.</p>`; }
+    }
+    $("pgo").addEventListener("click", searchPods); $("pq").addEventListener("keydown", e => { if (e.key === "Enter") searchPods(); });
+    $("addFeed").addEventListener("click", async () => { const r = await dialog({ title: "Add a podcast", text: "Paste the podcast's feed address (RSS).", fields: [{ label: "Feed address" }], confirm: "Open" }); if (r && /^https?:\/\//.test(r[0])) openPod(r[0]); });
+    $("pods").addEventListener("click", e => {
+      if (e.target.closest("#podBack")) { podView = null; drawSubs(); return; }
+      if (e.target.closest("#podSub")) { S.subs.push({ url: podView.url, title: podView.title, img: podView.img }); save(); drawEpisodes(); toast(`Subscribed to ${podView.title}`); return; }
+      const u = e.target.closest("[data-unsub]"); if (u) { e.stopPropagation(); S.subs.splice(+u.dataset.unsub, 1); save(); drawSubs(); return; }
+      const s = e.target.closest("[data-sub]"); if (s) { const p = S.subs[+s.dataset.sub]; openPod(p.url, p.title, p.img); return; }
+      const f = e.target.closest("[data-feed]"); if (f) { openPod(f.dataset.feed, f.dataset.title, f.dataset.img); return; }
+      const ep = e.target.closest("[data-ep]"); if (ep) play(episodes[+ep.dataset.ep]);
+    });
+    addEventListener("keydown", e => { if (e.key === " " && !e.target.closest("input, select, textarea, button, .slider") && now) { e.preventDefault(); $("play").click(); } });
+    drawTags(); showTab(S.tab); searchStations("", S.tag);
+    if (S.last) { now = S.last; $("title").textContent = now.name; $("sub").textContent = now.sub || ""; $("play").disabled = false; au.src = now.url; if (now.kind === "ep" && S.pos[now.url]) au.currentTime = S.pos[now.url].t; $("seekRow").hidden = now.kind !== "ep"; $("speed").hidden = now.kind !== "ep"; if (now.img) $("art").innerHTML = `<img src="${esc(now.img)}" alt="" onerror="this.remove()">`; }
+  </script>
+</body>
+</html>

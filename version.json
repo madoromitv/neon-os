@@ -28,8 +28,9 @@
 "apps/pulse/index.html": "adc881c365fc",
 "apps/pulse/pulse.css": "2130eaf19bf5",
 "apps/pulse/pulse.js": "5eb1d42d8394",
+"apps/radio/index.html": "4c3f4b34ab95",
 "apps/recorder/index.html": "cd8f84158be3",
-"apps/registry.js": "c52430c72e8f",
+"apps/registry.js": "c340db9da3f2",
 "apps/settings/index.html": "add722108c0c",
 "apps/tape/index.html": "b22478de9062",
 "apps/tape/tape.css": "0b08cf5f7aa8",
@@ -100,5 +101,5 @@
 "style-kit/ui.js": "21ed4e6a5302",
 "style-kit/vlist.js": "32be7a331f52"
 },
-"version": "2f69d1d732"
+"version": "db076f94fd"
 }
