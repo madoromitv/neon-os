@@ -11,6 +11,7 @@ import { getTheme, setTheme, onTheme, applyTheme } from "../../core/theme.js";
 import { notify } from "../../core/notify.js";
 import { createGlow, createGlow2D } from "../../core/glow.js";
 import { createLive, listInputs } from "../../core/live.js";
+import { parseLyrics, lineAt } from "../../core/lyrics.js";
 import { measureLoudness, levelGain } from "../../core/loudness.js";
 import { editDetails, tidyNames } from "../../core/details.js";
 import { binPut } from "../../core/bin.js";
@@ -885,7 +886,7 @@ async function startLive(deviceId) {
     stopLive(true);
     live = await createLive(Eng.ctx, deviceId || S.liveInput || undefined);
     S.liveInput = deviceId || S.liveInput || ""; save();
-    resetViz(); $("liveBtn").setAttribute("aria-pressed", "true"); $("liveBpm").hidden = false;
+    resetViz(); $("liveBtn").setAttribute("aria-pressed", "true"); $("liveBpm").hidden = false; drawLyrics(true);
     $("stageNp").dataset.live = "1"; $("stageNp").innerHTML = `<div><b>LIVE</b><span>${esc(live.label || "Live input")}</span></div>`;
   } catch (e) {
     live = null; $("liveBtn").setAttribute("aria-pressed", "false");
@@ -896,7 +897,7 @@ function stopLive(quiet) {
   if (!live) return;
   live.stop(); live = null; resetViz();
   $("liveBtn").setAttribute("aria-pressed", "false"); $("liveBpm").hidden = true;
-  delete $("stageNp").dataset.live; if (!quiet) setNowPlaying();
+  delete $("stageNp").dataset.live; if (!quiet) setNowPlaying(); drawLyrics(true);
 }
 $("liveBtn").addEventListener("click", () => live ? stopLive() : startLive());
 $("liveBtn").addEventListener("contextmenu", async e => {
@@ -933,6 +934,49 @@ async function stopRec() {
   if (t && !notify("Video saved", `${t.name} · ${fmt((Date.now() - r.at) / 1000)}`, "amp")) toast(`Saved ${t.name}`);
 }
 $("recBtn").addEventListener("click", () => rec ? stopRec() : startRec());
+
+// ---------- lyrics: kept with each song (t.lyrics), or an .lrc beside it in a linked folder ----------
+let lyr = null, lyrFor = null, lyrLine = -2;
+async function loadLyrics(t) {
+  lyr = null; lyrLine = -2; lyrFor = t ? t.id : null;
+  if (!t) return drawLyrics();
+  let text = t.lyrics || null;
+  if (!text) { try { const { sidecar } = await import("../../core/linked.js"); const f = await sidecar(t, [".lrc", ".LRC", ".txt"]); if (f && f.size < 300000) text = await f.text(); } catch (e) {} }
+  if (lyrFor !== t.id) return;
+  lyr = text ? parseLyrics(text) : null; drawLyrics();
+}
+function drawLyrics(force) {
+  const box = $("lyrics"), on = S.lyrics && !!lyr && !live;
+  box.hidden = !on; $("lyrBtn").setAttribute("aria-pressed", String(!!S.lyrics));
+  $("lyrBtn").title = lyr ? `Lyrics${lyr.synced ? " (synced)" : ""}. Right-click to change, remove or nudge them` : "No lyrics for this song yet. Right-click to add an .lrc or paste them";
+  if (!on) return;
+  const t = curTrack(), off = t && t.lyricsOffset || 0, i = lineAt(lyr, Eng.time() + off, Eng.duration);
+  if (i === lyrLine && !force) return; lyrLine = i;
+  const L = lyr.lines, txt = k => (L[k] && L[k].text) || "";
+  box.querySelector(".l0").textContent = txt(i - 1); box.querySelector(".l1").textContent = i < 0 ? "♪" : txt(i) || "♪"; box.querySelector(".l2").textContent = txt(i + 1);
+}
+setInterval(() => { if (S.lyrics && lyr) drawLyrics(); const t = curTrack(); if (t && t.id !== lyrFor) loadLyrics(t); }, 120);
+async function setLyrics(text) {
+  const t = curTrack(); if (!t) { toast("Play a song first, then add its lyrics.", true); return; }
+  const parsed = text ? parseLyrics(text) : null;
+  if (text && !parsed) { toast("There are no lyrics in that.", true); return; }
+  if (store.canWrite && !t.builtin) await store.updateTrack(t.id, { lyrics: text || null });
+  else t.lyrics = text || null;
+  lyrFor = null; await loadLyrics(t); if (text) { S.lyrics = true; save(); drawLyrics(true); }
+  toast(text ? (parsed.synced ? "Synced lyrics added" : "Lyrics added (they scroll with the song; an .lrc file keeps them in time)") : "Lyrics removed");
+}
+const pickLyrics = () => { const i = document.createElement("input"); i.type = "file"; i.accept = ".lrc,.txt,text/plain"; i.onchange = async () => { const f = i.files[0]; if (f) setLyrics(await f.text()); }; i.click(); };
+$("lyrBtn").addEventListener("click", () => { S.lyrics = !S.lyrics; save(); if (S.lyrics && !lyr) { const t = curTrack(); if (t) toast("No lyrics for this song yet: right-click Lyrics to add an .lrc file or paste them"); } drawLyrics(true); });
+$("lyrBtn").addEventListener("contextmenu", e => {
+  e.preventDefault(); const t = curTrack();
+  const nudge = d => () => { if (!t) return; const v = Math.round(((t.lyricsOffset || 0) + d) * 100) / 100; if (store.canWrite && !t.builtin) store.updateTrack(t.id, { lyricsOffset: v }); else t.lyricsOffset = v; toast(`Lyrics ${v > 0 ? `${v} s earlier` : v < 0 ? `${-v} s later` : "back on time"}`); drawLyrics(true); };
+  openMenu(e.currentTarget, [
+    { text: "Add a lyrics file (.lrc or .txt)…", run: pickLyrics },
+    { text: "Paste lyrics…", run: async () => { const r = await dialog({ title: "Paste lyrics", text: "Plain text scrolls with the song; lines starting [mm:ss.xx] stay in time.", fields: [{ label: "Lyrics", type: "textarea", value: t && t.lyrics || "" }], confirm: "Save" }); if (r && r[0]) setLyrics(r[0]); } },
+    ...(lyr && lyr.synced ? ["-", { text: "Lyrics earlier (0.25 s)", run: nudge(0.25) }, { text: "Lyrics later (0.25 s)", run: nudge(-0.25) }] : []),
+    ...(t && t.lyrics ? ["-", { text: "Remove lyrics", danger: true, run: () => setLyrics(null) }] : []),
+  ]);
+});
 
 $("obsBtn").addEventListener("click", () => {
   const n = playlistsSorted().length;
@@ -1393,6 +1437,8 @@ addEventListener("dragover", e => { if (hasFiles(e) && store.canWrite) e.prevent
 addEventListener("dragleave", e => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; $("drop").hidden = true; } });
 addEventListener("drop", async e => {
   if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; $("drop").hidden = true;
+  const dropped = [...(e.dataTransfer.files || [])]; // an .lrc dropped on Amp becomes the playing song's lyrics
+  if (dropped.length === 1 && /\.lrc$/i.test(dropped[0].name)) { setLyrics(await dropped[0].text()); return; }
   if (!store.canWrite) return;
   // entries must be read straight away, before anything waits
   const items = [...(e.dataTransfer.items || [])];

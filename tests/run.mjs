@@ -195,6 +195,20 @@ const tests = {
     check(!(await p.$(".dicon.sel")), "clicking the empty desktop clears the selection");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "synced lyrics in Amp"() {
+    const p = await page(); await desk(p); await amp(p, ["song.wav"]);
+    await p.click("#bPlay"); await p.waitForTimeout(500);
+    await p.click("#lyrBtn", { button: "right" }); await p.click('.pop .mi:has-text("Paste lyrics")'); await p.waitForSelector(".dialog textarea");
+    await p.fill(".dialog textarea", "[ti:Test]\n[00:00.00]First line\n[00:01.50]Second line\n[00:03.00]Third line\n[00:30.00]Last line");
+    await p.click('.dialog button[type=submit]'); await p.waitForTimeout(400);
+    check(!(await p.$eval("#lyrics", e => e.hidden)) && await p.$eval("#lyrBtn", e => e.getAttribute("aria-pressed")) === "true", "pasted lyrics show over the visualiser");
+    await p.keyboard.press("Escape"); await p.evaluate(() => document.activeElement && document.activeElement.blur());
+    await p.waitForFunction(() => /Second line|Third line/.test(document.querySelector("#lyrics .l1").textContent), null, { timeout: 6000 }).catch(() => {});
+    check(/Second line|Third line/.test(await p.$eval("#lyrics .l1", e => e.textContent)), "the current line follows the song");
+    check(await p.evaluate(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return /First line/.test(s.tracks[0].lyrics || ""); }), "lyrics are kept with the song");
+    await p.click("#lyrBtn"); check(await p.$eval("#lyrics", e => e.hidden), "the Lyrics button hides them");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "quick settings and desktop widgets"() {
     const p = await page(); await desk(p);
     await p.click("#clock"); await p.waitForSelector(".qs");

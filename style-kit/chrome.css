@@ -126,3 +126,6 @@
 .fxrow .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
 .fxrow .gr { width: 36px; height: 6px; background: #000; border-radius: 1px; box-shadow: inset -1px -1px 0 #3a3450; overflow: hidden; display: inline-block; }
 .fxrow .gr b { display: block; height: 100%; width: 0; background: var(--ball); box-shadow: 0 0 6px var(--ball); }
+
+.dialog textarea { width: 100%; min-width: min(460px, 70vw); resize: vertical; font: 13px/1.4 ui-monospace, monospace; background: #000; color: var(--ink); border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; padding: 8px; color-scheme: dark; }
+.dialog textarea:focus { outline: none; box-shadow: 0 0 0 1px var(--ball); }

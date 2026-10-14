@@ -93,6 +93,15 @@ export async function fileOf(t, ask = false) {
   }
 }
 export const isLinked = t => !t.blob && !!t.link;
+// a file beside a linked song with the same name and another ending (its .lrc lyrics, say), or null
+export async function sidecar(t, exts) {
+  if (!t || !t.link) return null;
+  const folder = await folderById(t.link.folder); if (!folder || !(await hasAccess(folder, false))) return null;
+  const parts = t.link.path.split("/"), base = parts.pop().replace(/\.[^.]+$/, "");
+  let dir = folder.handle; try { for (const p of parts) dir = await dir.getDirectoryHandle(p); } catch (e) { return null; }
+  for (const ext of exts) { try { return await (await dir.getFileHandle(base + ext)).getFile(); } catch (e) {} }
+  return null;
+}
 
 // Every music file in a folder and the folders inside it: [{ path, handle }]. onProgress(count) while searching.
 export async function scanFolder(folder, onProgress = () => {}) {

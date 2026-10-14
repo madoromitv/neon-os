@@ -17,7 +17,7 @@ export function dialog({ title, text, fields = [], confirm = "OK", danger = fals
     scrim.innerHTML = `<form class="win dialog lit" role="dialog" aria-modal="true" aria-labelledby="dlgT">
       <div class="titlebar"><span class="ttl" id="dlgT">${esc(title)}</span></div>
       <div class="wbody">${text ? `<p>${esc(text)}</p>` : ""}
-      ${fields.map((f, i) => `<label for="dlgF${i}"><span class="lbl">${esc(f.label)}</span><input id="dlgF${i}" type="${f.type === "password" ? "password" : "text"}"${f.type === "password" ? ' inputmode="numeric" autocomplete="off"' : ""} maxlength="200" value="${esc(f.value || "")}"></label>`).join("")}
+      ${fields.map((f, i) => `<label for="dlgF${i}"><span class="lbl">${esc(f.label)}</span>${f.type === "textarea" ? `<textarea id="dlgF${i}" rows="10" spellcheck="false">${esc(f.value || "")}</textarea>` : `<input id="dlgF${i}" type="${f.type === "password" ? "password" : "text"}"${f.type === "password" ? ' inputmode="numeric" autocomplete="off"' : ""} maxlength="200" value="${esc(f.value || "")}">`}</label>`).join("")}
       <div class="acts">${cancel ? `<button type="button" class="btn" data-x>${esc(cancel)}</button>` : ""}<button type="submit" class="btn"${danger ? ' style="color:var(--danger)"' : ""}>${esc(confirm)}</button></div></div></form>`;
     const prev = document.activeElement;
     const close = v => { scrim.remove(); document.removeEventListener("keydown", onKey, true); if (prev && prev.focus) prev.focus(); resolve(v); };
@@ -25,9 +25,9 @@ export function dialog({ title, text, fields = [], confirm = "OK", danger = fals
     document.addEventListener("keydown", onKey, true);
     scrim.addEventListener("mousedown", e => { if (e.target === scrim) close(null); });
     const x = scrim.querySelector("[data-x]"); if (x) x.addEventListener("click", () => close(null));
-    scrim.querySelector("form").addEventListener("submit", e => { e.preventDefault(); close(fields.length ? fields.map((_, i) => scrim.querySelector("#dlgF" + i).value.trim()) : true); });
+    scrim.querySelector("form").addEventListener("submit", e => { e.preventDefault(); close(fields.length ? fields.map((f, i) => f.type === "textarea" ? scrim.querySelector("#dlgF" + i).value : scrim.querySelector("#dlgF" + i).value.trim()) : true); });
     document.body.appendChild(scrim);
-    const inp = scrim.querySelector("input"); (inp || scrim.querySelector("button[type=submit]")).focus(); if (inp) inp.select();
+    const inp = scrim.querySelector("input, textarea"); (inp || scrim.querySelector("button[type=submit]")).focus(); if (inp) inp.select();
   });
 }
 let popEl = null, popAnchor = null;

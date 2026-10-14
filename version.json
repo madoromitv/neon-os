@@ -1,9 +1,9 @@
 {
 "files": {
 "apps/about/index.html": "b797ac57aafa",
-"apps/amp/amp.css": "2ee394f26b27",
-"apps/amp/amp.js": "0e2bafe54f8e",
-"apps/amp/index.html": "149f2d424ae6",
+"apps/amp/amp.css": "379a46ff253b",
+"apps/amp/amp.js": "96a33d339135",
+"apps/amp/index.html": "472910b0a466",
 "apps/bin/index.html": "93b799305e44",
 "apps/browser/index.html": "11a63dcc9a30",
 "apps/calculator/index.html": "b8338b23d42d",
@@ -49,9 +49,10 @@
 "core/glow.js": "d147d410736b",
 "core/library-tree.js": "3bedf330b3b0",
 "core/library.js": "e813ac56631e",
-"core/linked.js": "6a63769710f6",
+"core/linked.js": "a532ecf47dce",
 "core/live.js": "d7a1d2e76188",
 "core/loudness.js": "82581a61b1c9",
+"core/lyrics.js": "27d7a8a4300b",
 "core/notebook.js": "a5c2f167ca44",
 "core/notify.js": "cc00dcb5226e",
 "core/os-link.js": "cc20b3da6de9",
@@ -89,13 +90,13 @@
 "os/widgets.js": "40ab3b155aef",
 "style-kit/apps.css": "1d92e00d41e4",
 "style-kit/base.css": "a6a923233e64",
-"style-kit/chrome.css": "ff3455b5f0c7",
+"style-kit/chrome.css": "8806ea51c39b",
 "style-kit/fx-panel.js": "76ad74d6ef59",
 "style-kit/icons.js": "f859e327f40b",
 "style-kit/library.css": "d67036f3acf3",
 "style-kit/tokens.css": "ac79e91fabe4",
-"style-kit/ui.js": "193664f60e07",
+"style-kit/ui.js": "21ed4e6a5302",
 "style-kit/vlist.js": "32be7a331f52"
 },
-"version": "a67f8de503"
+"version": "d79e501172"
 }
