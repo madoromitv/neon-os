@@ -195,6 +195,40 @@ const tests = {
     check(!(await p.$(".dicon.sel")), "clicking the empty desktop clears the selection");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "Files: folders on the computer"() {
+    const p = await page();
+    await p.goto(URL + "apps/files/"); await p.waitForTimeout(500);
+    await p.evaluate(async () => {
+      const root = await navigator.storage.getDirectory(), d = await root.getDirectoryHandle("Docs", { create: true });
+      const put = async (dir, name, text) => { const w = await (await dir.getFileHandle(name, { create: true })).createWritable(); await w.write(text); await w.close(); };
+      await put(d, "hello.txt", "Hello from a folder"); await put(d, "todo.md", "milk\neggs"); const sub = await d.getDirectoryHandle("Sub", { create: true }); await put(sub, "deep.txt", "down here");
+      window.showDirectoryPicker = async () => d;
+    });
+    await p.click("[data-linkplace]"); await p.waitForTimeout(1200);
+    const names = () => p.$$eval("#fmRows .fm-row b", e => e.map(x => x.textContent));
+    check((await names()).join() === "Sub,hello.txt,todo.md", "Files lists a linked folder, folders first");
+    await p.dblclick('#fmRows .fm-row:has-text("Sub")'); await p.waitForTimeout(500);
+    check((await names()).join() === "deep.txt" && /Sub/.test(await p.$eval("#fmCrumbs", e => e.textContent)), "double-click opens a folder");
+    await p.click('[data-a="up"]'); await p.waitForTimeout(400);
+    await p.click('[data-a="newdir"]'); await p.waitForSelector(".dialog input"); await p.fill(".dialog input", "Projects"); await p.keyboard.press("Enter"); await p.waitForTimeout(600);
+    check((await names()).includes("Projects"), "New folder makes a folder and names it");
+    await p.click('#fmRows .fm-row:has-text("hello.txt")'); await p.click('[data-a="copy"]');
+    await p.dblclick('#fmRows .fm-row:has-text("Projects")'); await p.waitForTimeout(400); await p.click('[data-a="paste"]'); await p.waitForTimeout(600);
+    check((await names()).join() === "hello.txt", "copy and paste a file into a folder");
+    await p.click('[data-a="up"]'); await p.waitForTimeout(400);
+    await p.click('#fmRows .fm-row:has-text("todo.md")'); await p.click('[data-a="rename"]'); await p.waitForSelector(".dialog input"); await p.fill(".dialog input", "shopping.md"); await p.keyboard.press("Enter"); await p.waitForTimeout(600);
+    check((await names()).includes("shopping.md") && !(await names()).includes("todo.md"), "rename a file");
+    await p.click('[data-a="preview"]'); await p.waitForTimeout(400);
+    check(/milk/.test(await p.$eval("#fmPrev", e => e.textContent)), "Preview shows a text file");
+    await p.click('#fmRows .fm-row:has-text("shopping.md")'); await p.click('[data-a="delete"]'); await p.waitForSelector(".dialog"); await p.click('.dialog button[type=submit]'); await p.waitForTimeout(700);
+    check(!(await names()).includes("shopping.md") && await p.evaluate(async () => (await (await import("/core/bin.js")).binList()).some(i => i.kind === "file" && i.title === "shopping.md")), "Delete sends a file to the Bin");
+    await p.fill("#fmQ", "deep"); await p.waitForTimeout(900);
+    check((await names()).join() === "deep.txt", "search finds files in folders below");
+    await p.fill("#fmQ", ""); await p.waitForTimeout(500);
+    await p.goto(URL + "apps/bin/"); await p.waitForTimeout(600); await p.click('.bin .item:has-text("shopping.md") input'); await p.click("#restore"); await p.waitForTimeout(800);
+    check(await p.evaluate(async () => { const d = await (await navigator.storage.getDirectory()).getDirectoryHandle("Docs"); try { await d.getFileHandle("shopping.md"); return true; } catch (e) { return false; } }), "the Bin puts the file back in its folder");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "wallpaper slideshow from Photos"() {
     const p = await page();
     await p.goto(URL + "apps/photos/"); await p.waitForTimeout(300);

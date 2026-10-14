@@ -516,6 +516,8 @@ addEventListener("message", async e => {
   if (d.neonOs === "welcome") { showWelcome(); return; }
   if (d.neonOs === "lock") { doAction("lock"); return; }
   if (d.neonOs === "wall-next") { wallPic.next(); return; }
+  if (d.neonOs === "open-files" && Array.isArray(d.files)) { openFiles(d.files); return; } // Files opening songs or videos
+  if (d.neonOs === "open-url" && typeof d.url === "string") { await openApp("browser"); sendTo("browser", { neonOsBrowserOpen: d.url }); return; }
   if (d.neonOs === "pause-music") { if (mounted.has("amp") && !closed.has("amp")) dispatchEvent(new CustomEvent("neonos:transport", { detail: "pause" })); return; }
   if (d.neonOs === "ready" && appById(d.app)) { // a framed app is listening: hand over anything waiting for it
     appReady.add(d.app); const q = forApp[d.app] || []; delete forApp[d.app];

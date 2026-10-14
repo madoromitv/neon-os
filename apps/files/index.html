@@ -23,12 +23,43 @@
   .status { font-size: 11.5px; color: var(--ink-dim); min-height: 16px; }
   .btn:disabled { opacity: .45; cursor: default; }
   .note { padding: 10px 12px; font-family: var(--font-lcd); font-size: 19px; line-height: 1.25; color: var(--ball); white-space: pre-wrap; overflow: auto; flex: 1; }
+  /* the file manager (fm.js) */
+  #fmMain[hidden], #libMain[hidden] { display: none; }
+  .fm-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .fm-sp { flex: 1; }
+  .fm-crumbs { flex: 1; min-width: 120px; display: flex; align-items: center; gap: 2px; font-size: 17px; line-height: 24px; padding: 0 6px; overflow: hidden; white-space: nowrap; }
+  .fm-crumbs button { font: inherit; color: inherit; padding: 0 3px; border-radius: 2px; } .fm-crumbs button:hover { background: #ffffff14; }
+  .fm-crumbs i { font-style: normal; opacity: .5; }
+  .fm-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .fm-list { overflow: auto; min-height: 0; }
+  .fm-head, .fm-row { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr) 80px 180px; min-width: 540px; }
+  .fm-row { cursor: default; }
+  .fm-row .num { text-align: right; padding-right: 10px; }
+  .fm-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .fm-name svg { width: 16px; height: 16px; fill: var(--ball); flex: none; }
+  .fm-name b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fm-name small { color: var(--ink-faint); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fm-row.drop { box-shadow: inset 0 0 0 1px var(--ball); }
+  .fm-list.grid .fm-head { display: none; }
+  .fm-list.grid #fmRows { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 4px; padding: 6px; }
+  .fm-list.grid .fm-row { min-width: 0; display: grid; grid-template-columns: 1fr; height: auto !important; padding: 8px 4px; text-align: center; border-radius: 3px; }
+  .fm-list.grid .fm-row > span:not(.fm-name) { display: none; }
+  .fm-list.grid .fm-name { flex-direction: column; } .fm-list.grid .fm-name svg { width: 34px; height: 34px; }
+  .fm-list.grid .fm-name b { white-space: normal; word-break: break-word; font-size: 11.5px; max-height: 2.6em; overflow: hidden; }
+  .fm-prev { width: 240px; display: grid; align-content: start; gap: 8px; padding: 10px; background: #0a0810; border: 1px solid #000; box-shadow: inset -1px -1px 0 #3a3450; border-radius: 2px; overflow: auto; }
+  .fm-prev[hidden] { display: none; }
+  .fm-prev img, .fm-prev video { width: 100%; border-radius: 2px; background: #000; }
+  .fm-prev audio { width: 100%; }
+  .fm-prev pre { margin: 0; max-height: 300px; overflow: auto; font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; color: var(--ink-dim); background: #000; padding: 8px; border-radius: 2px; }
+  .fm-big svg { width: 64px; height: 64px; fill: var(--ball); }
+  .ltree .place { display: flex; align-items: center; gap: 8px; }
   @media (max-width: 560px) { body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); } .ltree { max-height: 140px; } }
 </style>
 </head>
 <body>
   <nav class="ltree" id="tree" aria-label="Folders"></nav>
-  <main>
+  <main id="fmMain" hidden></main>
+  <main id="libMain">
     <div class="tools">
       <button class="btn" id="back" hidden>‹ Back</button>
       <span class="lcd path" id="path">/</span>
@@ -55,7 +86,8 @@
     import { esc, toast, dialog } from "../../style-kit/ui.js";
     import { fileOf } from "../../core/linked.js";
     import { editDetails, tidyNames } from "../../core/details.js";
-    import { loadNotebook, noteTitle, notebookText } from "../../core/notebook.js";
+    import { loadNotebook, saveNotebook, noteTitle, notebookText } from "../../core/notebook.js";
+    import { mountFM, listPlaces, linkPlace, unlinkPlace } from "./fm.js";
     applyTheme(); onTheme(applyTheme);
 
     const $ = id => document.getElementById(id);
@@ -88,7 +120,7 @@
     const byId = id => tracks.find(t => t.id === id);
 
     function render(keepScroll) {
-      $("tree").innerHTML = treeHTML(view, tracks, playlists, groups, `<span class="head lbl">Documents</span><button class="fold" data-notes aria-current="${view.type === "notes"}">${treeIcon("songs")}<span class="name">Notes</span></button>`);
+      $("tree").innerHTML = treeHTML(view, tracks, playlists, groups, `<span class="head lbl">Documents</span><button class="fold" data-notes aria-current="${view.type === "notes"}">${treeIcon("songs")}<span class="name">Notes</span></button>` + placesHTML());
       $("path").textContent = pathOf(view);
       $("back").hidden = !["artist", "album", "genre"].includes(view.type);
       $("tidy").hidden = !["artists", "albums", "genres"].includes(view.type);
@@ -129,11 +161,38 @@
       $("status").textContent = sel.size ? `${sel.size} selected` : `${shown.length} ${shown.length === 1 ? "song" : "songs"} · ${mb(bytes)} in this browser${linked ? ` · ${linked} from your linked folder (↗)` : ""}`;
       const n = sel.size; $("play").disabled = !n; $("save").disabled = n !== 1; $("rename").disabled = !n; $("del").disabled = !n;
     }
-    const setView = v => { view = v; LS.save({ view: v }); sel.clear(); anchor = null; $("q").value = ""; render(false); };
+    const setView = v => { view = v; LS.save({ view: v }); sel.clear(); anchor = null; $("q").value = ""; showPlace(); render(false); };
+
+    // ---------- Computer: folders on this computer, in the file manager (fm.js) ----------
+    let places = [];
+    const placeIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`;
+    function placesHTML() {
+      if (!("showDirectoryPicker" in window)) return `<span class="head lbl">Computer</span><p class="hint" style="padding:4px 10px;font-size:11px">Browsing folders needs Chrome, Edge or the Neon OS desktop app (in Brave, turn on File System Access in brave://flags).</p>`;
+      return `<span class="head lbl">Computer</span>${places.map(p => `<button class="fold place" data-place="${esc(p.id)}" aria-current="${view.type === "place" && view.id === p.id}" title="${esc(p.name)}${p.from ? ` (linked in ${p.from})` : ""}">${placeIcon}<span class="name">${esc(p.name)}</span></button>`).join("")}<button class="fold" data-linkplace>${treeIcon("songs")}<span class="name">Link a folder…</span></button>`;
+    }
+    const FMKEY = "neon-os:files-fm"; let fmState = {}; try { fmState = JSON.parse(localStorage.getItem(FMKEY) || "{}"); } catch (e) {}
+    const send = m => parent !== window && parent.postMessage(m, location.origin);
+    const fm = mountFM($("fmMain"), {
+      state: fmState, onState: st => { fmState = { ...fmState, ...st }; try { localStorage.setItem(FMKEY, JSON.stringify(fmState)); } catch (e) {} if (st.place) { view = { type: "place", id: st.place, path: st.path }; LS.save({ view }); } },
+      openFiles: files => send({ neonOs: "open-files", files }),
+      toNotes: (name, text) => { const nb = loadNotebook(), id = "n" + Date.now().toString(36); nb.notes.push({ id, text: text.startsWith(name) ? text : name.replace(/\.[^.]+$/, "") + "\n" + text, folder: "", updated: Date.now() }); nb.cur = id; saveNotebook(nb); send({ neonOs: "open", app: "notes" }); toast(`${name} is in Notes`); },
+      toPhotos: async f => { const { addPic } = await import("../../core/photos.js"); await addPic(f); send({ neonOs: "open", app: "photos" }); toast(`${f.name} added to Photos`); },
+      toBrowser: url => send({ neonOs: "open-url", url }),
+      saveAs: async (blob, name) => { const { saveAs } = await import("../../core/picker.js"); await saveAs(blob, name); },
+    });
+    async function showPlace() {
+      const on = view.type === "place"; $("fmMain").hidden = !on; $("libMain").hidden = on;
+      if (!on) return;
+      const p = places.find(x => x.id === view.id); if (!p) { view = { type: "all" }; $("fmMain").hidden = true; $("libMain").hidden = false; return; }
+      if (!fm.place || fm.place.id !== p.id) await fm.open(p, view.path || []);
+    }
+    async function loadPlaces() { places = await listPlaces().catch(() => []); render(true); showPlace(); }
     wireSortHead($("head"), LS, s => { LS.save({ sort: s }); render(true); });
 
     $("tree").addEventListener("click", e => {
       if (e.target.closest("[data-notes]")) { setView({ type: "notes" }); return; }
+      const pl = e.target.closest("[data-place]"); if (pl) { if (fm.place && fm.place.id === pl.dataset.place && view.type === "place") return; view = { type: "place", id: pl.dataset.place, path: [] }; LS.save({ view }); render(true); showPlace(); fm.place && fm.place.id !== pl.dataset.place && fm.open(places.find(x => x.id === pl.dataset.place)); return; }
+      if (e.target.closest("[data-linkplace]")) { linkPlace().then(p => { if (p) { view = { type: "place", id: p.id, path: [] }; LS.save({ view }); loadPlaces(); } }); return; }
       const v = treeClick(e); if (v) setView(v);
     });
     $("back").addEventListener("click", () => setView(parentView(view)));
@@ -231,7 +290,12 @@
     onLibraryChange(soon);
     addEventListener("focus", soon);
     addEventListener("storage", e => { if (e.key === "neon-os:notebook" && view.type === "notes") render(true); });
-    load();
+    load(); loadPlaces();
+    $("tree").addEventListener("contextmenu", e => {
+      const pl = e.target.closest("[data-place]"); if (!pl) return; e.preventDefault();
+      const p = places.find(x => x.id === pl.dataset.place); if (!p) return;
+      import("../../style-kit/ui.js").then(({ openMenu }) => openMenu(null, p.from ? [{ note: `Linked in ${p.from}. Unlink it there.` }] : [{ text: "Unlink this folder", run: async () => { await unlinkPlace(p.id); if (view.type === "place" && view.id === p.id) { view = { type: "all" }; LS.save({ view }); } loadPlaces(); } }, { note: "The folder stays on your computer." }], { x: e.clientX, y: e.clientY }));
+    });
   </script>
 </body>
 </html>

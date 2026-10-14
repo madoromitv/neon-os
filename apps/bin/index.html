@@ -30,18 +30,19 @@
       <button class="btn" data-k="playlist" aria-pressed="false">Playlists</button>
       <button class="btn" data-k="note" aria-pressed="false">Notes</button>
       <button class="btn" data-k="photo" aria-pressed="false">Pictures</button>
+      <button class="btn" data-k="file" aria-pressed="false">Files</button>
     </div>
     <span class="lcd" id="count">0 ITEMS</span>
   </div>
   <div class="list bin" id="list" role="list"></div>
-  <p class="empty" id="empty">The Bin is empty. Songs, playlists, notes and pictures you delete wait here for 30 days.</p>
+  <p class="empty" id="empty">The Bin is empty. Songs, playlists, notes, pictures and files you delete wait here for 30 days.</p>
   <div class="row">
     <button class="btn" id="selAll">Select all</button>
     <button class="btn" id="restore" disabled>Put back</button>
     <button class="btn" id="forever" disabled style="color:var(--danger)">Delete for good</button>
     <button class="btn" id="emptyBtn" style="margin-left:auto;color:var(--danger)">Empty the Bin</button>
   </div>
-  <p class="hint">Items go for good after 30 days. A song you put back returns to the playlists it was in.</p>
+  <p class="hint">Items go for good after 30 days. A song you put back returns to the playlists it was in; a file returns to its folder.</p>
   <script type="module">
     import "../../core/os-link.js";
     import { applyTheme, onTheme } from "../../core/theme.js";
@@ -53,7 +54,7 @@
     import { putPic } from "../../core/photos.js";
     applyTheme(); onTheme(applyTheme);
     const $ = id => document.getElementById(id), KEY = "neon-os:bin-view";
-    const NAMES = { song: "Song", playlist: "Playlist", note: "Note", photo: "Picture" };
+    const NAMES = { song: "Song", playlist: "Playlist", note: "Note", photo: "Picture", file: "File" };
     let items = [], sel = new Set(), kind = "";
     try { kind = localStorage.getItem(KEY) || ""; } catch (e) {}
 
@@ -102,6 +103,7 @@
         nb.notes.push(n); saveNotebook(nb); return "note";
       }
       if (i.kind === "photo") { await putPic({ ...i.data }); return "photo"; }
+      if (i.kind === "file") { const { restoreFile } = await import("../files/fm.js"); await restoreFile(i.data); return "file"; } // back into its folder on the computer
       throw new Error("unknown kind");
     }
     $("restore").addEventListener("click", async () => {
