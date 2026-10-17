@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arcade · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  body.app { gap: 10px; }
+  .pane[hidden] { display: none; }
+  .pane { flex: 1; min-height: 0; }
+  /* Beat */
+  .bt-stage { position: relative; flex: 1; min-height: 300px; background: radial-gradient(ellipse at 50% 100%, #1a1030, #030206 70%); border-radius: 3px; box-shadow: inset 0 0 0 1px #000, inset -1px -1px 0 #3a3450; overflow: hidden; }
+  .bt-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  .bt-hud { position: absolute; left: 12px; right: 12px; top: 10px; display: flex; gap: 8px; align-items: center; pointer-events: none; }
+  .bt-hud .lcd { font-size: 24px; line-height: 28px; padding: 0 10px; } .bt-hud .lcd:empty { display: none; }
+  .bt-judge { margin-left: auto; font: 34px/1 var(--font-lcd); color: var(--ball); text-shadow: 0 0 12px var(--ball); letter-spacing: 3px; }
+  .bt-judge[data-j="MISS"] { color: #ff6060; text-shadow: 0 0 10px #ff404088; }
+  .bt-end { position: absolute; inset: 0; background: #030206e8; display: grid; place-content: center; justify-items: center; gap: 8px; text-align: center; font-size: 13px; color: var(--ink-dim); }
+  .bt-end[hidden] { display: none; }
+  .bt-grade { font: 110px/1 var(--font-lcd); color: var(--ball); text-shadow: 0 0 24px var(--ball); }
+  .bt-final { font-size: 40px; line-height: 44px; padding: 2px 14px; }
+  .bt-end p { margin: 0; }
+  #btSong { flex: 1; min-width: 160px; }
+  /* Mines */
+  .mn-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mn-n { font-size: 26px; line-height: 30px; padding: 0 8px; color: #ff6060; text-shadow: 0 0 6px #ff404088; }
+  .mn-face { min-width: 40px; font-size: 18px; }
+  .mn-board { display: grid; gap: 2px; justify-content: center; align-content: start; overflow: auto; padding: 8px; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; --mn: 26px; }
+  .mn-c { width: var(--mn); height: var(--mn); padding: 0; border-radius: 2px; background: linear-gradient(180deg, var(--metal-1), var(--metal-2)); border: 1px solid var(--edge); box-shadow: inset 1px 1px 0 var(--metal-hi); font: 20px/1 var(--font-lcd); color: var(--ink); }
+  .mn-c.open { background: #0b0912; box-shadow: none; border-color: #15121e; }
+  .mn-c.flag { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .mn-c.mine { color: #ff6060; } .mn-c.boom { background: #5a0b0b; }
+  .mn-c[data-n="1"] { color: #3ff2ff; } .mn-c[data-n="2"] { color: #6dff8a; } .mn-c[data-n="3"] { color: #ff6060; } .mn-c[data-n="4"] { color: #a066ff; } .mn-c[data-n="5"] { color: #ffb43d; } .mn-c[data-n="6"] { color: #3dd6ff; } .mn-c[data-n="7"], .mn-c[data-n="8"] { color: #ff3de8; }
+</style>
+</head>
+<body class="app">
+  <nav class="tabs" role="tablist"><button class="btn" data-tab="beat" role="tab">Beat</button><button class="btn" data-tab="mines" role="tab">Mines</button></nav>
+  <section class="pane" data-pane="beat" style="display:flex;flex-direction:column;gap:8px"></section>
+  <section class="pane" data-pane="mines" hidden style="display:flex;flex-direction:column;gap:8px" tabindex="-1"></section>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { mountBeat } from "./beat.js";
+    import { mountMines } from "./mines.js";
+    import { fileOf } from "../../core/linked.js";
+    applyTheme(); onTheme(applyTheme);
+    const KEY = "neon-os:arcade";
+    let S = { tab: "beat", beat: {}, mines: {} }; try { S = { ...S, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) {}
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+    const library = async () => { const { openDb, all } = await import("../../core/backup.js"); const db = await openDb(); const t = await all(db, "tracks"); db.close(); return t; };
+    const panes = Object.fromEntries([...document.querySelectorAll("[data-pane]")].map(p => [p.dataset.pane, p]));
+    const beat = mountBeat(panes.beat, { state: S.beat, save: p => { Object.assign(S.beat, p); save(); }, library, fileOf });
+    const mines = mountMines(panes.mines, { state: S.mines, save: p => { Object.assign(S.mines, p); save(); } });
+    window.__arcade = { beat, mines }; // for the tests
+    function show(t) { S.tab = t; save(); document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === t))); for (const k in panes) { panes[k].hidden = k !== t; panes[k].style.display = k === t ? "flex" : "none"; } if (t !== "beat") beat.stop(); }
+    document.querySelector(".tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) show(b.dataset.tab); });
+    show(S.tab);
+  </script>
+</body>
+</html>

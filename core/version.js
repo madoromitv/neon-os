@@ -1,8 +1,16 @@
 // Neon OS core: version and what's new
 // Bump VERSION and add an entry at the top of CHANGES with each update people should hear about:
 // the desktop shows "What's new" once, the next time Neon OS opens, and About lists them all.
-export const VERSION = "1.4";
+export const VERSION = "1.5";
 export const CHANGES = [
+  { v: "1.5", date: "2026-10-17", items: [
+    "Files is a file manager for folders on your computer: browse, open in the right app, rename, copy, move, new folder, delete to the Bin, search and preview",
+    "Auto DJ in Amp (Fade's last setting): songs mix into each other on the beat, with the bass swapped halfway",
+    "Quick settings (click the clock) and desktop widgets (right-click the desktop): clock, now playing, calendar, note, system",
+    "Lyrics over Amp's visualiser, read from your songs' own tags (MP3, FLAC, M4A; synced ones stay in time), an .lrc beside the song, or pasted",
+    "New apps: Recorder, Terminal, Radio and podcasts, and an Arcade with Beat (a rhythm game to your own songs) and Mines",
+    "Pulse: pattern chains, MIDI export and your own samples; Decks: a filter and echo on each deck",
+  ] },
   { v: "1.4", date: "2026-10-12", items: [
     "The wallpaper can be a slideshow of your Photos: all of them, the ones added there, or one linked folder; it fades between pictures every 1 minute to a day, shuffled or in order, with an optional slow zoom (Settings → Desktop, or Use as wallpaper in Photos)",
   ] },

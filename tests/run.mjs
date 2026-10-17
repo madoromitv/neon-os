@@ -195,6 +195,30 @@ const tests = {
     check(!(await p.$(".dicon.sel")), "clicking the empty desktop clears the selection");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "Arcade: Beat and Mines"() {
+    const p = await page(); await desk(p); await amp(p, ["beat120.wav"]);
+    await p.waitForFunction(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return s.tracks.some(t => t.analysis && t.analysis.bands); }, null, { timeout: 60000, polling: 1000 });
+    await p.goto(URL + "apps/arcade/");
+    await p.waitForFunction(() => /beat120/.test((document.getElementById("btSong") || {}).textContent || ""), null, { timeout: 15000 }).catch(() => {});
+    const dbg = await p.evaluate(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return s.tracks.map(t => `${t.title}:${!!(t.analysis && t.analysis.bands)}:${!!(t.blob || t.link)}`).join(",") + " | " + document.getElementById("btSong").textContent; });
+    check(/beat120/.test(await p.$eval("#btSong", e => e.textContent)), "Beat lists songs whose beats are known" + (/beat120/.test(dbg.split("|")[1]) ? "" : ` [${dbg}]`));
+    await p.click('[data-d="easy"]'); await p.click("#btGo"); await p.waitForTimeout(1200);
+    const n = await p.evaluate(() => window.__arcade.beat.notes.length);
+    check(n > 10, `Beat makes a chart from the song (${n} notes on Easy)`);
+    // press keys at the right moments using the game's own clock
+    await p.evaluate(() => new Promise(res => { const b = window.__arcade.beat, pressed = new Set(); const end = performance.now() + 7000;
+      const tick = () => { for (const nt of b.notes) { if (pressed.has(nt) || nt.hit) continue; const t = window.__beatNow ? window.__beatNow() : null; if (t == null) break; if (Math.abs(nt.t - t) < 0.02) { pressed.add(nt); document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "dfjk"[nt.lane], bubbles: true })); } if (nt.t - t > 0.1) break; } if (performance.now() < end) setTimeout(tick, 4); else res(); }; tick(); }));
+    const score = await p.evaluate(() => window.__arcade.beat.score);
+    check(score > 0, `hitting notes on time scores points (${Math.round(score)})`);
+    // Mines: the first square opened is never a mine, and flags count down
+    await p.click('[data-tab="mines"]'); await p.click('[data-lv="easy"]');
+    await p.click('#mnBoard [data-i="40"]'); await p.waitForTimeout(200);
+    check(!(await p.$("#mnBoard .mine")) && (await p.$$eval("#mnBoard .open", e => e.length)) >= 1, "Mines: the first square is always safe");
+    const hidden = await p.$$eval("#mnBoard .mn-c:not(.open)", e => e.map(x => x.dataset.i));
+    await p.click(`#mnBoard [data-i="${hidden[0]}"]`, { button: "right" });
+    check((await p.$eval("#mnLeft", e => e.textContent)) === "009", "Mines: a flag counts down the mines left");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "Pulse: chains, MIDI and your own samples"() {
     const p = await page(); await p.goto(URL + "apps/pulse/"); await p.waitForTimeout(600);
     await p.fill("#chain", "aab-x"); check((await p.$eval("#chain", e => e.value)) === "AAB", "the chain keeps only pattern letters");
@@ -269,6 +293,18 @@ const tests = {
     check(/Second line|Third line/.test(await p.$eval("#lyrics .l1", e => e.textContent)), "the current line follows the song");
     check(await p.evaluate(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return /First line/.test(s.tracks[0].lyrics || ""); }), "lyrics are kept with the song");
     await p.click("#lyrBtn"); check(await p.$eval("#lyrics", e => e.hidden), "the Lyrics button hides them");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
+  async "lyrics embedded in song files"() {
+    const p = await page(); await p.goto(URL + "apps/about/");
+    const got = await p.evaluate(async () => { const { readLyrics } = await import("/core/tags.js"), out = {};
+      for (const f of ["lyrics-plain.mp3", "lyrics-synced.mp3", "lyrics-txxx.mp3", "lyrics.flac", "lyrics.m4a"]) out[f] = await readLyrics(await (await fetch("/tests/.fixtures/" + f)).blob());
+      return out; });
+    check(got["lyrics-plain.mp3"] === "Line one\nLine two\nLine three", "MP3: plain lyrics (ID3 USLT)");
+    check(/^\[00:00\.00\]Synced one\n\[00:01\.50\]Synced two/.test(got["lyrics-synced.mp3"]), "MP3: synced lyrics (ID3 SYLT) win and keep their times");
+    check(got["lyrics-txxx.mp3"] === "Custom one\nCustom two", "MP3: lyrics in a TXXX frame (as ffmpeg writes them)");
+    check(/\[00:01\.00\]Flac two/.test(got["lyrics.flac"]), "FLAC: the LYRICS comment");
+    check(got["lyrics.m4a"] === "M4a one\nM4a two", "M4A: the ©lyr atom");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
   async "quick settings and desktop widgets"() {

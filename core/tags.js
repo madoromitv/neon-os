@@ -133,3 +133,75 @@ export async function shrinkCover(blob) {
     return out || blob;
   } catch (e) { return null; }
 }
+
+// ---------- lyrics embedded in the song file ----------
+// MP3 (ID3): synced lyrics (SYLT) become .lrc text so they stay in time; otherwise the plain lyrics (USLT, or a
+// TXXX frame named LYRICS or USLT, as ffmpeg and some taggers write them).
+// FLAC: the SYNCEDLYRICS, LYRICS or UNSYNCEDLYRICS comments. M4A/MP4: the ©lyr atom.
+// Returns the lyrics as text (.lrc when synced), or "" when the file has none.
+const lrcTime = ms => { const s = ms / 1000, m = Math.floor(s / 60); return `[${String(m).padStart(2, "0")}:${(s - m * 60).toFixed(2).padStart(5, "0")}]`; };
+function id3Lyrics(u8) {
+  const ver = u8[3], flags = u8[5];
+  const size = (u8[6] & 127) << 21 | (u8[7] & 127) << 14 | (u8[8] & 127) << 7 | (u8[9] & 127);
+  let p = 10; const end = Math.min(u8.length, 10 + size);
+  if (flags & 0x40 && ver >= 3) p += ver === 4 ? ((u8[p] & 127) << 21 | (u8[p+1] & 127) << 14 | (u8[p+2] & 127) << 7 | (u8[p+3] & 127)) : (u8[p] << 24 | u8[p+1] << 16 | u8[p+2] << 8 | u8[p+3]) + 4;
+  const v2 = ver === 2, idLen = v2 ? 3 : 4, hdr = v2 ? 6 : 10;
+  let plain = "", synced = "";
+  while (p + hdr < end) {
+    const id = latin1(u8, p, p + idLen); if (!/^[A-Z0-9]+$/.test(id)) break;
+    const fs = v2 ? u8[p+3] << 16 | u8[p+4] << 8 | u8[p+5] : ver === 4 ? (u8[p+4] & 127) << 21 | (u8[p+5] & 127) << 14 | (u8[p+6] & 127) << 7 | (u8[p+7] & 127) : (u8[p+4] << 24 | u8[p+5] << 16 | u8[p+6] << 8 | u8[p+7]) >>> 0;
+    if (fs <= 0) break;
+    const a = p + hdr, b = Math.min(end, a + fs), enc = u8[a], wide = enc === 1 || enc === 2;
+    if ((id === "USLT" || id === "ULT") && !plain) { // encoding, language (3), description, then the lyrics
+      const d = termEnd(u8, a + 4, b, wide) + (wide ? 2 : 1);
+      plain = decText(u8, enc, d, b).replace(/\u0000+$/g, "");
+    } else if ((id === "TXXX" || id === "TXX") && !plain) { // some taggers (ffmpeg, Mp3tag) keep lyrics in a custom text frame
+      const d = termEnd(u8, a + 1, b, wide), name = decText(u8, enc, a + 1, d).trim();
+      if (/^(USLT|LYRICS|UNSYNCED ?LYRICS|SYNCED ?LYRICS)$/i.test(name)) plain = decText(u8, enc, d + (wide ? 2 : 1), b).replace(/\u0000+$/g, "");
+    } else if ((id === "SYLT" || id === "SLT") && !synced) { // encoding, language, time format, type, description, then text + time pairs
+      const fmt = u8[a + 4]; let q = termEnd(u8, a + 6, b, wide) + (wide ? 2 : 1); const lines = [];
+      while (q < b - 4) {
+        const e = termEnd(u8, q, b, wide); const text = decText(u8, enc, q, e).replace(/^\n/, ""); q = e + (wide ? 2 : 1);
+        if (q + 4 > b) break; const t = (u8[q] << 24 | u8[q+1] << 16 | u8[q+2] << 8 | u8[q+3]) >>> 0; q += 4;
+        if (fmt === 2) lines.push(lrcTime(t) + text.trim()); // milliseconds (MPEG-frame times can't be read without the audio)
+      }
+      if (lines.length >= 3) synced = lines.join("\n");
+    }
+    p = b;
+  }
+  return synced || plain;
+}
+function flacLyrics(u8) {
+  let p = 4; const le = q => (u8[q] | u8[q+1] << 8 | u8[q+2] << 16 | u8[q+3] << 24) >>> 0, found = {};
+  for (let guard = 0; guard < 64 && p + 4 <= u8.length; guard++) {
+    const last = u8[p] & 0x80, type = u8[p] & 0x7f, len = u8[p+1] << 16 | u8[p+2] << 8 | u8[p+3], a = p + 4;
+    if (type === 4) {
+      let q = a + 4 + le(a); const n = le(q); q += 4;
+      for (let i = 0; i < n && q < a + len; i++) { const l = le(q); q += 4; const kv = new TextDecoder("utf-8").decode(u8.subarray(q, q + l)); q += l; const eq = kv.indexOf("="); if (eq > 0) found[kv.slice(0, eq).toUpperCase()] = kv.slice(eq + 1); }
+    }
+    p = a + len; if (last) break;
+  }
+  return found.SYNCEDLYRICS || found.LYRICS || found.UNSYNCEDLYRICS || "";
+}
+function mp4Lyrics(u8) { // look for the ©lyr atom and its data atom
+  for (let i = 4; i < u8.length - 24; i++) {
+    if (u8[i] !== 0xa9 || u8[i+1] !== 0x6c || u8[i+2] !== 0x79 || u8[i+3] !== 0x72) continue; // ©lyr
+    const d = i + 4; if (latin1(u8, d + 4, d + 8) !== "data") continue;
+    const len = (u8[d] << 24 | u8[d+1] << 16 | u8[d+2] << 8 | u8[d+3]) >>> 0;
+    if (len < 16 || d + len > u8.length) continue;
+    return new TextDecoder("utf-8").decode(u8.subarray(d + 16, d + len));
+  }
+  return "";
+}
+export async function readLyrics(blob) {
+  try {
+    const h = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+    if (h[0] === 0x49 && h[1] === 0x44 && h[2] === 0x33) { const n = ((h[6] & 127) << 21 | (h[7] & 127) << 14 | (h[8] & 127) << 7 | (h[9] & 127)) + 10; return id3Lyrics(new Uint8Array(await blob.slice(0, Math.min(n, 24e6)).arrayBuffer())).trim(); }
+    if (h[0] === 0x66 && h[1] === 0x4c && h[2] === 0x61 && h[3] === 0x43) return flacLyrics(new Uint8Array(await blob.slice(0, 8e6).arrayBuffer())).trim();
+    if (latin1(h, 4, 8) === "ftyp") { // the metadata is near the start or the end of the file
+      const head = mp4Lyrics(new Uint8Array(await blob.slice(0, 3e6).arrayBuffer())); if (head) return head.trim();
+      return blob.size > 3e6 ? mp4Lyrics(new Uint8Array(await blob.slice(Math.max(0, blob.size - 3e6)).arrayBuffer())).trim() : "";
+    }
+  } catch (e) {}
+  return "";
+}

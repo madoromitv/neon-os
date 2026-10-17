@@ -935,12 +935,13 @@ async function stopRec() {
 }
 $("recBtn").addEventListener("click", () => rec ? stopRec() : startRec());
 
-// ---------- lyrics: kept with each song (t.lyrics), or an .lrc beside it in a linked folder ----------
+// ---------- lyrics: added in Amp (t.lyrics), embedded in the song file, or an .lrc beside it in a linked folder ----------
 let lyr = null, lyrFor = null, lyrLine = -2;
 async function loadLyrics(t) {
   lyr = null; lyrLine = -2; lyrFor = t ? t.id : null;
   if (!t) return drawLyrics();
   let text = t.lyrics || null;
+  if (!text) { try { const { readLyrics } = await import("../../core/tags.js"); const f = t.blob || await fileOf(t); text = (await readLyrics(f)) || null; } catch (e) {} } // embedded in the song file (ID3, FLAC, M4A)
   if (!text) { try { const { sidecar } = await import("../../core/linked.js"); const f = await sidecar(t, [".lrc", ".LRC", ".txt"]); if (f && f.size < 300000) text = await f.text(); } catch (e) {} }
   if (lyrFor !== t.id) return;
   lyr = text ? parseLyrics(text) : null; drawLyrics();
