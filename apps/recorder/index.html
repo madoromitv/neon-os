@@ -23,6 +23,7 @@
   .recs .item { cursor: pointer; }
   .recs .item b { font: 20px/1 var(--font-lcd); color: var(--ball); min-width: 60px; text-align: right; }
   .sel { color: var(--ball); }
+  .recs .item.chosen { box-shadow: inset 3px 0 0 var(--ball); background: #ffffff0d; }
   .ctl { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .ctl .lcd { font-size: 17px; line-height: 22px; padding: 0 8px; }
 </style>
@@ -49,7 +50,7 @@
       <button class="btn" id="chop">Open in Chop</button>
     </div>
   </div>
-  <span class="lbl">Recordings</span>
+  <div class="row"><span class="lbl">Recordings</span><span style="flex:1"></span><span class="hint" id="pickN"></span><button class="btn mini" id="pickAll">Select all</button><button class="btn mini" id="pickDel" disabled style="color:var(--danger)">Delete</button></div>
   <div class="list recs" id="list"></div>
   <p class="empty" id="empty">Nothing recorded yet.</p>
   <script type="module">
@@ -66,11 +67,14 @@
     const idb = () => new Promise((res, rej) => { const r = indexedDB.open("neon-os-recorder", 1); r.onupgradeneeded = () => r.result.createObjectStore("recs", { keyPath: "id" }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
     async function tx(mode, fn) { const db = await idb(); try { return await new Promise((res, rej) => { const t = db.transaction("recs", mode), q = fn(t.objectStore("recs")); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); } finally { db.close(); } }
     let recs = [], cur = null, ac = null;
+    const picked = new Set(); let lastPicked = null;
     const ctx = () => ac || (ac = new AudioContext());
 
     async function loadList() { recs = ((await tx("readonly", s => s.getAll()).catch(() => [])) || []).sort((a, b) => b.at - a.at); drawList(); }
     function drawList() {
-      $("list").innerHTML = recs.map(r => `<div class="item${cur && cur.id === r.id ? " sel" : ""}" data-id="${r.id}"><span><strong>${esc(r.name)}</strong><small>${esc(new Date(r.at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><b>${fmt(r.duration)}</b></div>`).join("");
+      $("pickN").textContent = picked.size ? `${picked.size} chosen` : "Ctrl or Shift-click to choose";
+      $("pickDel").disabled = !picked.size; $("pickAll").textContent = picked.size && picked.size === recs.length ? "Select none" : "Select all"; $("pickAll").disabled = !recs.length;
+      $("list").innerHTML = recs.map(r => `<div class="item${cur && cur.id === r.id ? " sel" : ""}${picked.has(r.id) ? " chosen" : ""}" data-id="${r.id}"><span><strong>${esc(r.name)}</strong><small>${esc(new Date(r.at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</small></span><b>${fmt(r.duration)}</b></div>`).join("");
       $("empty").hidden = !!recs.length;
     }
 
@@ -162,7 +166,28 @@
     }
     $("lib").addEventListener("click", async () => { if (audio && await toLibrary()) toast(`${cur.name} is in the library (album: Recordings)`); });
     $("chop").addEventListener("click", async () => { if (!audio || !(await toLibrary())) return; toast("Added to the library: pick it in Chop"); if (parent !== window) parent.postMessage({ neonOs: "open", app: "chop" }, location.origin); });
-    $("list").addEventListener("click", e => { const it = e.target.closest("[data-id]"); if (it) open(recs.find(r => r.id === it.dataset.id)); });
+    // choosing several: Ctrl or Shift-click, or Select all
+    $("list").addEventListener("click", e => {
+      const it = e.target.closest("[data-id]"); if (!it) return; const id = it.dataset.id;
+      if (e.shiftKey && lastPicked) { const ids = recs.map(r => r.id), a = ids.indexOf(lastPicked), b = ids.indexOf(id); ids.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => picked.add(x)); lastPicked = id; drawList(); return; }
+      if (e.ctrlKey || e.metaKey || picked.size) { picked.has(id) ? picked.delete(id) : picked.add(id); lastPicked = id; drawList(); return; }
+      open(recs.find(r => r.id === id));
+    });
+    $("pickAll").addEventListener("click", () => { const all = picked.size === recs.length; picked.clear(); if (!all) recs.forEach(r => picked.add(r.id)); drawList(); });
+    $("pickDel").addEventListener("click", async () => {
+      const list = recs.filter(r => picked.has(r.id)); if (!list.length) return;
+      const { askDelete } = await import("../../style-kit/ui.js");
+      if (!(await askDelete({ what: list.length === 1 ? list[0].name : `${list.length} recordings`, canBin: false }))) return;
+      await tx("readwrite", s => { for (const r of list) s.delete(r.id); });
+      if (cur && picked.has(cur.id)) { cur = null; audio = null; $("edit").hidden = true; }
+      picked.clear(); loadList();
+    });
+    addEventListener("keydown", e => {
+      if (e.target.closest("input, select, textarea, .dialog")) return;
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyA") { e.preventDefault(); recs.forEach(r => picked.add(r.id)); drawList(); }
+      else if (e.key === "Delete" && picked.size) { e.preventDefault(); $("pickDel").click(); }
+      else if (e.key === "Escape" && picked.size) { picked.clear(); drawList(); }
+    });
     $("list").addEventListener("contextmenu", e => {
       const it = e.target.closest("[data-id]"); if (!it) return; e.preventDefault(); const r = recs.find(x => x.id === it.dataset.id);
       openMenu(null, [{ text: "Rename", run: async () => { const v = await dialog({ title: "Rename", fields: [{ label: "Name", value: r.name }], confirm: "Rename" }); if (v && v[0]) { r.name = v[0]; await tx("readwrite", s => s.put(r)); await loadList(); if (cur && cur.id === r.id) $("eName").textContent = r.name; } } },

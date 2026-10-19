@@ -41,6 +41,7 @@
   .flash.on { opacity: 1; transition: none; }
   .drop { outline: 2px dashed var(--ball); outline-offset: -8px; }
   @media (max-width: 640px) { .wrap { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); } .side { max-height: 30vh; border-right: 0; } .ctl .vol, .ctl #speed { display: none; } }
+  .item.vid.chosen { box-shadow: inset 3px 0 0 var(--ball); background: #ffffff0d; }
 </style>
 </head>
 <body class="app">
@@ -50,6 +51,7 @@
       <select id="src" aria-label="Videos from"></select>
       <div class="list" id="list" role="list"></div>
       <p class="hint" id="hint">Open videos, drop them here, or link a folder. Each one carries on from where you stopped.</p>
+      <div class="row"><span class="hint" id="pickN"></span><span style="flex:1"></span><button class="btn mini" id="pickAll">Select all</button><button class="btn mini" id="pickDel" disabled style="color:var(--danger)">Delete</button></div>
       <div class="row"><button class="btn mini" id="unlink" hidden>Unlink folder</button><button class="btn mini" id="reconnect" hidden>Reconnect folder</button></div>
     </div>
     <div class="player" id="player">
@@ -97,6 +99,7 @@
     // ---------- the list: videos opened this time, and linked folders ----------
     // an item: { id, name, size, file? | url? | folder + handle }
     let opened = [], folders = [], items = [], curId = null, curUrl = null;
+    const picked = new Set(); let lastPicked = null;
     const DB = "neon-os-video";
     const idb = () => new Promise((res, rej) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore("folders", { keyPath: "id" }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
     async function tx(mode, fn) { const db = await idb(); try { return await new Promise((res, rej) => { const t = db.transaction("folders", mode), q = fn(t.objectStore("folders")); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); } finally { db.close(); } }
@@ -124,11 +127,42 @@
     }
     function drawList() {
       $("list").innerHTML = items.map(it => { const p = P[keyOf(it)], frac = p && p.d ? Math.min(1, p.t / p.d) : 0;
-        return `<div class="item vid${it.id === curId ? " now" : ""}" role="listitem" data-id="${esc(it.id)}" title="${esc(it.name)}"><strong>${esc(it.name)}</strong><small>${p && p.d ? (frac > 0.97 ? "Watched · " : p.t > 5 ? `Stopped at ${fmt(p.t)} · ` : "") + fmt(p.d) : it.size ? (it.size >= 1e9 ? (it.size / 1e9).toFixed(1) + " GB" : it.size >= 1e6 ? Math.round(it.size / 1e6) + " MB" : Math.max(1, Math.round(it.size / 1e3)) + " KB") : ""}</small>${frac > 0.01 && frac <= 0.97 ? `<span class="bar"><i style="width:${frac * 100}%"></i></span>` : ""}</div>`; }).join("");
+        return `<div class="item vid${it.id === curId ? " now" : ""}${picked.has(it.id) ? " chosen" : ""}" role="listitem" data-id="${esc(it.id)}" title="${esc(it.name)}"><strong>${esc(it.name)}</strong><small>${p && p.d ? (frac > 0.97 ? "Watched · " : p.t > 5 ? `Stopped at ${fmt(p.t)} · ` : "") + fmt(p.d) : it.size ? (it.size >= 1e9 ? (it.size / 1e9).toFixed(1) + " GB" : it.size >= 1e6 ? Math.round(it.size / 1e6) + " MB" : Math.max(1, Math.round(it.size / 1e3)) + " KB") : ""}</small>${frac > 0.01 && frac <= 0.97 ? `<span class="bar"><i style="width:${frac * 100}%"></i></span>` : ""}</div>`; }).join("");
       $("hint").hidden = !!items.length;
+      for (const id of [...picked]) if (!items.some(x => x.id === id)) picked.delete(id);
+      $("pickN").textContent = picked.size ? `${picked.size} chosen` : items.length ? "Ctrl or Shift-click to choose" : "";
+      $("pickAll").textContent = picked.size && picked.size === items.length ? "Select none" : "Select all"; $("pickAll").disabled = !items.length;
+      $("pickDel").disabled = !picked.size; $("pickDel").textContent = S.src === "opened" ? "Remove" : "Delete";
     }
     $("src").addEventListener("change", () => { S.src = $("src").value; save(); drawSources(); refresh(false); });
-    $("list").addEventListener("click", e => { const it = e.target.closest("[data-id]"); if (it) play(items.find(x => x.id === it.dataset.id)); });
+    $("list").addEventListener("click", e => {
+      const it = e.target.closest("[data-id]"); if (!it) return; const id = it.dataset.id;
+      if (e.shiftKey && lastPicked) { const ids = items.map(x => x.id), a = ids.indexOf(lastPicked), b = ids.indexOf(id); ids.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => picked.add(x)); lastPicked = id; drawList(); return; }
+      if (e.ctrlKey || e.metaKey || picked.size) { picked.has(id) ? picked.delete(id) : picked.add(id); lastPicked = id; drawList(); return; }
+      play(items.find(x => x.id === id));
+    });
+    $("pickAll").addEventListener("click", () => { const all = picked.size === items.length; picked.clear(); if (!all) items.forEach(x => picked.add(x.id)); drawList(); });
+    // opened videos just leave the list; videos in a linked folder are deleted from the disk (too big for the Bin)
+    $("pickDel").addEventListener("click", async () => {
+      const list = items.filter(x => picked.has(x.id)); if (!list.length) return;
+      if (S.src === "opened") { opened = opened.filter(x => !picked.has(x.id)); items = opened; picked.clear(); drawList(); return; }
+      const { askDelete } = await import("../../style-kit/ui.js");
+      if (!(await askDelete({ what: list.length === 1 ? list[0].name : `${list.length} videos`, text: "They're deleted from the folder on your computer.", canBin: false }))) return;
+      const f = folders.find(x => x.id === S.src); if (!f) return;
+      try { if (await f.handle.requestPermission({ mode: "readwrite" }) !== "granted") return; } catch (e) { return; }
+      let gone = 0;
+      for (const it of list) {
+        try { const parts = it.id.slice(f.id.length + 1).split("/"); let dir = f.handle; for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p); await dir.removeEntry(parts[parts.length - 1]); gone++; } catch (e) {}
+      }
+      picked.clear(); await refresh(false);
+      const { toast } = await import("../../style-kit/ui.js"); if (toast) toast(`${gone} video${gone === 1 ? "" : "s"} deleted`);
+    });
+    addEventListener("keydown", e => {
+      if (e.target.closest("input, select, textarea, .dialog, video")) return;
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyA") { e.preventDefault(); items.forEach(x => picked.add(x.id)); drawList(); }
+      else if (e.key === "Delete" && picked.size) { e.preventDefault(); $("pickDel").click(); }
+      else if (e.key === "Escape" && picked.size) { picked.clear(); drawList(); }
+    });
     $("reconnect").addEventListener("click", () => refresh(true));
     $("link").addEventListener("click", async () => {
       let h; try { h = await showDirectoryPicker({ id: "neon-os-video", mode: "read" }); } catch (e) { return; }

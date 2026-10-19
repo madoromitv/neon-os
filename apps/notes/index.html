@@ -19,6 +19,7 @@
   .fold[aria-current="true"] { background: var(--sel); color: var(--ink); }
   .fold .n { margin-left: auto; font: 15px/1 var(--font-lcd); color: var(--ink-faint); }
   .note { cursor: pointer; display: grid; gap: 1px; }
+  .note.chosen { box-shadow: inset 3px 0 0 var(--ball); background: #ffffff0d; }
   .bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .bar .lcd { margin-left: auto; font-size: 18px; line-height: 22px; padding: 0 8px; }
   textarea#pad { flex: 1; width: 100%; resize: none; padding: 10px 12px; font-family: var(--font-lcd); font-size: 21px; line-height: 1.25;
@@ -32,7 +33,7 @@
 <body class="app">
   <div class="wrap">
     <div class="col f"><span class="lbl">Folders</span><div class="list" id="folders"></div><button class="btn" id="newFolder">New folder</button></div>
-    <div class="col l"><input type="search" id="q" placeholder="Search notes" aria-label="Search notes"><div class="list" id="notes"></div><button class="btn" id="newNote">New note</button></div>
+    <div class="col l"><input type="search" id="q" placeholder="Search notes" aria-label="Search notes"><div class="list" id="notes" tabindex="0"></div><div class="row" id="pickBar" hidden><span class="lcd" id="pickN" style="font-size:16px;line-height:20px;padding:0 6px">0</span><button class="btn mini" id="pickAll">Select all</button><button class="btn mini" id="pickDel" style="color:var(--danger)">Delete</button><button class="btn mini" id="pickX" aria-label="Stop choosing">✕</button></div><div class="row"><button class="btn" id="newNote">New note</button><button class="btn" id="pickStart" title="Choose notes to delete (Ctrl+A in the list for all)">Select</button></div></div>
     <div class="col">
       <div class="bar">
         <select id="moveTo" aria-label="Folder for this note"></select>
@@ -71,13 +72,39 @@
     function drawNotes() {
       const q = $("q").value.trim().toLowerCase();
       const list = NB.notes.filter(n => (folder == null || n.folder === folder) && (!q || n.text.toLowerCase().includes(q))).sort((a, b) => b.updated - a.updated);
-      $("notes").innerHTML = list.length ? list.map(n => `<div class="item note${n.id === cur ? " sel" : ""}" data-id="${n.id}"><strong>${esc(noteTitle(n))}</strong><small>${esc(when(n.updated))}${n.folder && folder == null ? " · " + esc(n.folder) : ""}</small></div>`).join("") : `<p class="empty">${q ? "No notes match." : "No notes here yet."}</p>`;
+      $("notes").innerHTML = list.length ? list.map(n => `<div class="item note${n.id === cur ? " sel" : ""}${picked.has(n.id) ? " chosen" : ""}" data-id="${n.id}"><strong>${esc(noteTitle(n))}</strong><small>${esc(when(n.updated))}${n.folder && folder == null ? " · " + esc(n.folder) : ""}</small></div>`).join("") : `<p class="empty">${q ? "No notes match." : "No notes here yet."}</p>`;
     }
     function open(id) { cur = id; const n = note(); pad.value = n ? n.text : ""; pad.disabled = !n; drawNotes(); drawFolders(); persist(); }
     function newNote() { const n = { id: "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), text: "", folder: folder || "", updated: Date.now() }; NB.notes.push(n); open(n.id); pad.focus(); }
 
     pad.addEventListener("input", () => { let n = note(); if (!n) { newNote(); n = note(); } n.text = pad.value; n.updated = Date.now(); saveSoon(); drawNotes(); });
-    $("notes").addEventListener("click", e => { const it = e.target.closest("[data-id]"); if (it) open(it.dataset.id); });
+    // choosing several notes: Ctrl or Shift-click, Select, or Ctrl+A in the list
+    const picked = new Set(); let picking = false, lastPicked = null;
+    const listed = () => [...$("notes").querySelectorAll("[data-id]")].map(x => x.dataset.id);
+    function syncPick() { $("pickBar").hidden = !picking && !picked.size; $("pickN").textContent = `${picked.size}`; $("pickDel").disabled = !picked.size; const ids = listed(); $("pickAll").textContent = picked.size && ids.every(id => picked.has(id)) ? "Select none" : "Select all"; drawNotes(); }
+    $("notes").addEventListener("click", e => {
+      const it = e.target.closest("[data-id]"); if (!it) return; const id = it.dataset.id;
+      if (e.shiftKey && lastPicked) { const ids = listed(), a = ids.indexOf(lastPicked), b = ids.indexOf(id); ids.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => picked.add(x)); lastPicked = id; syncPick(); return; }
+      if (e.ctrlKey || e.metaKey || picking || picked.size) { picked.has(id) ? picked.delete(id) : picked.add(id); lastPicked = id; syncPick(); return; }
+      open(id);
+    });
+    $("pickStart").addEventListener("click", () => { picking = true; syncPick(); });
+    $("pickX").addEventListener("click", () => { picked.clear(); picking = false; syncPick(); });
+    $("pickAll").addEventListener("click", () => { const ids = listed(), all = ids.every(id => picked.has(id)); picked.clear(); if (!all) ids.forEach(id => picked.add(id)); picking = true; syncPick(); });
+    $("notes").addEventListener("keydown", e => {
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyA") { e.preventDefault(); listed().forEach(id => picked.add(id)); picking = true; syncPick(); }
+      else if (e.key === "Delete" && picked.size) { e.preventDefault(); $("pickDel").click(); }
+      else if (e.key === "Escape") { picked.clear(); picking = false; syncPick(); }
+    });
+    $("pickDel").addEventListener("click", async () => {
+      const list = NB.notes.filter(n => picked.has(n.id)); if (!list.length) return;
+      const { askDelete } = await import("../../style-kit/ui.js"), { binPutMany } = await import("../../core/bin.js");
+      const how = await askDelete({ what: list.length === 1 ? noteTitle(list[0]) : `${list.length} notes` }); if (!how) return;
+      if (how === "bin") await binPutMany(list.map(n => ({ kind: "note", title: noteTitle(n), data: n, sub: n.folder ? `Notes · ${n.folder}` : "Notes" })));
+      NB.notes = NB.notes.filter(n => !picked.has(n.id)); picked.clear(); picking = false;
+      const next = NB.notes.filter(x => folder == null || x.folder === folder).sort((a, b) => b.updated - a.updated)[0];
+      open(next ? next.id : null); syncPick(); toast(how === "bin" ? `${list.length} note${list.length === 1 ? "" : "s"} moved to the Bin` : `${list.length} note${list.length === 1 ? "" : "s"} deleted`);
+    });
     $("folders").addEventListener("click", e => { const b = e.target.closest("[data-f]"); if (!b) return; folder = b.dataset.f || null; drawFolders(); drawNotes(); persist(); });
     $("newNote").addEventListener("click", newNote);
     $("newFolder").addEventListener("click", async () => {

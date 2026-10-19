@@ -27,6 +27,7 @@ export const listPics = async () => (await tx("pics", "readonly", s => s.getAll(
 export async function addPic(file) { const p = { id: uid("i"), name: file.name, type: file.type, size: file.size, modified: file.lastModified || Date.now(), blob: file, addedAt: Date.now() }; await tx("pics", "readwrite", s => s.put(p)); return p; }
 export const putPic = p => tx("pics", "readwrite", s => s.put(p));
 export const removePic = id => tx("pics", "readwrite", s => s.delete(id));
+export const removePics = ids => tx("pics", "readwrite", s => { for (const id of ids) s.delete(id); });
 export const listPicFolders = async () => (await tx("folders", "readonly", s => s.getAll())) || [];
 export async function addPicFolder(handle) {
   const have = await listPicFolders();

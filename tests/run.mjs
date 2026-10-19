@@ -568,6 +568,38 @@ const tests = {
     f = await file(); check(Object.values(f.tracks).some(t => t.genre === "Synced") && Object.values(f.tracks).some(t => t.plays === 3), "a change here is written back, keeping theirs");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "choosing everything and deleting it, in every library"() {
+    const p = await page({ viewport: { width: 1200, height: 800 } }); await desk(p);
+    // Amp's library: Select all, Delete, Move to the Bin
+    await amp(p, ["quiet.wav", "loud.wav"]);
+    check(await p.$eval("#mlDel", e => e.disabled), "Amp's Delete waits for a choice");
+    await p.click("#mlSelAll"); check(!(await p.$eval("#mlDel", e => e.disabled)), "Select all chooses every song");
+    await p.click("#mlDel"); await p.waitForSelector(".dialog"); await p.click('.dialog button:has-text("Move to the Bin")'); await p.waitForTimeout(1200);
+    check((await lib(p)).songs === 0 && (await p.evaluate(async () => (await (await import("/core/bin.js")).binList()).filter(i => i.kind === "song").length)) === 2, "both songs go to the Bin");
+    // Photos: three pictures, Select, Select all, Delete for good
+    await p.screenshot({ path: FX + "pa.png", clip: { x: 0, y: 0, width: 40, height: 30 } }); fs.copyFileSync(FX + "pa.png", FX + "pb.png"); fs.copyFileSync(FX + "pa.png", FX + "pc.png");
+    await p.goto(URL + "apps/photos/"); await p.waitForTimeout(500);
+    const ch = p.waitForEvent("filechooser"); await p.click("#add"); await (await ch).setFiles(["pa.png", "pb.png", "pc.png"].map(f => FX + f)); await p.waitForTimeout(1500);
+    check((await p.$$eval(".pic", e => e.length)) === 3, "three pictures added");
+    await p.click(".pic", { modifiers: ["Control"] }); check(await p.$eval("#viewer", e => e.hidden) && (await p.$$eval(".pic.chosen", e => e.length)) === 1, "Ctrl-click chooses a picture instead of opening it");
+    await p.click("#selAll"); check((await p.$$eval(".pic.chosen", e => e.length)) === 3 && /3/.test(await p.$eval("#selN", e => e.textContent)), "Select all chooses every picture");
+    await p.click("#selDel"); await p.waitForSelector(".dialog"); await p.click('.dialog button:has-text("Delete for good")'); await p.waitForTimeout(1200);
+    check((await p.$$eval(".pic", e => e.length)) === 0 && !(await p.evaluate(async () => (await (await import("/core/bin.js")).binList()).some(i => i.kind === "photo"))) && (await p.evaluate(async () => (await (await import("/core/photos.js")).listPics()).length)) === 0, "Delete for good removes them without filling the Bin");
+    // Notes: Ctrl+A, Delete, Move to the Bin
+    await p.goto(URL + "apps/notes/"); await p.waitForTimeout(400);
+    for (const t of ["One", "Two"]) { await p.click("#newNote"); await p.keyboard.type(t); await p.waitForTimeout(400); }
+    await p.click("#pickStart"); await p.click("#pickAll"); check((await p.$$eval(".note.chosen", e => e.length)) >= 2, "Notes chooses every note");
+    await p.click("#pickDel"); await p.waitForSelector(".dialog"); await p.click('.dialog button:has-text("Move to the Bin")'); await p.waitForTimeout(800);
+    check(await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:notebook")).notes.length === 0) && (await p.evaluate(async () => (await (await import("/core/bin.js")).binList()).filter(i => i.kind === "note").length)) >= 2, "the chosen notes go to the Bin");
+    // Recorder: Select all, Delete
+    await p.goto(URL + "apps/recorder/"); await p.waitForTimeout(300);
+    await p.evaluate(async () => { const db = await new Promise(r => { const q = indexedDB.open("neon-os-recorder", 1); q.onupgradeneeded = () => q.result.createObjectStore("recs", { keyPath: "id" }); q.onsuccess = () => r(q.result); }); await new Promise(r => { const t = db.transaction("recs", "readwrite"); for (const id of ["r1", "r2"]) t.objectStore("recs").put({ id, name: "Take " + id, at: Date.now(), dur: 1, blob: new Blob([new Uint8Array(10)], { type: "audio/webm" }) }); t.oncomplete = r; }); db.close(); });
+    await p.reload(); await p.waitForTimeout(600);
+    check((await p.$$eval("#list [data-id]", e => e.length)) === 2, "two recordings listed");
+    await p.click("#pickAll"); await p.click("#pickDel"); await p.waitForSelector(".dialog"); await p.click('.dialog button:has-text("Delete")'); await p.waitForTimeout(600);
+    check((await p.$$eval("#list [data-id]", e => e.length)) === 0, "Recorder deletes every chosen recording");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "details editor and Tidy names"() {
     const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
     await p.click("#mlRows .trow"); await p.click("#mlRows .trow:nth-of-type(3)", { modifiers: ["Shift"] });

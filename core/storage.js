@@ -38,8 +38,9 @@ export function makeLocalStore() {
     async updateTrack(tid, patch) {
       const t = st.tracks.find(x => x.id === tid); if (!t) return;
       Object.assign(t, patch);
-      const { coverUrl, ...rec } = t;
-      await tx("tracks", "readwrite", s => s.put(rec));
+      // patch what's stored rather than writing this copy whole: another window may have saved newer fields (the beat analysis, say)
+      const { coverUrl, ...rec } = t; void coverUrl;
+      await tx("tracks", "readwrite", s => { const g = s.get(tid); g.onsuccess = () => { const cur = g.result; if (cur) { for (const k of Object.keys(cur)) if (!(k in patch) && cur[k] != null && rec[k] == null) t[k] = rec[k] = cur[k]; } s.put(rec); }; });
     },
     // puts a whole song record back as it was, id and all (the Bin restoring a deleted song)
     async putTrack(rec) {

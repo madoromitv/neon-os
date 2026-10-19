@@ -38,6 +38,15 @@
   .viewer .bottom .lcd { font-size: 18px; line-height: 24px; padding: 0 8px; }
   .viewer .bottom .spacer { flex: 1; }
   #empty { flex: 1; }
+  /* choosing pictures: a tick on each, and a bar with what to do with them */
+  .pic .tick { position: absolute; left: 6px; top: 6px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: #0008; display: grid; place-items: center; opacity: 0; transition: opacity .12s; font-size: 13px; color: #000; font-weight: 700; }
+  .pic:hover .tick, body.selecting .pic .tick { opacity: 1; }
+  .pic.chosen .tick { background: var(--ball); border-color: var(--ball); box-shadow: 0 0 8px var(--ball-dim); }
+  .pic.chosen { border-color: var(--ball); box-shadow: inset 0 0 0 3px var(--ball); }
+  .pic.chosen img { opacity: .75 !important; }
+  .selbar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #0a0810; border: 1px solid var(--ball); border-radius: 2px; box-shadow: 0 0 10px -4px var(--ball-dim); }
+  .selbar[hidden] { display: none; }
+  .selbar .lcd { font-size: 18px; line-height: 24px; padding: 0 8px; }
   /* the editor (editor.js) */
   .editor { position: fixed; inset: 0; z-index: 25; background: #07050c; display: grid; grid-template-rows: auto 1fr; }
   .ed-top { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid #000; box-shadow: 0 1px 0 #3a3450; }
@@ -81,10 +90,12 @@
     <button class="btn" id="link">Link a folder</button>
     <button class="btn" id="unlink" hidden>Unlink folder</button>
     <button class="btn" id="show" title="Play every picture shown, one after another">Slideshow</button>
+    <button class="btn" id="selStart" title="Choose pictures to delete (or press Ctrl+A for all of them)">Select</button>
     <button class="btn" id="asWall" title="Make the desktop's wallpaper a slideshow of these pictures">Use as wallpaper</button>
     <span class="prog" id="prog" aria-live="polite"></span>
     <span class="lcd count" id="count">0</span>
   </div>
+  <div class="selbar" id="selBar" hidden role="toolbar" aria-label="Chosen pictures"><span class="lcd" id="selN">0 CHOSEN</span><button class="btn" id="selAll">Select all</button><button class="btn" id="selDel" style="color:var(--danger)">Delete</button><span style="flex:1"></span><span class="hint">Ctrl or Shift-click to add · Ctrl+A for all · Esc to stop</span><button class="btn" id="selX" aria-label="Stop choosing">✕</button></div>
   <div class="warn" id="warn" hidden><span id="warnTxt"></span><button class="btn mini" id="reconnect">Reconnect</button></div>
   <div class="grid" id="grid" role="list" aria-label="Pictures"><div class="sizer" id="sizer"></div></div>
   <p class="empty" id="empty" hidden></p>
@@ -105,9 +116,9 @@
     import "../../core/os-link.js";
     import { applyTheme, onTheme, setTheme, getTheme } from "../../core/theme.js";
     import { esc, toast, dialog, Slider } from "../../style-kit/ui.js";
-    import { listPics, addPic, putPic, removePic, listPicFolders, addPicFolder, removePicFolder, folderAccess, scanPicFolder, fileAt, getFolderIndex, setFolderIndex, allThumbs, putThumb, dropThumbs, IMAGE_EXT } from "../../core/photos.js";
+    import { listPics, addPic, putPic, removePic, removePics, listPicFolders, addPicFolder, removePicFolder, folderAccess, scanPicFolder, fileAt, getFolderIndex, setFolderIndex, allThumbs, putThumb, dropThumbs, IMAGE_EXT } from "../../core/photos.js";
     import { setWallImage } from "../../core/desk.js";
-    import { binPut, onBinChange } from "../../core/bin.js";
+    import { binPut, binPutMany, onBinChange } from "../../core/bin.js";
     import { notify } from "../../core/notify.js";
     import { pickFiles } from "../../core/picker.js";
     import { openEditor } from "./editor.js";
@@ -269,10 +280,10 @@
         let el = cells.get(k);
         if (!el) {
           el = document.createElement("button"); el.className = "pic"; el.setAttribute("role", "listitem"); el.title = p.name;
-          el.innerHTML = `<img alt="${esc(p.name)}" decoding="async"><span class="nm">${esc(p.name)}</span>`;
+          el.innerHTML = `<img alt="${esc(p.name)}" decoding="async"><span class="nm">${esc(p.name)}</span><span class="tick" aria-hidden="true">✓</span>`;
           grid.appendChild(el); cells.set(k, el);
         }
-        el.dataset.i = i;
+        el.dataset.i = i; el.classList.toggle("chosen", chosen.has(p.id)); el.setAttribute("aria-selected", String(chosen.has(p.id)));
         el.style.cssText = `left:${PAD + c * (cw + GAP)}px;top:${PAD + r * rowH}px;width:${cw}px;height:${cw}px`;
         paint(el);
       }
@@ -292,7 +303,7 @@
       if (!keepScroll) grid.scrollTop = 0;
       grid.hidden = !shown.length; $("empty").hidden = !!shown.length;
       $("empty").innerHTML = pics.length ? "No pictures here." : `No pictures yet. ${canLink ? "Link a folder of pictures to see them in place (nothing is copied), or add" : "Add"} some to keep them here. You can also drop pictures on this window.`;
-      layout(); render();
+      layout(); render(); if (typeof syncChosen === "function") syncChosen();
     }
 
     Slider($("size"), { min: 0.5, max: 2, step: 0.05, value: S.size, label: "Thumbnail size", text: v => Math.round(v * 100) + "%",
@@ -327,7 +338,7 @@
       if (!shown.length) return;
       at = (i + shown.length) % shown.length; const p = shown[at];
       $("viewer").hidden = false; $("vName").textContent = p.name; $("vPos").textContent = `${at + 1} / ${shown.length}`;
-      $("vDel").hidden = p.kind !== "added";
+      $("vDel").hidden = false;
       const img = $("vImg"); img.style.opacity = 0; img.alt = p.name;
       try { const u = await fullUrl(p); if (shown[at] !== p) return; img.onload = () => { img.style.opacity = 1; }; img.src = u; } catch (e) { toast("Couldn't open that picture.", true); }
       // keep the next one ready so the slideshow doesn't wait
@@ -338,7 +349,80 @@
       clearInterval(timer); timer = null; $("vPlay").setAttribute("aria-pressed", String(on));
       if (on) timer = setInterval(() => view(at + 1), S.speed * 1000);
     }
-    grid.addEventListener("click", e => { const b = e.target.closest(".pic"); if (b) view(+b.dataset.i); });
+    // ---------- choosing pictures: click the tick (or Ctrl/Shift-click) to choose; while choosing, a click chooses ----------
+    const chosen = new Set(); let lastPick = -1, picking = false;
+    function syncChosen() {
+      for (const el of cells.values()) { const p = shown[+el.dataset.i]; const on = !!p && chosen.has(p.id); el.classList.toggle("chosen", on); el.setAttribute("aria-selected", String(on)); }
+      const n = [...chosen].filter(id => shown.some(p => p.id === id)).length;
+      $("selBar").hidden = !picking && !n; document.body.classList.toggle("selecting", picking || n > 0);
+      $("selN").textContent = `${n.toLocaleString()} CHOSEN`; $("selDel").disabled = !n;
+      $("selAll").textContent = n && n === shown.length ? "Select none" : "Select all";
+    }
+    function pick(i, e) {
+      const p = shown[i]; if (!p) return;
+      if (e && e.shiftKey && lastPick >= 0) { const [a, b] = [Math.min(lastPick, i), Math.max(lastPick, i)]; for (let k = a; k <= b; k++) chosen.add(shown[k].id); }
+      else chosen.has(p.id) ? chosen.delete(p.id) : chosen.add(p.id);
+      lastPick = i; syncChosen();
+    }
+    const stopPicking = () => { chosen.clear(); picking = false; lastPick = -1; syncChosen(); };
+    grid.addEventListener("click", e => {
+      const b = e.target.closest(".pic"); if (!b) return; const i = +b.dataset.i;
+      if (e.target.closest(".tick") || e.ctrlKey || e.metaKey || e.shiftKey || picking || chosen.size) { pick(i, e); return; }
+      view(i);
+    });
+    $("selStart").addEventListener("click", () => { picking = true; syncChosen(); });
+    $("selX").addEventListener("click", stopPicking);
+    $("selAll").addEventListener("click", () => { const all = shown.length && shown.every(p => chosen.has(p.id)); chosen.clear(); if (!all) shown.forEach(p => chosen.add(p.id)); picking = true; syncChosen(); });
+    $("selDel").addEventListener("click", () => deletePics(shown.filter(p => chosen.has(p.id))));
+    addEventListener("keydown", e => {
+      if (!$("viewer").hidden || document.querySelector(".editor, .dialog") || e.target.closest("input, select, textarea")) return;
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyA") { e.preventDefault(); shown.forEach(p => chosen.add(p.id)); picking = true; syncChosen(); }
+      else if (e.key === "Escape" && (picking || chosen.size)) { e.preventDefault(); stopPicking(); }
+      else if ((e.key === "Delete" || e.key === "Backspace") && chosen.size) { e.preventDefault(); $("selDel").click(); }
+    });
+    // deleting many: pictures added here leave Photos; pictures in a linked folder are deleted from the folder on the
+    // computer. Either way they can go to the Bin for 30 days, or go for good (which frees the space at once)
+    async function deletePics(list) {
+      if (!list.length) return;
+      const added = list.filter(p => p.kind === "added"), onDisk = list.filter(p => p.kind === "folder");
+      const bytes = list.reduce((s, p) => s + (p.size || (p.blob && p.blob.size) || 0), 0), gb = bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + " GB" : Math.round(bytes / 1e6) + " MB";
+      const what = list.length === 1 ? list[0].name : `${list.length.toLocaleString()} pictures (${gb})`;
+      const { choose } = await import("../../style-kit/ui.js");
+      const how = await choose({ title: `Delete ${what}`, text: `${onDisk.length ? `${onDisk.length === list.length ? "They're" : `${onDisk.length.toLocaleString()} of them are`} in a folder on your computer and will be deleted from it. ` : ""}The Bin keeps them for 30 days${list.length > 200 ? " (it keeps a copy, so the space comes back only when the Bin is emptied)" : ""}; deleting for good frees the space now.`,
+        options: [{ label: "Cancel", value: null }, { label: "Move to the Bin", value: "bin" }, { label: "Delete for good", value: "gone", danger: true }] });
+      if (!how) return;
+      const toBin = how === "bin";
+      if (onDisk.length) { // permission to change each folder involved, asked once
+        for (const fid of new Set(onDisk.map(p => p.folder))) { const f = byFolder.get(fid); try { if (await f.handle.queryPermission({ mode: "readwrite" }) !== "granted" && await f.handle.requestPermission({ mode: "readwrite" }) !== "granted") { toast(`Neon OS needs permission to change ${f.name}.`, true); return; } } catch (e) { return; } }
+      }
+      $("selDel").disabled = true; let done = 0, failedN = 0;
+      const step = n => { done += n; $("selN").textContent = `DELETING ${done.toLocaleString()} / ${list.length.toLocaleString()}`; };
+      if (added.length) {
+        for (let i = 0; i < added.length; i += 200) {
+          const part = added.slice(i, i + 200);
+          try { if (toBin) await binPutMany(part.map(({ kind, ...rec }) => ({ kind: "photo", title: rec.name, data: rec, sub: "Photos" }))); await removePics(part.map(p => p.id)); step(part.length); } catch (e) { failedN += part.length; }
+        }
+      }
+      for (let i = 0; i < onDisk.length; i += 50) {
+        const part = onDisk.slice(i, i + 50), bin = [];
+        await Promise.all(part.map(async p => {
+          try {
+            const f = byFolder.get(p.folder), parts = p.path.split("/"), name = parts.pop(); let dir = f.handle; for (const d of parts) dir = await dir.getDirectoryHandle(d);
+            if (toBin) { const file = await (await dir.getFileHandle(name)).getFile(); if (file.size <= 50e6) bin.push({ kind: "file", title: name, data: { blob: file, name, type: file.type, place: "p:" + f.id, path: parts }, sub: f.name }); }
+            await dir.removeEntry(name);
+          } catch (e) { failedN++; }
+        }));
+        if (bin.length) await binPutMany(bin).catch(() => {});
+        step(part.length);
+      }
+      const gone = new Set(list.map(p => p.id)); pics = pics.filter(p => !gone.has(p.id)); chosen.clear(); picking = false;
+      for (const id of gone) { const u = full.get(id); if (u) { URL.revokeObjectURL(u); full.delete(id); } }
+      dropThumbs(list.map(tkey)); list.forEach(p => thumbs.delete(tkey(p)));
+      for (const fid of new Set(onDisk.map(p => p.folder))) await setFolderIndex(fid, pics.filter(p => p.folder === fid).map(p => ({ path: p.path, name: p.name, modified: p.modified, size: p.size })));
+      draw(true); syncChosen();
+      const n = list.length - failedN, msg = `${n.toLocaleString()} picture${n === 1 ? "" : "s"} ${toBin ? "moved to the Bin" : "deleted"}${failedN ? ` · ${failedN} couldn't be` : ""}`;
+      if (!notify(toBin ? "Pictures moved to the Bin" : "Pictures deleted", msg, toBin ? "bin" : "photos")) toast(msg, !!failedN);
+    }
     $("vPrev").addEventListener("click", () => { view(at - 1); if (timer) play(true); });
     $("vNext").addEventListener("click", () => { view(at + 1); if (timer) play(true); });
     $("vClose").addEventListener("click", closeView);
@@ -395,7 +479,8 @@
       catch (e) { toast("Couldn't use that picture. Try a smaller one.", true); }
     });
     $("vDel").addEventListener("click", async () => {
-      const p = shown[at]; if (!p || p.kind !== "added") return;
+      const p = shown[at]; if (!p) return;
+      if (p.kind === "folder") { const keep = at; await deletePics([p]); if (shown.length) view(Math.min(keep, shown.length - 1)); else closeView(); return; }
       const { kind, ...rec } = p; void kind;
       try { await binPut("photo", p.name, rec, "Photos"); await removePic(p.id); } catch (e) { toast("Couldn't move it to the Bin.", true); return; }
       const u = full.get(p.id); if (u) { URL.revokeObjectURL(u); full.delete(p.id); }

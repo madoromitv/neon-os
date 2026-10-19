@@ -127,3 +127,10 @@ export function choose({ title, text, options }) {
     scrim.querySelector("[data-i]").focus();
   });
 }
+
+// Deleting things, the same everywhere: "bin" (kept 30 days), "gone" (for good), or null (cancelled).
+// canBin: false when these can't go to the Bin (too big, or a kind the Bin doesn't keep), so only "for good" is offered.
+export async function askDelete({ what, text = "", canBin = true }) {
+  const opts = [{ label: "Cancel", value: null }, ...(canBin ? [{ label: "Move to the Bin", value: "bin" }] : []), { label: canBin ? "Delete for good" : "Delete", value: "gone", danger: true }];
+  return choose({ title: `Delete ${what}`, text: text + (canBin ? (text ? " " : "") + "The Bin keeps them for 30 days; deleting for good frees the space now." : (text ? " " : "") + "This can't be undone."), options: opts });
+}

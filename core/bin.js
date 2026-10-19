@@ -18,6 +18,11 @@ export async function binPut(kind, title, data, sub = "") {
   const item = { id: kind + ":" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), kind, title, sub, data, deletedAt: Date.now() };
   await tx("readwrite", s => s.put(item)); told(); return item;
 }
+// many at once, in one go (deleting thousands of pictures, say): items = [{ kind, title, data, sub }]
+export async function binPutMany(items) {
+  const at = Date.now(), rows = items.map((it, i) => ({ id: it.kind + ":" + at.toString(36) + i.toString(36) + Math.random().toString(36).slice(2, 5), kind: it.kind, title: it.title, sub: it.sub || "", data: it.data, deletedAt: at }));
+  await tx("readwrite", s => { for (const r of rows) s.put(r); }); told(); return rows.length;
+}
 export const binList = async () => ((await tx("readonly", s => s.getAll())) || []).sort((a, b) => b.deletedAt - a.deletedAt);
 export async function binRemove(id) { await tx("readwrite", s => s.delete(id)); told(); }
 export async function binEmpty() { await tx("readwrite", s => s.clear()); told(); }

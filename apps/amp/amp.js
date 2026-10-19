@@ -334,6 +334,7 @@ function drawRows() {
   let html = `<div style="height:${start * ROW}px"></div>`;
   for (let i = start; i < end; i++) html += vKind === "song" ? songRow(vRows[i], curId) : groupRow(vRows[i]);
   $("mlRows").innerHTML = html + `<div style="height:${(n - end) * ROW}px"></div>`;
+  syncMlButtons();
 }
 let drawQueued = false;
 $("mlTable").addEventListener("scroll", () => { if (drawQueued) return; drawQueued = true; requestAnimationFrame(() => { drawQueued = false; drawRows(); }); }, { passive: true });
@@ -370,7 +371,15 @@ $("mlRows").addEventListener("click", e => {
   else { mlSel = new Set([id]); mlAnchor = id; }
   syncMlSel();
 });
-function syncMlSel() { document.querySelectorAll("#mlRows .trow").forEach(r => { const on = mlSel.has(r.dataset.id); r.classList.toggle("sel", on); r.setAttribute("aria-selected", String(on)); }); }
+// Select all and Delete beside the library's other buttons
+$("mlSelAll").addEventListener("click", () => { if (isGroupList()) return; const ids = mlVisible(), all = ids.length && ids.every(id => mlSel.has(id)); mlSel = all ? new Set() : new Set(ids); syncMlSel(); $("mlTable").focus(); });
+$("mlDel").addEventListener("click", () => { const own = [...mlSel].map(byId).filter(t => t && !t.builtin); if (own.length) deleteTracks(own); });
+function syncMlButtons() {
+  const n = mlSel.size, ids = isGroupList() ? [] : mlVisible();
+  $("mlDel").disabled = !n || !store.canWrite; $("mlDel").textContent = n > 1 ? `Delete ${n.toLocaleString()}` : "Delete";
+  $("mlSelAll").textContent = n && ids.length && ids.every(id => mlSel.has(id)) ? "Select none" : "Select all"; $("mlSelAll").disabled = !ids.length;
+}
+function syncMlSel() { syncMlButtons(); document.querySelectorAll("#mlRows .trow").forEach(r => { const on = mlSel.has(r.dataset.id); r.classList.toggle("sel", on); r.setAttribute("aria-selected", String(on)); }); }
 $("mlRows").addEventListener("dblclick", e => {
   const g = e.target.closest(".grow");
   if (g) { const grp = vRows.find(x => x.key === g.dataset.g); if (grp) { Eng.ensure(); const ids = mlView.type === "genres" ? grp.songs.slice() : albumOrder(grp.songs.map(byId)).map(t => t.id); setPl(ids); playIndex(S.shuffle ? Math.floor(Math.random() * ids.length) : 0); } return; }
@@ -390,6 +399,8 @@ $("mlTable").addEventListener("keydown", e => {
     e.preventDefault(); e.stopPropagation();
   } else if (e.key === "Enter" && mlAnchor) { Eng.ensure(); setPl(ids); playIndex(ids.indexOf(mlAnchor)); e.preventDefault(); }
   else if ((e.key === "a" || e.key === "A") && (e.ctrlKey || e.metaKey)) { mlSel = new Set(ids); renderMl(); e.preventDefault(); }
+  else if (e.key === "Delete" && mlSel.size) { e.preventDefault(); $("mlDel").click(); }
+  else if (e.key === "Escape" && mlSel.size) { mlSel.clear(); syncMlSel(); }
 });
 function selectedOrAll() { const v = mlVisible(); return mlSel.size ? v.filter(id => mlSel.has(id)) : v; }
 $("mlPlay").addEventListener("click", () => { const ids = selectedOrAll(); if (!ids.length) return; Eng.ensure(); setPl(ids); playIndex(S.shuffle && ids.length > 1 ? Math.floor(Math.random() * ids.length) : 0); });
@@ -494,19 +505,21 @@ async function tidy(kind) {
   } catch (e) { toast("Couldn't change those names. Try again.", true); }
 }
 async function deleteTracks(ts) {
-  const ok = await dialog({ title: "Move to the Bin", text: `${ts.length === 1 ? ts[0].title + " goes" : ts.length + " songs go"} to the Bin, out of your library and playlists. The Bin keeps ${ts.length === 1 ? "it" : "them"} for 30 days, so you can put ${ts.length === 1 ? "it" : "them"} back.`, confirm: "Move to the Bin", danger: true });
-  if (!ok) return;
+  const linked = ts.filter(t => t.link && !t.blob).length, what = ts.length === 1 ? ts[0].title : `${ts.length.toLocaleString()} songs`;
+  const how = await choose({ title: `Delete ${what}`, text: `Out of your library and playlists.${linked ? ` ${linked === ts.length ? "They play" : `${linked.toLocaleString()} of them play`} from a linked folder: the files stay on your computer.` : ""} The Bin keeps them for 30 days so you can put them back; deleting for good frees their space now.`,
+    options: [{ label: "Cancel", value: null }, { label: "Move to the Bin", value: "bin" }, { label: "Delete for good", value: "gone", danger: true }] });
+  if (!how) return;
   try {
     const gone = new Set(ts.map(t => t.id));
-    for (const t of ts) { // the Bin keeps the song and which playlists it was in, to put it back
-      const { coverUrl, ...rec } = t; void coverUrl;
-      await binPut("song", t.title, { track: rec, playlists: store.playlists.filter(p => p.tracks.includes(t.id)).map(p => p.id) }, [t.artist, t.album].filter(Boolean).join(" · "));
+    if (how === "bin") { // the Bin keeps each song and which playlists it was in, to put it back
+      const { binPutMany } = await import("../../core/bin.js");
+      for (let i = 0; i < ts.length; i += 200) await binPutMany(ts.slice(i, i + 200).map(t => { const { coverUrl, ...rec } = t; void coverUrl; return { kind: "song", title: t.title, data: { track: rec, playlists: store.playlists.filter(p => p.tracks.includes(t.id)).map(p => p.id) }, sub: [t.artist, t.album].filter(Boolean).join(" · ") }; }));
     }
     for (const p of store.playlists.filter(p => p.tracks.some(id => gone.has(id)))) await store.updatePlaylist(p.id, { tracks: p.tracks.filter(id => !gone.has(id)) });
     for (const t of ts) await store.deleteTrack(t);
     removePlIdx(pl.map((id, i) => gone.has(id) ? i : -1).filter(i => i >= 0));
     mlSel.clear(); renderAll(); notifyLibraryChange("delete");
-    toast(ts.length === 1 ? `${ts[0].title} is in the Bin` : `${ts.length} songs are in the Bin`);
+    toast(how === "bin" ? (ts.length === 1 ? `${ts[0].title} is in the Bin` : `${ts.length.toLocaleString()} songs are in the Bin`) : `${what} deleted`);
   } catch (e) { toast("Couldn't delete. Try again.", true); }
 }
 

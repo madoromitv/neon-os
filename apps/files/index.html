@@ -68,6 +68,7 @@
       <button class="btn" id="save" disabled>Download</button>
       <button class="btn" id="rename" disabled title="Edit details and cover art (Ctrl+I)">Edit details</button>
       <button class="btn" id="tidy" hidden title="Merge names spelled more than one way">Tidy names</button>
+      <button class="btn" id="selAll" title="Select every song shown (Ctrl+A)">Select all</button>
       <button class="btn" id="del" disabled>Delete</button>
     </div>
     <div class="lwell" id="list" role="grid" aria-label="Files" tabindex="0">
@@ -160,6 +161,7 @@
       const linked = shown.filter(t => !t.blob && t.link).length;
       $("status").textContent = sel.size ? `${sel.size} selected` : `${shown.length} ${shown.length === 1 ? "song" : "songs"} · ${mb(bytes)} in this browser${linked ? ` · ${linked} from your linked folder (↗)` : ""}`;
       const n = sel.size; $("play").disabled = !n; $("save").disabled = n !== 1; $("rename").disabled = !n; $("del").disabled = !n;
+      $("selAll").hidden = isGroupView(view) || view.type === "notes"; $("selAll").textContent = n && shown.length && shown.every(t => sel.has(t.id)) ? "Select none" : "Select all";
     }
     const setView = v => { view = v; LS.save({ view: v }); sel.clear(); anchor = null; $("q").value = ""; showPlace(); render(false); };
 
@@ -265,25 +267,33 @@
     addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "i" && !e.target.closest("input, .dialog") && sel.size) { e.preventDefault(); edit(); } });
     async function remove() {
       const pl = view.type === "pl" ? playlists.find(p => p.id === view.id) : null, ids = [...sel];
-      const ok = await dialog(pl
-        ? { title: "Remove from playlist", text: `Remove ${ids.length === 1 ? byId(ids[0]).title : ids.length + " songs"} from ${pl.name}? They stay in your library.`, confirm: "Remove" }
-        : { title: "Move to the Bin", text: `${ids.length === 1 ? byId(ids[0]).title + " goes" : ids.length + " songs go"} to the Bin, out of your library and playlists. The Bin keeps them for 30 days.`, confirm: "Move to the Bin", danger: true });
-      if (!ok) return;
+      const what = ids.length === 1 ? byId(ids[0]).title : ids.length.toLocaleString() + " songs";
+      let how = "pl";
+      if (pl) { if (!(await dialog({ title: "Remove from playlist", text: `Remove ${what} from ${pl.name}? They stay in your library.`, confirm: "Remove" }))) return; }
+      else {
+        const { choose } = await import("../../style-kit/ui.js");
+        how = await choose({ title: `Delete ${what}`, text: "Out of your library and playlists (files in linked folders stay on your computer). The Bin keeps them for 30 days; deleting for good frees their space now.",
+          options: [{ label: "Cancel", value: null }, { label: "Move to the Bin", value: "bin" }, { label: "Delete for good", value: "gone", danger: true }] });
+        if (!how) return;
+      }
       try {
         const db = await openDb();
         if (pl) await put(db, "playlists", { ...pl, tracks: pl.tracks.filter(id => !ids.includes(id)) });
         else {
-          for (const p of playlists.filter(p => p.tracks.some(id => ids.includes(id)))) await put(db, "playlists", { ...p, tracks: p.tracks.filter(id => !ids.includes(id)) });
-          const { binPut } = await import("../../core/bin.js");
-          for (const id of ids) {
-            const t = byId(id); if (t) { const { coverUrl, ...rec } = t; void coverUrl; await binPut("song", t.title, { track: rec, playlists: playlists.filter(p => p.tracks.includes(id)).map(p => p.id) }, [t.artist, t.album].filter(Boolean).join(" · ")); }
-            await del(db, "tracks", id);
+          const gone = new Set(ids);
+          if (how === "bin") { // the Bin keeps each song and the playlists it was in, to put it back
+            const { binPutMany } = await import("../../core/bin.js");
+            for (let i = 0; i < ids.length; i += 200) await binPutMany(ids.slice(i, i + 200).map(byId).filter(Boolean).map(t => { const { coverUrl, ...rec } = t; void coverUrl; return { kind: "song", title: t.title, data: { track: rec, playlists: playlists.filter(p => p.tracks.includes(t.id)).map(p => p.id) }, sub: [t.artist, t.album].filter(Boolean).join(" · ") }; }));
           }
+          for (const p of playlists.filter(p => p.tracks.some(id => gone.has(id)))) await put(db, "playlists", { ...p, tracks: p.tracks.filter(id => !gone.has(id)) });
+          for (const id of ids) await del(db, "tracks", id);
         }
         db.close(); sel.clear(); notifyLibraryChange(pl ? "edit" : "delete"); await load();
+        if (!pl) toast(how === "bin" ? `${what} moved to the Bin` : `${what} deleted`);
       } catch (e) { toast("Couldn't change the library. Try again.", true); }
     }
     $("del").addEventListener("click", remove);
+    $("selAll").addEventListener("click", () => { const all = shown.length && shown.every(t => sel.has(t.id)); sel = all ? new Set() : new Set(shown.map(t => t.id)); syncSel(); list.draw(); $("list").focus(); });
 
     let reloadT = null;
     const soon = () => { clearTimeout(reloadT); reloadT = setTimeout(load, 400); }; // a burst of changes reloads once
