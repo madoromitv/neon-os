@@ -7,7 +7,8 @@ import { readTags, titleFromName, shrinkCover } from "../../core/tags.js";
 import { makeLocalStore } from "../../core/storage.js";
 import { createAnalyser } from "../../core/analyser.js";
 import { SMART, smartById, buildGroups, albumOrder, viewSongs, viewGroups, viewTitle as libTitle, searchGroups, groupNote, nkey } from "../../core/library.js";
-import { getTheme, setTheme, onTheme, applyTheme } from "../../core/theme.js";
+import { getTheme, setTheme, onTheme, applyTheme, liveBall, setCoverBall } from "../../core/theme.js";
+import { coverColour } from "../../core/cover-colour.js";
 import { notify } from "../../core/notify.js";
 import { createGlow, createGlow2D } from "../../core/glow.js";
 import { createLive, listInputs } from "../../core/live.js";
@@ -635,8 +636,16 @@ function setMarquee(txt) {
   const span = $("marqueeText"); span.textContent = txt + "  ***  " + txt + "  ***  ";
 }
 const stateIcons = { playing: "play", paused: "pause", stopped: "stop" };
+// "Colour follows the album cover" (Settings): the playing song's cover sets the colour of everything
+let coverFor = null;
+function followCover(t) {
+  const key = t ? t.id + "|" + (t.coverUrl || "") : null; if (key === coverFor) return; coverFor = key;
+  if (!t || !t.coverUrl) { setCoverBall(null); return; }
+  coverColour(t.coverUrl).then(hex => { if (coverFor === key) setCoverBall(hex); });
+}
 function setNowPlaying() {
   const t = curTrack();
+  followCover(t);
   $("stateIcon").innerHTML = icon(loading ? "next" : stateIcons[Eng.state]);
   if (!loading) setMarquee(t ? `${cur + 1}. ${t.artist ? t.artist + " - " : ""}${t.title} (${fmt(t.duration)})`.toUpperCase() : "NEON ORBIT · DOUBLE-CLICK A SONG IN THE LIBRARY TO START");
   $("kbps").textContent = t && t.kbps ? t.kbps : " ";
@@ -1493,7 +1502,7 @@ canvas.dataset.renderer = glow.gl ? "webgl" : "2d";
 let lastLoud = 0;
 const rgbOf = k => COLORS[k] || [1, 3, 5].map(o => parseInt(k.slice(o, o + 2), 16));
 function buildSprite() {
-  const [r, g, b] = rgbOf(S.color);
+  const [r, g, b] = rgbOf(liveBall());
   const N = 256, c = document.createElement("canvas"); c.width = c.height = N;
   const x = c.getContext("2d"), grd = x.createRadialGradient(N/2, N/2, 0, N/2, N/2, N/2);
   grd.addColorStop(0, "rgba(255,255,255,1)");
@@ -1558,7 +1567,7 @@ function drawMini(envs, playing) {
   const c = $("mini"), w = c.width, h = c.height, g = miniCtx;
   g.clearRect(0, 0, w, h);
   if (S.mini === "off") return;
-  const col = `rgb(${rgbOf(S.color).join(",")})`;
+  const col = `rgb(${rgbOf(liveBall()).join(",")})`;
   g.fillStyle = col; g.strokeStyle = col;
   if (S.mini === "spec") {
     const n = 19, gap = Math.max(1, w / 120), bw = (w - gap * (n - 1)) / n;
@@ -1660,6 +1669,8 @@ function frame(now) {
     countedId = loadedId; const t = byId(loadedId);
     if (t && !t.builtin && store.canWrite) store.updateTrack(t.id, { plays: (t.plays || 0) + 1, lastPlayed: new Date().toISOString() }).then(() => { if (mlView.type === "smart") scheduleRender(); else renderTree(); }).catch(() => {});
   }
+  // the desktop follows the beat (os/shell.js reads this): beat position, loudness, the kick, and whether music plays
+  window.neonOsBeat = { bp, loud, kick: pulses[0] || 0, playing: playing || !!liveF, bpm: liveF ? liveF.bpm || 0 : data ? data.bpm : 0, at: now };
   if (!OBS && now - lastUi > 33) {
     lastUi = now;
     drawMini(envs, Eng.state === "playing");
@@ -1682,7 +1693,8 @@ function frame(now) {
 // =================== start ===================
 async function start() {
   if (!window.neonOsShell) { applyTheme(); onTheme(applyTheme); } // on its own page; on the desktop the shell does this
-  onTheme(t => { if (t.ball === S.color) return; S.color = t.ball; buildSprite(); syncSwatches(); drawEqGraph(); });
+  let liveWas = liveBall();
+  onTheme(t => { const lv = liveBall(t); if (t.ball === S.color && lv === liveWas) return; liveWas = lv; S.color = t.ball; buildSprite(); syncSwatches(); drawEqGraph(); });
   buildSprite(); syncSwatches(); renderModes(); renderWindows(); applyEq();
   renderAll(); resize();
   requestAnimationFrame(frame);

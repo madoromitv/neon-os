@@ -2,6 +2,7 @@
 // Eight synthesised drums, four pattern slots, tempo and swing, accents, per-drum volume and mute,
 // and export of four bars to a WAV file. Everything saves in this browser as you go.
 import "../../core/os-link.js";
+import { mixOut } from "../../core/mixer.js";
 import { applyTheme, onTheme } from "../../core/theme.js";
 import { VOICES, play as hit, loadSamples, sampleList, setSample, clearSample } from "../../core/drums.js";
 import { openMenu } from "../../style-kit/ui.js";
@@ -45,7 +46,7 @@ function ensureAudio() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain(); master.gain.value = S.master;
-    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); master.connect(fx.input); fx.output.connect(ctx.destination);
+    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); master.connect(fx.input); fx.output.connect(mixOut(ctx, "pulse"));
     buses = VOICES.map((_, i) => { const g = ctx.createGain(); g.gain.value = S.mute[i] ? 0 : S.vol[i]; g.connect(master); return g; });
     loadSamples(ctx);
   }

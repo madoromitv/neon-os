@@ -2,6 +2,7 @@
 // Play it from the on-screen keyboard, the computer keyboard or a MIDI keyboard, shape the sound, and run a
 // 16-step note sequence that can Link to the shared clock with Pulse. Saves as you go.
 import "../../core/os-link.js";
+import { mixOut } from "../../core/mixer.js";
 import { applyTheme, onTheme } from "../../core/theme.js";
 import { createSynth, PRESETS, WAVES, DEFAULTS } from "../../core/synth.js";
 import { clock } from "../../core/clock.js";
@@ -31,7 +32,7 @@ let ctx = null, synth = null;
 function ensure() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
-    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); fx.output.connect(ctx.destination);
+    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); fx.output.connect(mixOut(ctx, "drift"));
     synth = createSynth(ctx, fx.input); synth.set(S.params);
   }
   if (ctx.state !== "running") ctx.resume().catch(() => {});

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mixer · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  body.app { display: flex; flex-direction: column; gap: 8px; height: 100vh; box-sizing: border-box; }
+  .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .top select { min-width: 0; flex: 0 1 260px; }
+  .desk { flex: 1; min-height: 0; display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+  .strip { flex: none; width: 76px; display: grid; grid-template-rows: auto auto 1fr auto auto; gap: 6px; justify-items: center; padding: 8px 4px; background: #0c0a12; border-radius: 3px; box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #3a3450; }
+  .strip.master { width: 84px; margin-left: auto; background: #120e1a; }
+  .strip .name { font: 600 9px/1.1 var(--font-ui, inherit); letter-spacing: .02em; text-transform: uppercase; color: var(--ink-dim); text-align: center; height: 24px; max-width: 100%; overflow-wrap: anywhere; display: flex; align-items: center; justify-content: center; }
+  .strip .on { width: 7px; height: 7px; border-radius: 50%; background: #1a1622; box-shadow: inset 0 0 0 1px #000; }
+  .strip.live .on { background: var(--ball); box-shadow: 0 0 6px var(--ball); }
+  .strip.live .name { color: var(--ink); }
+  .chan { display: flex; gap: 6px; height: 100%; min-height: 120px; }
+  .meter { width: 8px; height: 100%; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; position: relative; overflow: hidden; }
+  .meter i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: linear-gradient(0deg, var(--ball-dim), var(--ball) 70%, #fff 100%); box-shadow: 0 0 6px var(--ball-dim); }
+  .meter b { position: absolute; left: 0; right: 0; height: 2px; bottom: 0; background: var(--ball); opacity: 0; }
+  .meter.clip b { background: var(--danger); }
+  .chan .slider.v { height: 100%; }
+  .strip .pct { font: 18px/1 var(--font-lcd); color: var(--ball); min-width: 46px; text-align: center; padding: 1px 2px; }
+  .strip .btn.mute { min-width: 0; padding: 0 8px; }
+  .strip .btn.mute[aria-pressed="true"] { color: var(--danger); }
+  .strip.muted .meter i { opacity: .25; }
+  .hint { margin: 0; }
+</style>
+</head>
+<body class="app">
+  <div class="top">
+    <span class="lbl">Output</span><select id="out" aria-label="Speakers or headphones"><option value="">Default speakers</option></select>
+    <span style="flex:1"></span>
+    <button class="btn" id="reset" title="Every app back to 100%, nothing muted">Reset</button>
+  </div>
+  <div class="desk" id="desk" role="group" aria-label="Volume for each app"></div>
+  <p class="hint" id="hint">Each app's fader sets how loud it is in the mix, on top of its own volume. Lights show which apps are making sound. Master sets everything.</p>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme, getTheme, setTheme } from "../../core/theme.js";
+    import { Slider, esc } from "../../style-kit/ui.js";
+    import { getMix, setMix, setAppMix, onMix, onLevel, canPickOutput, outputs } from "../../core/mixer.js";
+    import { APPS } from "../registry.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id);
+    // the apps that make sound, in the order of a mixing desk: players, then the Rack, then everything else
+    const CH = ["amp", "decks", "radio", "pulse", "drift", "chop", "tape", "recorder", "video", "arcade", "system"];
+    const nameOf = id => id === "system" ? "System sounds" : (APPS.find(a => a.id === id) || {}).name || id;
+    const pct = v => Math.round(v * 100) + "%";
+    const strips = {};
+    function strip(id) {
+      const master = id === "master", el = document.createElement("div");
+      el.className = "strip" + (master ? " master" : ""); el.dataset.ch = id;
+      el.innerHTML = `<span class="name">${esc(master ? "Master" : nameOf(id))}</span><span class="on" aria-hidden="true"></span>
+        <div class="chan"><div class="meter" aria-hidden="true"><i></i><b></b></div><div class="slider v" data-f></div></div>
+        <span class="lcd pct" data-p></span><button class="btn mute" data-m aria-pressed="false" title="Mute">${master ? "Mute all" : "M"}</button>`;
+      $("desk").appendChild(el);
+      const read = () => { const m = getMix(), t = getTheme();
+        if (master) return { v: m.master ?? 1, mute: !!m.muteAll };
+        if (id === "system") return { v: t.sysVol == null ? 0.6 : t.sysVol, mute: t.sounds === false };
+        const a = m.apps[id] || {}; return { v: a.v ?? 1, mute: !!a.mute }; };
+      const write = patch => {
+        if (master) setMix({ ...(patch.v != null ? { master: patch.v } : {}), ...(patch.mute != null ? { muteAll: patch.mute } : {}) });
+        else if (id === "system") setTheme({ ...(patch.v != null ? { sysVol: patch.v } : {}), ...(patch.mute != null ? { sounds: !patch.mute } : {}) });
+        else setAppMix(id, patch);
+      };
+      const label = `${master ? "Master" : nameOf(id)} volume`;
+      const f = Slider(el.querySelector("[data-f]"), { min: 0, max: 1, step: 0.01, value: read().v, orient: "v", label, text: pct, onInput: v => { write({ v }); el.querySelector("[data-p]").textContent = pct(v); } });
+      el.querySelector("[data-m]").addEventListener("click", () => write({ mute: !read().mute }));
+      const s = { el, f, read, level: 0, peak: 0, peakAt: 0, seen: 0 };
+      s.sync = () => { const r = read(); if (!f.dragging) f.set(r.v); el.querySelector("[data-p]").textContent = r.mute ? "MUTE" : pct(r.v); el.querySelector("[data-m]").setAttribute("aria-pressed", String(r.mute)); el.classList.toggle("muted", r.mute); };
+      s.sync(); strips[id] = s;
+    }
+    CH.forEach(strip); strip("master");
+    const syncAll = () => Object.values(strips).forEach(s => s.sync());
+    onMix(syncAll); onTheme(syncAll);
+    $("reset").addEventListener("click", () => { setMix({ master: 1, muteAll: false, apps: {} }); setTheme({ sounds: true }); });
+
+    // levels: each app sends its loudest sample about 12 times a second while it makes sound
+    onLevel(({ app, level }) => { const s = strips[app]; if (!s) return; s.level = Math.max(s.level, Math.min(1.2, level)); s.seen = performance.now(); });
+    const dB = v => v <= 0.0001 ? 0 : Math.max(0, Math.min(1, (20 * Math.log10(v) + 54) / 54)); // a −54 to 0 dB scale, as meters read
+    function draw(now) {
+      let any = 0;
+      for (const id in strips) {
+        const s = strips[id]; if (id === "master") continue;
+        const live = now - s.seen < 700; s.el.classList.toggle("live", live);
+        if (!live) s.level = 0;
+        const v = dB(s.level); if (v > s.peak || now - s.peakAt > 1200) { s.peak = v; s.peakAt = now; }
+        const m = s.el.querySelector(".meter"); m.querySelector("i").style.height = v * 100 + "%";
+        const b = m.querySelector("b"); b.style.bottom = `calc(${s.peak * 100}% - 2px)`; b.style.opacity = s.peak > 0.02 ? 1 : 0; m.classList.toggle("clip", s.level >= 0.99);
+        any = Math.max(any, s.level); s.level *= 0.82; // falls back between messages, like a real meter
+      }
+      const ms = strips.master; ms.level = Math.max(ms.level * 0.85, any);
+      const mv = dB(ms.level); ms.el.querySelector(".meter i").style.height = mv * 100 + "%"; ms.el.classList.toggle("live", any > 0.002);
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+
+    // speakers or headphones (Chrome and Edge; device names show once the browser has been allowed a microphone)
+    async function fillOut() {
+      if (!canPickOutput()) { $("out").disabled = true; $("out").title = "Choosing the output needs Chrome or Edge"; return; }
+      const list = await outputs(), cur = getMix().sink || "";
+      $("out").innerHTML = `<option value="">Default speakers</option>` + list.map((d, i) => `<option value="${esc(d.deviceId)}">${esc(d.label || "Output " + (i + 1))}</option>`).join("");
+      $("out").value = list.some(d => d.deviceId === cur) ? cur : "";
+    }
+    fillOut(); try { navigator.mediaDevices.addEventListener("devicechange", fillOut); } catch (e) {}
+    $("out").addEventListener("change", () => setMix({ sink: $("out").value }));
+  </script>
+</body>
+</html>

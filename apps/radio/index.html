@@ -56,10 +56,12 @@
   <audio id="au" preload="none"></audio>
   <script type="module">
     import "../../core/os-link.js";
+    import { mixMedia } from "../../core/mixer.js";
     import { applyTheme, onTheme } from "../../core/theme.js";
     import { esc, toast, dialog, Slider } from "../../style-kit/ui.js";
     applyTheme(); onTheme(applyTheme);
     const $ = id => document.getElementById(id), au = $("au"), KEY = "neon-os:radio";
+    mixMedia(au, "radio"); // the Mixer sets its volume (streams from other sites can't be measured, so it shows playing)
     let S = { tab: "radio", vol: 0.8, favs: [], subs: [], pos: {}, speed: 1, last: null, tag: "Favourites" };
     try { S = { ...S, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) {}
     const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };

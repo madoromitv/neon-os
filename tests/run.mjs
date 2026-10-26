@@ -637,6 +637,53 @@ const tests = {
     check(Math.abs(m6.h - m5.h) <= 2, "sizes are remembered");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "the desktop moves to the music, and the colour can follow the cover"() {
+    const p = await page(); await desk(p); await amp(p, ["beat120.wav"]);
+    await p.waitForFunction(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return s.tracks.some(t => t.analysis && t.analysis.bands); }, null, { timeout: 60000, polling: 1000 });
+    // a red cover on the song
+    await p.evaluate(async () => { const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"); g.fillStyle = "#e02020"; g.fillRect(0, 0, 64, 64); g.fillStyle = "#111"; g.fillRect(0, 0, 64, 20);
+      const blob = await new Promise(r => c.toBlob(r, "image/png")), { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); await s.updateTrack(s.tracks[0].id, { coverBlob: blob }); });
+    await p.reload(); await p.waitForTimeout(900); await amp(p);
+    await p.click("#bPlay"); await p.waitForTimeout(1500);
+    check(await p.evaluate(() => !!(window.neonOsBeat && window.neonOsBeat.playing && window.neonOsBeat.bpm > 100)), "Amp shares the beat with the desktop");
+    check(await p.evaluate(() => document.body.classList.contains("music")), "the desktop follows the music while it plays");
+    const flashed = await p.evaluate(() => new Promise(res => { let n = 0; const iv = setInterval(() => { if (document.body.classList.contains("onbeat")) n++; }, 15); setTimeout(() => { clearInterval(iv); res(n); }, 2500); }));
+    check(flashed > 0, `window titles flash on the beat (${flashed} samples lit)`);
+    const ball0 = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ball").trim());
+    // Amp has already worked out the playing song's cover colour; turning Follow the album cover on uses it
+    await p.evaluate(async () => (await import("/core/theme.js")).setTheme({ coverColor: true })); await p.waitForTimeout(300);
+    const ball1 = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ball").trim());
+    const red = h => { const [r, g, b] = [1, 3, 5].map(o => parseInt(h.slice(o, o + 2), 16)); return r > 200 && g < 120 && b < 120; };
+    check(red(ball1) && ball1 !== ball0, `the colour follows the album cover (${ball0} → ${ball1})`);
+    await p.evaluate(async () => (await import("/core/theme.js")).setTheme({ coverColor: false })); await p.waitForTimeout(200);
+    check(await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ball").trim()) === ball0, "turning it off brings the chosen colour back");
+    await p.evaluate(async () => (await import("/core/theme.js")).setTheme({ react: false })); await p.waitForTimeout(400);
+    check(await p.evaluate(() => !document.body.classList.contains("music")), "Move to the music can be turned off");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
+  async "Mixer: a volume and level for each app"() {
+    const p = await page({ viewport: { width: 1500, height: 950 } }); await desk(p); await amp(p, ["beat120.wav"]);
+    await p.click("#bPlay"); await p.waitForTimeout(800);
+    await p.click("#volBtn"); await p.click("#trMix"); await p.waitForSelector('[data-wid="mixer"]'); await p.waitForTimeout(1500);
+    const mf = p.frame({ url: /mixer/ });
+    check((await mf.$$eval(".strip", e => e.length)) >= 12, "the Mixer has a strip for each app that makes sound, and Master");
+    await mf.waitForFunction(() => document.querySelector('[data-ch="amp"]').classList.contains("live"), null, { timeout: 5000 }).catch(() => {});
+    check(await mf.$eval('[data-ch="amp"]', e => e.classList.contains("live") && parseFloat(e.querySelector(".meter i").style.height) > 5), "Amp's light and meter show it playing");
+    const level = () => p.evaluate(() => new Promise(res => { let mx = 0; const ch = new BroadcastChannel("neon-os:levels"); ch.onmessage = e => { if (e.data.app === "amp") mx = Math.max(mx, e.data.level); }; setTimeout(() => { ch.close(); res(mx); }, 1500); }));
+    const l0 = await level();
+    // drag Amp's fader to about a quarter
+    const f = await mf.$('[data-ch="amp"] [data-f]'), b = await f.boundingBox();
+    await p.mouse.click(b.x + b.width / 2, b.y + b.height * 0.75 + 5.5 * 0.5); await p.waitForTimeout(400);
+    const v = await p.evaluate(async () => (await import("/core/mixer.js")).getMix().apps.amp.v);
+    check(v > 0.15 && v < 0.35, `Amp's fader sets its volume in the mix (${Math.round(v * 100)}%)`);
+    const l1 = await level();
+    check(l1 < l0 * 0.5 && l1 > 0, `Amp plays quieter (${l0.toFixed(2)} → ${l1.toFixed(2)})`);
+    await mf.click('[data-ch="amp"] [data-m]'); await p.waitForTimeout(300);
+    check((await level()) < 0.01 && /MUTE/.test(await mf.$eval('[data-ch="amp"] [data-p]', e => e.textContent)), "M mutes Amp");
+    await mf.click("#reset"); await p.waitForTimeout(300);
+    check(await p.evaluate(async () => { const m = (await import("/core/mixer.js")).getMix(); return m.master === 1 && !m.muteAll && !Object.keys(m.apps).length; }), "Reset puts every app back to 100%");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "details editor and Tidy names"() {
     const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
     await p.click("#mlRows .trow"); await p.click("#mlRows .trow:nth-of-type(3)", { modifiers: ["Shift"] });

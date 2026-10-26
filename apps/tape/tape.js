@@ -2,6 +2,7 @@
 // Lines up Pulse patterns, the Drift sequence and Chop patterns bar by bar into a whole track, plays it at one tempo
 // and exports it as a WAV file. The patterns live in their own apps; edits there are heard here straight away.
 import "../../core/os-link.js";
+import { mixOut } from "../../core/mixer.js";
 import { applyTheme, onTheme } from "../../core/theme.js";
 import { icon } from "../../style-kit/icons.js";
 import { Slider, toast, dialog, esc } from "../../style-kit/ui.js";
@@ -62,7 +63,7 @@ let ctx = null, master = null, engine = null, fx = null;
 function ensureAudio() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)(); master = ctx.createGain(); master.gain.value = S.vol;
-    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); master.connect(fx.input); fx.output.connect(ctx.destination);
+    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); master.connect(fx.input); fx.output.connect(mixOut(ctx, "tape"));
   }
   if (ctx.state !== "running") ctx.resume().catch(() => {});
   if (!ctx.samplesLoaded) { ctx.samplesLoaded = true; loadSamples(ctx); }

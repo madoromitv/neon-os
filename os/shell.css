@@ -320,3 +320,11 @@ body.compact .qs { left: 4px; right: 4px; width: auto; }
 body.compact .widgets { display: none; }
 /* windows being carried or stretched along with the one under the pointer (joined windows) */
 .owin.carried { box-shadow: 0 0 0 1px var(--ball-dim), 0 8px 24px #0008; }
+
+/* the desktop moves to the music (os/shell.js): on each beat window titles, lit LEDs and the Neon button flash,
+   then fade; the first beat of each bar a little brighter */
+body.music .titlebar .ttl, body.music .btn[aria-pressed="true"] .led, body.music #startBtn { transition: text-shadow .32s ease-out, box-shadow .32s ease-out, filter .32s ease-out; }
+body.onbeat .win.lit .titlebar .ttl, body.onbeat .owin.lit .titlebar .ttl { text-shadow: 0 0 14px var(--ball), 0 0 3px var(--ball); transition: none; }
+body.onbeat .btn[aria-pressed="true"] .led { box-shadow: 0 0 10px 2px var(--ball), inset 0 0 2px #fff; transition: none; }
+body.onbeat #startBtn { filter: drop-shadow(0 0 6px var(--ball)); transition: none; }
+body.downbeat .owin.lit { box-shadow: 0 0 0 1px var(--ball-dim), 0 10px 30px #0009; }

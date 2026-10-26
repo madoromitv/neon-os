@@ -4,6 +4,7 @@
 // Each song plays through its own gain (its volume levelling, and its fade in a crossfade). The next song can be
 // queued ahead of time and starts on the audio clock exactly when the current one ends (gapless), or overlapping it
 // by a few seconds (crossfade). onAdvance() runs when the queued song takes over.
+import { mixOut } from "./mixer.js";
 export const EQ_FREQS = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
 export const Eng = {
   ctx: null, nodes: null, buf: null, src: null, gain: null, token: 0, level: 1,
@@ -28,7 +29,7 @@ export const Eng = {
     let node = pre;
     filters.forEach(f => { node.connect(f); node = f; });
     if (pan) { node.connect(pan); node = pan; }
-    node.connect(vol); vol.connect(an); an.connect(ctx.destination);
+    node.connect(vol); vol.connect(an); an.connect(mixOut(ctx, "amp"));
     this.ctx = ctx; this.nodes = { pre, filters, pan, vol, an };
     this.freq = new Uint8Array(an.frequencyBinCount); this.wave = new Uint8Array(an.fftSize);
     if (ctx.state !== "running") ctx.resume().catch(() => {});

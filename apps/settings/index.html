@@ -43,7 +43,8 @@
       <button class="sw" style="--c: var(--cyan)" data-c="cyan" aria-label="Cyan"></button>
       <label class="picker" id="picker" title="Pick any colour"><input type="color" id="custom" aria-label="Custom colour" value="#3ff2ff"></label>
     </div>
-    <p>Every Neon OS app and window follows this colour straight away.</p>
+    <div class="row"><button class="btn" id="coverT" aria-pressed="false"><i class="led"></i>Follow the album cover</button></div>
+    <p>Every Neon OS app and window follows this colour straight away. Follow the album cover takes the colour from the cover of the song playing in Amp instead, and goes back to this one when it's off or a song has no colourful cover.</p>
   </section>
   <section class="group" aria-labelledby="dkLbl">
     <span class="lbl" id="dkLbl">Desktop</span>
@@ -70,6 +71,8 @@
       <button class="btn" data-fit="stretch" aria-pressed="false" title="Stretched to the screen's shape">Stretch</button>
       <button class="btn" data-fit="centre" aria-pressed="false" title="At its own size in the middle">Centre</button>
     </div>
+    <div class="row"><button class="btn" id="reactT" aria-pressed="true"><i class="led"></i>Move to the music</button></div>
+    <p>While music plays, the orb wallpaper turns with the tempo and kicks with the bass, the haze breathes, and window titles and lights flash on the beat. Reduce motion turns it off.</p>
     <span class="lbl">Icons on the desktop</span>
     <div class="checks" id="deskApps"></div>
     <p>Drag icons on the desktop to move them; right-click the desktop and pick Arrange icons to put them back in order.</p>
@@ -177,6 +180,10 @@
     });
 
     // ---------- accessibility ----------
+    const syncMusic = t => { $id("reactT").setAttribute("aria-pressed", String(t.react !== false)); $id("coverT").setAttribute("aria-pressed", String(!!t.coverColor)); };
+    syncMusic(getTheme());
+    $id("reactT").addEventListener("click", () => syncMusic(setTheme({ react: getTheme().react === false })));
+    $id("coverT").addEventListener("click", () => syncMusic(setTheme({ coverColor: !getTheme().coverColor })));
     const syncAx = t => { $id("hcT").setAttribute("aria-pressed", String(!!t.contrast)); $id("calmT").setAttribute("aria-pressed", String(calmOn(t))); };
     $id("hcT").addEventListener("click", () => syncAx(setTheme({ contrast: !getTheme().contrast })));
     $id("calmT").addEventListener("click", () => syncAx(setTheme({ calm: !calmOn() })));

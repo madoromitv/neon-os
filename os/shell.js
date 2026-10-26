@@ -3,7 +3,7 @@
 // so each of their windows is a real desktop window that can be dragged, snapped and stacked.
 import { APPS, PLANNED } from "../apps/registry.js";
 import { esc, clamp } from "../style-kit/ui.js";
-import { getTheme, setTheme, applyTheme, onTheme, ballHex, calmOn } from "../core/theme.js";
+import { getTheme, setTheme, applyTheme, onTheme, liveBall, calmOn } from "../core/theme.js";
 import { osAction } from "../core/shortcuts.js";
 import { getWallImage } from "../core/desk.js";
 import { createGlow, createGlow2D } from "../core/glow.js";
@@ -762,12 +762,13 @@ function openTray() {
   el.innerHTML = `<div class="titlebar"><span class="ttl">Volume</span></div><div class="wbody">
     <div class="vrow"><span class="lbl">Music</span><div class="slider h" id="trMusic"></div><span class="lcd pct" id="trMusicPct">${Math.round(musicVol * 100)}%</span></div>
     <div class="vrow"><span class="lbl">System</span><div class="slider h" id="trSys"></div><span class="lcd pct" id="trSysPct">${Math.round((t.sysVol == null ? 0.6 : t.sysVol) * 100)}%</span></div>
-    <button class="btn" id="trSnd" aria-pressed="${t.sounds !== false}"><i class="led"></i>System sounds</button></div>`;
+    <div class="row"><button class="btn" id="trSnd" aria-pressed="${t.sounds !== false}"><i class="led"></i>System sounds</button><button class="btn" id="trMix" title="Volume for each app, their levels, and the speakers or headphones">Mixer</button></div></div>`;
   document.body.appendChild(el);
   const music = Slider(el.querySelector("#trMusic"), { min: 0, max: 1, step: 0.01, value: musicVol, label: "Music volume", text: v => Math.round(v * 100) + "%",
     onInput: v => { musicVol = v; el.querySelector("#trMusicPct").textContent = Math.round(v * 100) + "%"; dispatchEvent(new CustomEvent("neonos:volume", { detail: v })); renderVolIcon(); } });
   Slider(el.querySelector("#trSys"), { min: 0, max: 1, step: 0.01, value: t.sysVol == null ? 0.6 : t.sysVol, label: "System sounds volume", text: v => Math.round(v * 100) + "%",
     onInput: v => { setTheme({ sysVol: v }); el.querySelector("#trSysPct").textContent = Math.round(v * 100) + "%"; }, onChange: () => sfx.tick() });
+  el.querySelector("#trMix").addEventListener("click", () => { closeTray(); openApp("mixer"); });
   el.querySelector("#trSnd").addEventListener("click", e => { const on = getTheme().sounds === false; setTheme({ sounds: on }); e.currentTarget.setAttribute("aria-pressed", String(on)); if (on) sfx.chime(); renderVolIcon(); });
   trayPop = { el, music };
   $("volBtn").setAttribute("aria-expanded", "true");
@@ -1017,25 +1018,50 @@ const DESK = [7, 5, 12, 1];
 const wglow = createGlow(wall, { background: { base: DESK, blobs: HAZE } }) || createGlow2D(wall, { background: { base: DESK, blobs: HAZE } });
 wall.dataset.renderer = wglow.gl ? "webgl" : "2d";
 let WW = 0, WH = 0, wallMode = "orb", wallUrl = null, wallRaf = 0, wallKey = "";
-function buildSprite() { const hex = ballHex(getTheme().ball); wglow.setColor([1, 3, 5].map(o => parseInt(hex.slice(o, o + 2), 16))); }
+function buildSprite() { const hex = liveBall(); wglow.setColor([1, 3, 5].map(o => parseInt(hex.slice(o, o + 2), 16))); }
 function sizeWall() { WW = innerWidth; WH = innerHeight; wglow.resize(WW, WH, Math.min(2, devicePixelRatio || 1)); }
-const wallMoves = () => wallMode === "orb" && !calmOn();
+// ---------- the desktop moves to the music ----------
+// While Amp plays (or Live listens), Amp leaves the beat in window.neonOsBeat each frame. With "Move to the music"
+// on (Settings → Desktop, on by default; never with Reduce motion), the orb wallpaper turns with the tempo, swells
+// with the loudness and kicks with the bass, the haze breathes, and window titles and lit LEDs flash on each beat.
+function musicBeat() {
+  const B = window.neonOsBeat, t = getTheme();
+  return B && B.playing && performance.now() - B.at < 300 && t.react !== false && !calmOn(t) ? B : null;
+}
+let lastBeatI = null, beatRaf = 0, beatOffT = 0;
+function beatTick() {
+  beatRaf = 0; const B = musicBeat();
+  document.body.classList.toggle("music", !!B);
+  if (!B) { lastBeatI = null; return; }
+  const bi = Math.floor(B.bp);
+  if (lastBeatI !== null && bi !== lastBeatI) { document.body.classList.add("onbeat"); if ((bi % 4 + 4) % 4 === 0) document.body.classList.add("downbeat"); clearTimeout(beatOffT); beatOffT = setTimeout(() => document.body.classList.remove("onbeat", "downbeat"), 90); }
+  lastBeatI = bi;
+  if (!document.hidden) beatRaf = requestAnimationFrame(beatTick);
+}
+function startBeat() { if (!beatRaf) beatRaf = requestAnimationFrame(beatTick); if (wallMoves() && !wallRaf) startWall(); }
+addEventListener("neonos:nowplaying", e => { if (e.detail && e.detail.state === "playing") setTimeout(startBeat, 120); });
+const wallMoves = () => (wallMode === "orb" && !calmOn()) || (wallMode === "fog" && !!musicBeat());
+let wallPhase = 0, wallLast = 0, kickS = 0, loudS = 0;
 function drawWall(now) {
   wallRaf = 0;
-  const t = now / 1000;
+  const t = now / 1000, dt = Math.min(0.05, wallLast ? (now - wallLast) / 1000 : 0); wallLast = now;
+  const B = musicBeat();
+  // smoothed so the orb eases in and out of the music instead of jumping
+  kickS += ((B ? B.kick : 0) - kickS) * Math.min(1, dt * 14); loudS += ((B ? B.loud : 0) - loudS) * Math.min(1, dt * 4);
+  wallPhase += dt * (0.15 + (B && B.bpm ? (B.bpm / 60) * Math.PI * 2 / 32 : 0));
   wglow.setBackground(wallMode === "image" || wallMode === "slideshow" ? null : { base: DESK, blobs: wallMode === "plain" ? [] : HAZE });
-  wglow.begin(wallMoves() ? t : 0, 0);
+  wglow.begin(wallMoves() ? t : 0, loudS);
   if (wallMode === "orb") {
-    const cx = WW / 2, cy = (WH - TASKBAR) / 2, R = Math.min(WW, WH) * 0.2, n = 12;
+    const cx = WW / 2, cy = (WH - TASKBAR) / 2, R = Math.min(WW, WH) * 0.2 * (0.94 + 0.3 * loudS), n = 12;
     for (let i = 0; i < n; i++) {
-      const a = t * 0.15 + i * Math.PI * 2 / n, wob = 1 + 0.06 * Math.sin(t * 0.6 + i * 1.7);
+      const a = wallPhase + i * Math.PI * 2 / n, wob = 1 + 0.06 * Math.sin(t * 0.6 + i * 1.7);
       const x = Math.cos(a) * R * wob, y = Math.sin(a) * R * wob * 0.42, z = Math.sin(a);
-      const s = (34 + 10 * Math.sin(t * 0.8 + i)) * (0.75 + 0.25 * z);
-      wglow.dot(cx + x, cy + y, s * 4, (0.18 + 0.12 * (z + 1) / 2) * (wglow.gl ? 1.3 : 1));
+      const s = (34 + 10 * Math.sin(t * 0.8 + i)) * (0.75 + 0.25 * z) * (1 + 0.9 * kickS);
+      wglow.dot(cx + x, cy + y, s * 4, (0.18 + 0.12 * (z + 1) / 2) * (wglow.gl ? 1.3 : 1) * (1 + 0.8 * loudS));
     }
   }
   wglow.end();
-  if (wallMoves() && !document.hidden) wallRaf = requestAnimationFrame(drawWall);
+  if (wallMoves() && !document.hidden) wallRaf = requestAnimationFrame(drawWall); else wallLast = 0;
 }
 function startWall() { cancelAnimationFrame(wallRaf); wallRaf = requestAnimationFrame(drawWall); }
 // a picture wallpaper (one picture, or a slideshow from Photos) sits behind the (clear) canvas and follows the
@@ -1253,6 +1279,7 @@ applyTheme();
 onTheme(t => {
   applyTheme(t); buildSprite();
   if (wallKeyOf(t) !== wallKey) loadWall(); else { showWallPic(t); startWall(); }
+  startBeat();
   if (JSON.stringify([...hiddenIcons()]) + iconRows() !== iconsKey) renderIcons();
 });
 buildSprite(); sizeWall(); loadWall();

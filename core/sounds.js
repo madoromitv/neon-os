@@ -3,6 +3,7 @@
 // a two-note chime, and a short burst of static for warnings. Calm by default, like the rest of the look.
 // Turned on or off, and their volume set, in the theme (Settings and the taskbar tray).
 import { getTheme } from "./theme.js";
+import { mixOut } from "./mixer.js";
 
 let ctx = null, out = null;
 function ready() {
@@ -10,7 +11,7 @@ function ready() {
   if (t.sounds === false) return null;
   if (!ctx) {
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
-    ctx = new AC(); out = ctx.createGain(); out.connect(ctx.destination);
+    ctx = new AC(); out = ctx.createGain(); out.connect(mixOut(ctx, "system"));
   }
   if (ctx.state !== "running") ctx.resume().catch(() => {});
   out.gain.value = Math.pow(t.sysVol == null ? 0.6 : t.sysVol, 2) * 0.9;
@@ -36,7 +37,7 @@ function noise(dur, freq, q, vol, delay = 0, sweepTo) {
 
 function alarmTone(f, delay) {
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-  if (!ctx) { ctx = new AC(); out = ctx.createGain(); out.connect(ctx.destination); }
+  if (!ctx) { ctx = new AC(); out = ctx.createGain(); out.connect(mixOut(ctx, "system")); }
   if (ctx.state !== "running") ctx.resume().catch(() => {});
   const t = getTheme(); out.gain.value = Math.max(0.35, Math.pow(t.sysVol == null ? 0.6 : t.sysVol, 2) * 0.9);
   const at = ctx.currentTime + delay, o = ctx.createOscillator(), g = ctx.createGain();

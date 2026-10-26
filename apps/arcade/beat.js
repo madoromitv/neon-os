@@ -2,6 +2,8 @@
 // The notes come from the song's own analysis: kicks, snares, the mids and the hats each fall down a lane, thinned
 // out by difficulty. Hit D F J K (or tap the lanes) as each note crosses the line. Perfect, great and good hits
 // build a combo; the best score for each song and difficulty is kept.
+import { mixOut } from "../../core/mixer.js";
+let beatOut = null;
 const LANES = 4, KEYS = ["d", "f", "j", "k"], WINDOWS = [[0.045, "PERFECT", 300], [0.09, "GREAT", 200], [0.14, "GOOD", 100]];
 const DIFF = { easy: { min: 0.6, gap: 0.42, speed: 1.2 }, normal: { min: 0.4, gap: 0.22, speed: 1.0 }, hard: { min: 0.25, gap: 0.12, speed: 0.8 } };
 // the bands a song's analysis has: Kick, Bass, Body, Lead, Snare, Hats → lanes
@@ -43,7 +45,7 @@ export function mountBeat(el, { save, state, library, fileOf }) {
     $("#btGo").disabled = true; $("#btGo").textContent = "Loading…";
     let buf; try { buf = await ac.decodeAudioData(await (await fileOf(t)).arrayBuffer()); } catch (e) { $("#btGo").disabled = false; $("#btGo").textContent = "Play"; $("#btInfo").textContent = "Couldn't open that song (if it's in a linked folder, play it in Amp first)."; return; }
     notes = chart(t.analysis, diff); score = 0; combo = 0; maxCombo = 0; counts = { PERFECT: 0, GREAT: 0, GOOD: 0, MISS: 0 };
-    stop(); src = ac.createBufferSource(); src.buffer = buf; src.connect(ac.destination); startAt = ac.currentTime + 2; src.start(startAt); // two seconds to get ready
+    stop(); src = ac.createBufferSource(); src.buffer = buf; src.connect(beatOut || (beatOut = mixOut(ac, "arcade"))); startAt = ac.currentTime + 2; src.start(startAt); // two seconds to get ready
     src.onended = () => { if (playing) finish(); };
     playing = true; $("#btEnd").hidden = true; $("#btGo").disabled = false; $("#btGo").textContent = "Restart";
     if (parent !== window) parent.postMessage({ neonOs: "pause-music" }, location.origin);

@@ -3,6 +3,7 @@
 // Play the slices from 16 pads or the keyboard, sequence them in four 16-step patterns, Link to Pulse and Drift,
 // and export four bars to a WAV file. Everything saves in this browser as you go.
 import "../../core/os-link.js";
+import { mixOut } from "../../core/mixer.js";
 import { applyTheme, onTheme } from "../../core/theme.js";
 import { clock } from "../../core/clock.js";
 import { icon } from "../../style-kit/icons.js";
@@ -69,7 +70,7 @@ let ctx = null, out = null, stopLast = null, fx = null;
 function ensureAudio() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)(); out = ctx.createGain(); out.gain.value = S.vol;
-    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); out.connect(fx.input); fx.output.connect(ctx.destination);
+    fx = createFx(ctx, { bpm: S.bpm, params: S.fx }); out.connect(fx.input); fx.output.connect(mixOut(ctx, "chop"));
   }
   if (ctx.state !== "running") ctx.resume().catch(() => {});
   return ctx;

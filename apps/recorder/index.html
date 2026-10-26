@@ -55,6 +55,7 @@
   <p class="empty" id="empty">Nothing recorded yet.</p>
   <script type="module">
     import "../../core/os-link.js";
+    import { mixOut } from "../../core/mixer.js"; let recOut = null;
     import { applyTheme, onTheme } from "../../core/theme.js";
     import { esc, toast, dialog, openMenu } from "../../style-kit/ui.js";
     import { toWav } from "../../core/wav.js";
@@ -145,7 +146,7 @@
     function stopPlay() { if (player) { try { player.stop(); } catch (e) {} player = null; } cancelAnimationFrame(raf); $("play").textContent = "Play"; drawWave(); }
     $("play").addEventListener("click", () => {
       if (player) { stopPlay(); return; } if (!audio) return;
-      player = ctx().createBufferSource(); player.buffer = audio; player.connect(ctx().destination);
+      player = ctx().createBufferSource(); player.buffer = audio; player.connect(recOut || (recOut = mixOut(ctx(), "recorder")));
       const from = selA * audio.duration, len = (selB - selA) * audio.duration; player.start(0, from, len); playAt = ctx().currentTime;
       player.onended = () => { player = null; stopPlay(); }; $("play").textContent = "Stop";
       const anim = () => { if (!player) return; drawWave(selA + (ctx().currentTime - playAt) / audio.duration); raf = requestAnimationFrame(anim); }; anim();

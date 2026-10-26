@@ -2,7 +2,7 @@
 // The screensaver is the orb drifting over black after a spell of no mouse or keys (Settings sets how long).
 // The lock screen shows the time, what's playing with its controls, and asks for the PIN if one is set.
 // A PIN keeps casual hands off this desktop; it isn't encryption, and the saved data isn't locked by it.
-import { getTheme, ballHex, calmOn } from "../core/theme.js";
+import { liveBall, calmOn } from "../core/theme.js";
 import { esc } from "../style-kit/ui.js";
 
 export const LOCK_KEY = "neon-os:lock";
@@ -57,7 +57,7 @@ export function initLock(opts) {
   function draw() {
     const cv = el.querySelector("canvas"), dpr = Math.min(2, devicePixelRatio || 1);
     const W = cv.width = innerWidth * dpr, H = cv.height = innerHeight * dpr, ctx = cv.getContext("2d");
-    const col = ballHex(getTheme().ball), calm = calmOn(), t0 = performance.now();
+    const col = liveBall(), calm = calmOn(), t0 = performance.now();
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
     const frame = now => {
       const t = (now - t0) / 1000, r = Math.min(W, H) * 0.022;

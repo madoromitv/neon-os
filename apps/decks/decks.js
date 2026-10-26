@@ -3,6 +3,7 @@
 // four-beat loop, pitch (tempo) ±8%, and Sync, which matches tempo and lines the beats up with the other deck.
 // The mixer has three-band EQ and a fader per deck, an equal-power crossfader, master volume and mix recording.
 import "../../core/os-link.js";
+import { mixOut } from "../../core/mixer.js";
 import { applyTheme, onTheme } from "../../core/theme.js";
 import { openDb, all, put, onLibraryChange, notifyLibraryChange } from "../../core/backup.js";
 import { buildGroups, sortSongs, listState, viewSongs, viewGroups, viewTitle, isGroupView, openGroup, parentView, searchSongs, searchGroups, groupNote } from "../../core/library.js";
@@ -25,7 +26,7 @@ const D = {}; // deck state by "A" / "B"
 function ensure() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
-    master = ctx.createGain(); master.gain.value = 0.85; master.connect(ctx.destination);
+    master = ctx.createGain(); master.gain.value = 0.85; master.connect(mixOut(ctx, "decks"));
     recDest = ctx.createMediaStreamDestination(); master.connect(recDest);
     for (const k of ["A", "B"]) {
       const d = D[k];
