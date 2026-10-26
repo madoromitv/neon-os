@@ -51,7 +51,7 @@
     applyTheme(); onTheme(applyTheme);
     const $ = id => document.getElementById(id);
     // the apps that make sound, in the order of a mixing desk: players, then the Rack, then everything else
-    const CH = ["amp", "decks", "radio", "pulse", "drift", "chop", "tape", "recorder", "video", "arcade", "system"];
+    const CH = ["amp", "decks", "radio", "pulse", "drift", "chop", "tape", "recorder", "tuner", "video", "arcade", "system"];
     const nameOf = id => id === "system" ? "System sounds" : (APPS.find(a => a.id === id) || {}).name || id;
     const pct = v => Math.round(v * 100) + "%";
     const strips = {};

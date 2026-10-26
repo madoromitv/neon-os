@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tuner · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 680px) { .cols { grid-template-columns: 1fr; } }
+  .card { padding: 10px 12px; display: grid; gap: 8px; align-content: start; }
+  .note { display: flex; align-items: baseline; justify-content: center; gap: 4px; font: 96px/1 var(--font-lcd); color: var(--ball); text-shadow: 0 0 12px var(--ball-dim); min-height: 96px; padding: 6px 0 0; }
+  .note small { font-size: 40px; opacity: .7; }
+  .note.dim { opacity: .25; }
+  .gauge { position: relative; height: 34px; background: #000; border-radius: 2px; box-shadow: inset -1px -1px 0 #3a3450; overflow: hidden; }
+  .gauge .ticks { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), #2a2438 calc(10% - 1px) 10%); }
+  .gauge .mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink-faint); }
+  .gauge .zone { position: absolute; left: 45%; width: 10%; top: 0; bottom: 0; background: color-mix(in srgb, var(--ball) 14%, transparent); }
+  .gauge .needle { position: absolute; top: 3px; bottom: 3px; width: 6px; margin-left: -3px; left: 50%; background: var(--ink-dim); border-radius: 2px; transition: left .08s linear; }
+  .gauge.ok .needle { background: var(--ball); box-shadow: 0 0 10px var(--ball); }
+  .read { display: flex; justify-content: space-between; font: 20px/1 var(--font-lcd); color: var(--ink-dim); }
+  .read b { color: var(--ball); font-weight: normal; }
+  .verdict { text-align: center; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--ink-faint); min-height: 14px; }
+  .verdict.ok { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .strings { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
+  .strings .btn { min-width: 38px; }
+  .strings .btn.near { color: var(--ball); box-shadow: 0 0 0 1px var(--ball-dim) inset; }
+  .bpm { font: 72px/1 var(--font-lcd); color: var(--ball); text-shadow: 0 0 12px var(--ball-dim); text-align: center; }
+  .bpm small { font-size: 22px; opacity: .7; }
+  .leds { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; min-height: 22px; }
+  .leds i { width: 18px; height: 18px; border-radius: 50%; background: #1a1622; box-shadow: inset 0 0 0 1px #000; }
+  .leds i.first { outline: 1px solid var(--ink-faint); outline-offset: 2px; }
+  .leds i.on { background: var(--ball); box-shadow: 0 0 10px var(--ball); }
+  .leds i.on.first { background: #fff; box-shadow: 0 0 12px var(--ball); }
+  .row.wrap { flex-wrap: wrap; }
+  .grow { flex: 1; min-width: 120px; }
+  select { min-width: 0; }
+</style>
+</head>
+<body class="app">
+  <div class="cols">
+    <section class="card" aria-labelledby="tunLbl">
+      <div class="row"><span class="lbl" id="tunLbl">Tuner</span><span style="flex:1"></span><button class="btn" id="listen" aria-pressed="false"><i class="led"></i>Listen</button></div>
+      <div class="note dim" id="note" aria-live="polite">–</div>
+      <div class="gauge" id="gauge" role="img" aria-label="How far from the note"><span class="ticks"></span><span class="zone"></span><span class="mid"></span><span class="needle" id="needle"></span></div>
+      <div class="read"><span><b id="hz">—</b> Hz</span><span><b id="cents">—</b> cents</span></div>
+      <div class="verdict" id="verdict">Press Listen and play a note</div>
+      <div class="row wrap"><span class="lbl">Strings</span><select id="inst" aria-label="Instrument"><option value="guitar">Guitar</option><option value="bass">Bass</option><option value="ukulele">Ukulele</option><option value="violin">Violin</option><option value="chromatic">Any note</option></select><span style="flex:1"></span><span class="lbl">A =</span><button class="btn icon" id="aDown" aria-label="Lower the reference">−</button><span class="lcd" id="aHz" style="min-width:52px;text-align:center">440</span><button class="btn icon" id="aUp" aria-label="Raise the reference">+</button></div>
+      <div class="strings" id="strings"></div>
+      <p class="hint">Click a string to hear its note. The reference A sets the whole tuning (440 Hz is standard).</p>
+    </section>
+    <section class="card" aria-labelledby="metLbl">
+      <div class="row"><span class="lbl" id="metLbl">Metronome</span><span style="flex:1"></span><button class="btn" id="link" aria-pressed="false" title="Share tempo and start/stop with Pulse, Drift and Chop"><i class="led"></i>Link</button><button class="btn" id="go" aria-pressed="false"><i class="led"></i>Start</button></div>
+      <div class="bpm"><span id="bpmVal">120</span> <small>BPM</small></div>
+      <div class="leds" id="leds"></div>
+      <div class="row"><button class="btn icon" id="bDown" aria-label="Slower">−</button><div class="slider h grow" id="tempo"></div><button class="btn icon" id="bUp" aria-label="Faster">+</button></div>
+      <div class="row wrap"><button class="btn" id="tap" title="Tap the beat (or press T)">Tap</button>
+        <span class="lbl">Beats</span><select id="beats" aria-label="Beats in a bar"></select>
+        <span class="lbl">Ticks</span><select id="sub" aria-label="Ticks per beat"><option value="1">♩ 1</option><option value="2">♪ 2</option><option value="3">3 (triplets)</option><option value="4">♬ 4</option></select>
+        <button class="btn" id="accent" aria-pressed="true"><i class="led"></i>Accent</button></div>
+      <div class="row"><span class="lbl">Volume</span><div class="slider h grow" id="mvol"></div><span class="lcd pct" id="mvolPct"></span></div>
+      <p class="hint">Space starts and stops. With Link on it plays in time with Pulse, Drift and Chop and shares their tempo.</p>
+    </section>
+  </div>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { Slider, toast } from "../../style-kit/ui.js";
+    import { clock, wallNow } from "../../core/clock.js";
+    import { mixOut } from "../../core/mixer.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id);
+    const KEY = "neon-os:tuner"; let S = { a4: 440, inst: "guitar", bpm: 120, beats: 4, sub: 1, accent: true, vol: 0.7, link: false };
+    try { S = { ...S, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) {}
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+    let ctx = null, out = null;
+    const audio = () => { if (!ctx) { ctx = new AudioContext(); out = mixOut(ctx, "tuner"); } if (ctx.state !== "running") ctx.resume(); return ctx; };
+
+    // ---------- pitch ----------
+    const NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+    const midiOf = f => 69 + 12 * Math.log2(f / S.a4), freqOf = m => S.a4 * Math.pow(2, (m - 69) / 12);
+    const nameOf = m => NAMES[((m % 12) + 12) % 12], octOf = m => Math.floor(m / 12) - 1;
+    // McLeod's method: how alike the sound is to itself shifted by each lag; the first strong peak is the period
+    function detect(buf, sr) {
+      const N = buf.length; let rms = 0; for (let i = 0; i < N; i++) rms += buf[i] * buf[i]; rms = Math.sqrt(rms / N);
+      if (rms < 0.008) return null;
+      const minLag = Math.floor(sr / 1400), maxLag = Math.min(N >> 1, Math.ceil(sr / 38)), nsdf = new Float32Array(maxLag + 2);
+      for (let lag = minLag; lag <= maxLag + 1; lag++) { let ac = 0, m = 0; for (let i = 0, n = N - lag; i < n; i++) { const a = buf[i], b = buf[i + lag]; ac += a * b; m += a * a + b * b; } nsdf[lag] = m ? 2 * ac / m : 0; }
+      let max = 0; for (let l = minLag; l <= maxLag; l++) if (nsdf[l] > max) max = nsdf[l];
+      if (max < 0.6) return null;
+      let lag = -1;
+      for (let l = minLag + 1; l <= maxLag; l++) if (nsdf[l] >= 0.88 * max && nsdf[l] >= nsdf[l - 1] && nsdf[l] >= nsdf[l + 1]) { lag = l; break; }
+      if (lag < 0) return null;
+      const a = nsdf[lag - 1], b = nsdf[lag], c = nsdf[lag + 1], d = a - 2 * b + c, shift = d ? 0.5 * (a - c) / d : 0;
+      return { freq: sr / (lag + shift), clarity: max };
+    }
+    const TUNINGS = { guitar: [40, 45, 50, 55, 59, 64], bass: [28, 33, 38, 43], ukulele: [67, 60, 64, 69], violin: [55, 62, 69, 76], chromatic: [] };
+    function drawStrings(near) {
+      $("strings").innerHTML = TUNINGS[S.inst].map(m => `<button class="btn${m === near ? " near" : ""}" data-m="${m}" title="${nameOf(m)}${octOf(m)} · ${freqOf(m).toFixed(1)} Hz">${nameOf(m)}<small>${octOf(m)}</small></button>`).join("");
+    }
+    let stream = null, an = null, raf = 0, smooth = null, lastNear = null, heardAt = 0;
+    const buf = new Float32Array(4096);
+    function show(f) {
+      if (!f) { if (performance.now() - heardAt > 900) { $("note").classList.add("dim"); $("verdict").textContent = stream ? "Listening…" : "Press Listen and play a note"; $("verdict").classList.remove("ok"); $("gauge").classList.remove("ok"); $("needle").style.left = "50%"; } return; }
+      heardAt = performance.now();
+      smooth = smooth && Math.abs(Math.log2(f / smooth)) < 0.04 ? smooth * 0.75 + f * 0.25 : f; // steady the reading, but jump to a new note at once
+      const mf = midiOf(smooth), list = TUNINGS[S.inst];
+      // with an instrument chosen, aim at its nearest string; otherwise the nearest note
+      const target = list.length ? list.reduce((a, b) => Math.abs(b - mf) < Math.abs(a - mf) ? b : a) : Math.round(mf);
+      const near = Math.round(mf), cents = Math.round((mf - (list.length && Math.abs(target - mf) < 1.5 ? target : near)) * 100), m = list.length && Math.abs(target - mf) < 1.5 ? target : near;
+      $("note").innerHTML = `${nameOf(m)}<small>${octOf(m)}</small>`; $("note").classList.remove("dim");
+      $("hz").textContent = smooth.toFixed(1); $("cents").textContent = (cents > 0 ? "+" : "") + cents;
+      $("needle").style.left = (50 + Math.max(-50, Math.min(50, cents))) + "%";
+      const ok = Math.abs(cents) <= 5; $("gauge").classList.toggle("ok", ok); $("verdict").classList.toggle("ok", ok);
+      $("verdict").textContent = ok ? "In tune" : cents < 0 ? "Too low: tighten" : "Too high: loosen";
+      if (m !== lastNear) { lastNear = m; drawStrings(list.includes(m) ? m : null); }
+    }
+    function loop() { an.getFloatTimeDomainData(buf); const r = detect(buf, ctx.sampleRate); show(r && r.freq); raf = requestAnimationFrame(loop); }
+    async function listen(on) {
+      if (!on) { cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; $("listen").setAttribute("aria-pressed", "false"); show(null); return; }
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); }
+      catch (e) { toast("The tuner needs the microphone: allow it in the browser and try again", true); return; }
+      audio(); an = ctx.createAnalyser(); an.fftSize = 4096; ctx.createMediaStreamSource(stream).connect(an);
+      $("listen").setAttribute("aria-pressed", "true"); loop();
+    }
+    $("listen").addEventListener("click", () => listen(!stream));
+    function tone(m) { const c = audio(), o = c.createOscillator(), g = c.createGain(), t = c.currentTime; o.type = "triangle"; o.frequency.value = freqOf(m); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0008, t + 2.2); o.connect(g); g.connect(out); o.start(t); o.stop(t + 2.3); }
+    $("strings").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) tone(+b.dataset.m); });
+    const showA = () => { $("aHz").textContent = S.a4; drawStrings(null); };
+    $("aDown").addEventListener("click", () => { S.a4 = Math.max(415, S.a4 - 1); showA(); save(); });
+    $("aUp").addEventListener("click", () => { S.a4 = Math.min(466, S.a4 + 1); showA(); save(); });
+    $("inst").value = S.inst; $("inst").addEventListener("change", () => { S.inst = $("inst").value; lastNear = null; drawStrings(null); save(); });
+    showA();
+
+    // ---------- metronome ----------
+    // Clicks are scheduled a little ahead on the audio clock (like Pulse), so they stay exact even when the window is busy.
+    $("beats").innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join(""); $("beats").value = S.beats; $("sub").value = S.sub;
+    const drawLeds = (on = -1) => { $("leds").innerHTML = Array.from({ length: S.beats }, (_, i) => `<i class="${i === 0 && S.accent ? "first" : ""}${i === on ? " on" : ""}"></i>`).join(""); };
+    let running = false, timer = 0, nextT = 0, tick = 0, ticks = 0;
+    const visQ = [];
+    function click(t, kind) { // kind: 2 the bar's first beat, 1 a beat, 0 a tick between beats
+      const c = ctx, o = c.createOscillator(), g = c.createGain(), f = kind === 2 ? 1760 : kind === 1 ? 1175 : 880, v = S.vol * (kind === 2 ? 1 : kind === 1 ? 0.7 : 0.35);
+      o.type = "square"; o.frequency.value = f; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v * 0.5, t + 0.001); g.gain.exponentialRampToValueAtTime(0.0005, t + 0.045);
+      const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 4000; o.connect(lp); lp.connect(g); g.connect(out); o.start(t); o.stop(t + 0.06);
+    }
+    const linked = () => S.link && clock.state.playing;
+    function schedule() {
+      const perBeat = S.sub, spb = 60 / S.bpm;
+      while (nextT < ctx.currentTime + 0.12) {
+        const beatI = Math.floor(tick / perBeat), inBar = beatI % S.beats, isBeat = tick % perBeat === 0;
+        click(nextT, isBeat ? (inBar === 0 && S.accent ? 2 : 1) : 0); ticks++;
+        if (isBeat) visQ.push({ t: nextT, i: inBar });
+        tick++;
+        if (linked()) { const c = clock.state; nextT = clock.toAudio(ctx, c.origin + tick * (60000 / c.bpm / perBeat)); } else nextT += spb / perBeat;
+      }
+    }
+    function startLocal() {
+      audio(); running = true; $("go").setAttribute("aria-pressed", "true"); $("go").lastChild.textContent = "Stop";
+      if (linked()) { const n = clock.nextStep(S.sub); tick = n.index; nextT = clock.toAudio(ctx, n.wall); } else { tick = 0; nextT = ctx.currentTime + 0.06; }
+      schedule(); timer = setInterval(schedule, 25); requestAnimationFrame(vis);
+    }
+    function stopLocal() { running = false; clearInterval(timer); visQ.length = 0; drawLeds(); $("go").setAttribute("aria-pressed", "false"); $("go").lastChild.textContent = "Start"; }
+    function vis() { if (!running) return; while (visQ.length && visQ[0].t <= ctx.currentTime + 0.01) { const v = visQ.shift(); drawLeds(v.i); } requestAnimationFrame(vis); }
+    const start = () => { if (S.link && !clock.state.playing) { audio(); clock.start(S.bpm); return; } startLocal(); };
+    const stop = () => { if (S.link && clock.state.playing) { clock.stop(); return; } stopLocal(); };
+    clock.subscribe(c => { if (!S.link) return; if (c.bpm !== S.bpm) setBpm(c.bpm, false); if (c.playing && !running) startLocal(); else if (!c.playing && running) stopLocal(); else if (running) { const n = clock.nextStep(S.sub); tick = n.index; nextT = clock.toAudio(ctx, n.wall); } });
+    $("go").addEventListener("click", () => running ? stop() : start());
+    function setBpm(v, share = true) { S.bpm = Math.max(30, Math.min(300, Math.round(v))); $("bpmVal").textContent = S.bpm; tempo.set(S.bpm); if (share && S.link) clock.setBpm(S.bpm); save(); }
+    const tempo = Slider($("tempo"), { min: 30, max: 300, step: 1, value: S.bpm, label: "Tempo", text: v => v + " BPM", onInput: v => setBpm(v) });
+    $("bDown").addEventListener("click", () => setBpm(S.bpm - 1)); $("bUp").addEventListener("click", () => setBpm(S.bpm + 1));
+    let taps = [];
+    function tap() { const now = performance.now(); taps = taps.filter(t => now - t < 2500); taps.push(now); if (taps.length >= 2) { const gaps = taps.slice(1).map((t, i) => t - taps[i]); setBpm(60000 / (gaps.reduce((a, b) => a + b, 0) / gaps.length)); } }
+    $("tap").addEventListener("click", tap);
+    $("beats").addEventListener("change", () => { S.beats = +$("beats").value; drawLeds(); save(); });
+    $("sub").addEventListener("change", () => { S.sub = +$("sub").value; save(); if (running) { stopLocal(); startLocal(); } });
+    $("accent").setAttribute("aria-pressed", String(S.accent)); $("accent").addEventListener("click", () => { S.accent = !S.accent; $("accent").setAttribute("aria-pressed", String(S.accent)); drawLeds(); save(); });
+    $("link").setAttribute("aria-pressed", String(S.link));
+    $("link").addEventListener("click", () => { S.link = !S.link; $("link").setAttribute("aria-pressed", String(S.link)); save(); if (S.link && clock.state.playing) { setBpm(clock.state.bpm, false); if (!running) startLocal(); } });
+    const pct = v => Math.round(v * 100) + "%";
+    Slider($("mvol"), { min: 0, max: 1, step: 0.01, value: S.vol, label: "Metronome volume", text: pct, onInput: v => { S.vol = v; $("mvolPct").textContent = pct(v); }, onChange: save }); $("mvolPct").textContent = pct(S.vol);
+    addEventListener("keydown", e => { if (e.target.closest("input, select, textarea")) return; if (e.code === "Space") { e.preventDefault(); running ? stop() : start(); } else if (e.key === "t" || e.key === "T") tap(); });
+    $("bpmVal").textContent = S.bpm; drawLeds();
+    window.__tuner = { detect, get ticks() { return ticks; }, get running() { return running; }, midiOf };
+  </script>
+</body>
+</html>

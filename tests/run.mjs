@@ -725,6 +725,32 @@ const tests = {
     check((await p.evaluate(async () => (await (await import("/core/history.js")).playsSince(0)).length)) === n0 + 1 && Number(await sf.$eval(".tile b", e => e.textContent)) === t0 + 1, `a new play shows in Stats straight away (${t0} → ${await sf.$eval(".tile b", e => e.textContent)})`);
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "Tuner and metronome"() {
+    const p = await page(); await p.goto(URL + "apps/tuner/"); await p.waitForTimeout(500);
+    // pitch detection on made-up notes: A4, low E on a guitar, and a slightly sharp G3
+    const heard = await p.evaluate(() => { const sr = 48000, mk = (f, harm) => { const b = new Float32Array(4096); for (let i = 0; i < b.length; i++) { const t = i / sr; b[i] = 0.4 * Math.sin(2 * Math.PI * f * t) + (harm ? 0.3 * Math.sin(4 * Math.PI * f * t) + 0.15 * Math.sin(6 * Math.PI * f * t) : 0); } return b; };
+      return [440, 82.41, 197].map((f, i) => { const r = window.__tuner.detect(mk(f, i === 1), sr); return r ? r.freq : 0; }); });
+    check(Math.abs(heard[0] - 440) < 1 && Math.abs(heard[1] - 82.41) < 0.5 && Math.abs(heard[2] - 197) < 0.6, `the tuner finds the note (${heard.map(f => f.toFixed(2)).join(", ")} Hz)`);
+    check(await p.evaluate(() => window.__tuner.detect(new Float32Array(4096), 48000) === null), "and stays quiet in silence");
+    await p.click("#listen"); await p.waitForTimeout(1500); // the test browser's pretend microphone plays a beep
+    check(await p.$eval("#listen", e => e.getAttribute("aria-pressed")) === "true", "Listen uses the microphone");
+    await p.click("#listen");
+    // metronome: tap tempo, then it ticks
+    for (let i = 0; i < 4; i++) { await p.click("#tap"); await p.waitForTimeout(500); }
+    const bpm = Number(await p.$eval("#bpmVal", e => e.textContent));
+    check(bpm >= 110 && bpm <= 130, `tapping sets the tempo (${bpm} BPM)`);
+    await p.selectOption("#beats", "3"); await p.click("#go"); await p.waitForTimeout(2100);
+    const ticks = await p.evaluate(() => window.__tuner.ticks);
+    check(ticks >= 4 && ticks <= 7, `the metronome ticks in time (${ticks} in 2 s at ${bpm} BPM)`);
+    check((await p.$$eval("#leds i", e => e.length)) === 3, "the beats in a bar show as lights");
+    await p.keyboard.press("Space"); await p.waitForTimeout(200);
+    check(!(await p.evaluate(() => window.__tuner.running)), "Space stops it");
+    // Link: follows the shared clock's tempo
+    await p.click("#link"); await p.evaluate(async () => (await import("/core/clock.js")).clock.start(96)); await p.waitForTimeout(400);
+    check(Number(await p.$eval("#bpmVal", e => e.textContent)) === 96 && await p.evaluate(() => window.__tuner.running), "with Link on it starts with the Rack and takes its tempo");
+    await p.evaluate(async () => (await import("/core/clock.js")).clock.stop()); await p.waitForTimeout(200);
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "details editor and Tidy names"() {
     const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
     await p.click("#mlRows .trow"); await p.click("#mlRows .trow:nth-of-type(3)", { modifiers: ["Shift"] });

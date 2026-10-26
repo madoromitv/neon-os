@@ -24,7 +24,7 @@
 "apps/files/fm.js": "fd0254ed8ce1",
 "apps/files/index.html": "8c7065cb9bf6",
 "apps/help/index.html": "65bdead29e3a",
-"apps/mixer/index.html": "9405e71e09d4",
+"apps/mixer/index.html": "d1927f423440",
 "apps/monitor/index.html": "f560e5b1c6b0",
 "apps/notes/index.html": "ad84c643493b",
 "apps/photos/editor.js": "c20e758d2556",
@@ -34,13 +34,14 @@
 "apps/pulse/pulse.js": "b6ce6f8885cc",
 "apps/radio/index.html": "18334e947a78",
 "apps/recorder/index.html": "1bda07c612a9",
-"apps/registry.js": "76b39cad486b",
+"apps/registry.js": "78c3ff694dcb",
 "apps/settings/index.html": "cc119cb66f91",
 "apps/stats/index.html": "c1b97ff9033d",
 "apps/tape/index.html": "b22478de9062",
 "apps/tape/tape.css": "0b08cf5f7aa8",
 "apps/tape/tape.js": "14a20caa300d",
 "apps/terminal/index.html": "a033ff03907c",
+"apps/tuner/index.html": "774107237fff",
 "apps/video/index.html": "cd46b4950294",
 "core/analyser.js": "98c9c57dd440",
 "core/analysis-worker.js": "49a98cea4ac6",
@@ -109,5 +110,5 @@
 "style-kit/ui.js": "ffc75925026f",
 "style-kit/vlist.js": "32be7a331f52"
 },
-"version": "b2caeef24a"
+"version": "0ab37f4e0b"
 }
