@@ -684,6 +684,47 @@ const tests = {
     check(await p.evaluate(async () => { const m = (await import("/core/mixer.js")).getMix(); return m.master === 1 && !m.muteAll && !Object.keys(m.apps).length; }), "Reset puts every app back to 100%");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "Stats: listening history, top songs and the year in music"() {
+    const p = await page({ viewport: { width: 1400, height: 950 } }); await desk(p); await amp(p, ["quiet.wav", "loud.wav", "beat120.wav"]);
+    // a history: this week, last month and last year, plus a play counted live by Amp
+    await p.evaluate(async () => {
+      const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init();
+      const [a, b] = s.tracks; await s.updateTrack(a.id, { artist: "Aster", genre: "Synthwave" }); await s.updateTrack(b.id, { artist: "Borealis", genre: "Ambient" });
+      const db = await new Promise(r => { const q = indexedDB.open("neon-os-history", 1); q.onupgradeneeded = () => q.result.createObjectStore("plays", { keyPath: "id", autoIncrement: true }).createIndex("at", "at"); q.onsuccess = () => r(q.result); });
+      const now = Date.now(), add = (t, at) => ({ at, track: t.id, title: t.title, artist: t === a ? "Aster" : "Borealis", album: "", genre: t === a ? "Synthwave" : "Ambient", secs: 180 });
+      const rows = [add(a, now - 3e5), add(a, now - 6e5), add(a, now - 9e5), add(b, now - 12e5), add(b, now - 40 * 864e5), add(a, now - 400 * 864e5)];
+      await new Promise(r => { const t = db.transaction("plays", "readwrite"); rows.forEach(x => t.objectStore("plays").add(x)); t.oncomplete = r; }); db.close();
+    });
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="stats"]'); await p.waitForSelector('[data-wid="stats"]'); await p.waitForTimeout(1500);
+    const sf = p.frame({ url: /stats/ });
+    const tiles = await sf.$$eval(".tile b", e => e.map(x => x.textContent));
+    check(tiles[0] === "4" && tiles[1] === "12 min" && tiles[3] === "2", `this week: plays, listening time and artists (${tiles.join(", ")})`);
+    check((await sf.$eval("#tArtists .row-i .t", e => e.textContent)) === "Aster" && (await sf.$eval("#tSongs .row-i .c", e => e.textContent)) === "3", "top artists and songs are counted");
+    check((await sf.$$eval("#tGenres .row-i .t", e => e.map(x => x.textContent))).join() === "Synthwave,Ambient", "top genres");
+    await sf.click('[data-span="year"]'); await p.waitForTimeout(500);
+    const inYear = await p.evaluate(async () => (await (await import("/core/history.js")).playsSince(+new Date(new Date().getFullYear(), 0, 1))).length);
+    check((await sf.$eval(".tile b", e => e.textContent)) === String(inYear), `the year view counts the year's plays (${inYear})`);
+    await sf.click("#prev"); await p.waitForTimeout(400);
+    check((await sf.$eval("#when", e => e.textContent)) === String(new Date().getFullYear() - 1), "‹ steps back a year");
+    await sf.click('[data-span="all"]'); await p.waitForTimeout(500);
+    check(Number(await sf.$eval(".tile b", e => e.textContent)) >= 6, "All time counts every play");
+    // clicking a song plays it in Amp
+    await sf.click('[data-span="week"]'); await p.waitForTimeout(400); await sf.click("#tSongs .row-i");
+    await p.waitForFunction(() => /quiet|loud/i.test(document.getElementById("marqueeText").textContent), null, { timeout: 8000 }).catch(() => {});
+    check(await p.evaluate(() => /quiet|loud/i.test(document.getElementById("marqueeText").textContent)), "clicking a top song plays it in Amp");
+    await sf.$eval("#mkPl", b => b.click()); await p.waitForTimeout(600); // Amp came to the front when it started playing
+    check(await p.evaluate(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return s.playlists.some(pl => /^Top 25/.test(pl.name) && pl.tracks.length === 2); }), "the top 25 becomes a playlist");
+    await sf.$eval("#recapBtn", b => b.click()); await p.waitForTimeout(400);
+    check(!(await sf.$eval("#recap", e => e.hidden)) && /Aster/.test(await sf.$eval("#rc", e => e.textContent)), "Recap shows the year's top artist");
+    await sf.$eval("#rc [data-x]", b => b.click());
+    // a new play reaches Stats straight away (Amp stopped first, so its own count can't land in between)
+    await p.evaluate(() => dispatchEvent(new CustomEvent("neonos:transport", { detail: "stop" }))); await p.waitForTimeout(1200);
+    const n0 = await p.evaluate(async () => (await (await import("/core/history.js")).playsSince(0)).length), t0 = Number(await sf.$eval(".tile b", e => e.textContent));
+    await p.evaluate(async () => { const h = await import("/core/history.js"); const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); await h.logPlay(s.tracks[2], 2); });
+    await p.waitForTimeout(500);
+    check((await p.evaluate(async () => (await (await import("/core/history.js")).playsSince(0)).length)) === n0 + 1 && Number(await sf.$eval(".tile b", e => e.textContent)) === t0 + 1, `a new play shows in Stats straight away (${t0} → ${await sf.$eval(".tile b", e => e.textContent)})`);
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "details editor and Tidy names"() {
     const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
     await p.click("#mlRows .trow"); await p.click("#mlRows .trow:nth-of-type(3)", { modifiers: ["Shift"] });

@@ -9,6 +9,7 @@ import { createAnalyser } from "../../core/analyser.js";
 import { SMART, smartById, buildGroups, albumOrder, viewSongs, viewGroups, viewTitle as libTitle, searchGroups, groupNote, nkey } from "../../core/library.js";
 import { getTheme, setTheme, onTheme, applyTheme, liveBall, setCoverBall } from "../../core/theme.js";
 import { coverColour } from "../../core/cover-colour.js";
+import { logPlay } from "../../core/history.js";
 import { notify } from "../../core/notify.js";
 import { createGlow, createGlow2D } from "../../core/glow.js";
 import { createLive, listInputs } from "../../core/live.js";
@@ -1667,6 +1668,7 @@ function frame(now) {
 
   if (loadedId && countedId !== loadedId && Eng.state === "playing" && Eng.time() > Math.min(30, Eng.duration * 0.5)) {
     countedId = loadedId; const t = byId(loadedId);
+    if (t && !t.builtin) logPlay(t, Eng.duration); // listening history, for Stats
     if (t && !t.builtin && store.canWrite) store.updateTrack(t.id, { plays: (t.plays || 0) + 1, lastPlayed: new Date().toISOString() }).then(() => { if (mlView.type === "smart") scheduleRender(); else renderTree(); }).catch(() => {});
   }
   // the desktop follows the beat (os/shell.js reads this): beat position, loudness, the kick, and whether music plays

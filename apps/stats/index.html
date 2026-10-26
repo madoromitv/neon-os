@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stats · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  .bar-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .seg .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .when { font: 22px/1 var(--font-lcd); color: var(--ball); min-width: 190px; text-align: center; padding: 3px 8px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+  .tile { padding: 8px 10px; display: grid; gap: 3px; }
+  .tile b { font: 34px/1 var(--font-lcd); color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .tile small { font-size: 11px; color: var(--ink-faint); }
+  .tile .up { color: var(--ball); } .tile .down { color: var(--ink-dim); }
+  .charts { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+  @media (max-width: 640px) { .charts { grid-template-columns: 1fr; } }
+  .chart { padding: 8px 10px; display: grid; gap: 4px; }
+  .chart svg { width: 100%; height: 120px; display: block; overflow: visible; }
+  .chart rect { fill: var(--ball); opacity: .85; }
+  .chart rect.now { opacity: 1; filter: drop-shadow(0 0 3px var(--ball)); }
+  .chart rect.zero { fill: #2a2438; opacity: 1; }
+  .chart text { fill: var(--ink-faint); font-size: 9px; font-family: inherit; }
+  .tops { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
+  .top { padding: 8px 10px; display: grid; gap: 2px; align-content: start; }
+  .row-i { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; padding: 3px 4px; border-radius: 2px; cursor: pointer; position: relative; }
+  .row-i:hover { background: #ffffff0a; }
+  .row-i .n { font: 18px/1 var(--font-lcd); color: var(--ink-faint); text-align: right; }
+  .row-i .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+  .row-i .t small { color: var(--ink-faint); margin-left: 6px; }
+  .row-i .c { font: 18px/1 var(--font-lcd); color: var(--ball); }
+  .row-i .bg { position: absolute; left: 30px; bottom: 1px; height: 2px; background: var(--ball); opacity: .5; border-radius: 1px; }
+  .empty { color: var(--ink-faint); font-size: 12px; padding: 6px 4px; }
+  .recap { position: fixed; inset: 0; background: #07050cf2; display: grid; place-items: center; z-index: 50; padding: 16px; overflow: auto; }
+  .recap[hidden] { display: none; }
+  .rc { width: min(640px, 100%); display: grid; gap: 10px; }
+  .rc h1 { margin: 0; font: 700 26px/1.1 inherit; letter-spacing: .14em; text-transform: uppercase; color: var(--ball); text-shadow: 0 0 14px var(--ball-dim); text-align: center; }
+  .rc .big { font: 64px/1 var(--font-lcd); color: var(--ball); text-shadow: 0 0 12px var(--ball-dim); }
+  .rc .card { padding: 12px 14px; display: grid; gap: 4px; }
+  .rc .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .rc .name { font-size: 20px; font-weight: 600; }
+  .rc .sub { color: var(--ink-faint); font-size: 12px; }
+  .rc .acts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+</style>
+</head>
+<body class="app">
+  <div class="bar-top">
+    <span class="row seg" role="group" aria-label="Period">
+      <button class="btn" data-span="week" aria-pressed="true">Week</button><button class="btn" data-span="month" aria-pressed="false">Month</button><button class="btn" data-span="year" aria-pressed="false">Year</button><button class="btn" data-span="all" aria-pressed="false">All time</button>
+    </span>
+    <button class="btn icon" id="prev" aria-label="Earlier" title="Earlier">‹</button><span class="lcd when" id="when"></span><button class="btn icon" id="next" aria-label="Later" title="Later">›</button>
+    <span style="flex:1"></span>
+    <button class="btn" id="recapBtn">Recap</button>
+  </div>
+  <div class="tiles" id="tiles"></div>
+  <div class="charts">
+    <div class="card chart"><span class="lbl" id="byLbl">Plays each day</span><svg id="byChart" role="img" aria-label="Plays over the period"></svg></div>
+    <div class="card chart"><span class="lbl">Time of day</span><svg id="hourChart" role="img" aria-label="Plays by hour of day"></svg></div>
+  </div>
+  <div class="tops">
+    <div class="card top"><span class="lbl">Top songs</span><div id="tSongs"></div></div>
+    <div class="card top"><span class="lbl">Top artists</span><div id="tArtists"></div></div>
+    <div class="card top"><span class="lbl">Top albums</span><div id="tAlbums"></div></div>
+    <div class="card top"><span class="lbl">Top genres</span><div id="tGenres"></div></div>
+  </div>
+  <div class="row"><button class="btn" id="mkPl">Make a playlist of the top 25</button><span class="hint" id="since"></span></div>
+  <div class="recap" id="recap" hidden role="dialog" aria-modal="true" aria-labelledby="rcT"><div class="rc" id="rc"></div></div>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { esc, toast } from "../../style-kit/ui.js";
+    import { playsSince, firstPlay, onPlayed } from "../../core/history.js";
+    import { makeLocalStore } from "../../core/storage.js";
+    import { notifyLibraryChange, onLibraryChange } from "../../core/backup.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id);
+    const KEY = "neon-os:stats"; let S = { span: "week" }; try { S = { ...S, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) {}
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ span: S.span })); } catch (e) {} };
+    let back = 0, store = null, tracks = [];
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const DAY = 864e5;
+    // the period shown: this week (from Monday), this month or this year, `back` periods ago
+    function range(span = S.span, b = back) {
+      const n = new Date(); n.setHours(0, 0, 0, 0);
+      if (span === "week") { const mon = new Date(n); mon.setDate(n.getDate() - ((n.getDay() + 6) % 7) - 7 * b); const end = new Date(mon); end.setDate(mon.getDate() + 7); return { from: +mon, to: +end, days: 7 }; }
+      if (span === "month") { const a = new Date(n.getFullYear(), n.getMonth() - b, 1), e = new Date(n.getFullYear(), n.getMonth() - b + 1, 1); return { from: +a, to: +e, days: Math.round((e - a) / DAY) }; }
+      if (span === "year") { const y = n.getFullYear() - b; return { from: +new Date(y, 0, 1), to: +new Date(y + 1, 0, 1), year: y }; }
+      return { from: 0, to: Infinity };
+    }
+    function label(r) {
+      if (S.span === "all") return "ALL TIME";
+      const a = new Date(r.from), e = new Date(r.to - 1);
+      if (S.span === "week") return back === 0 ? "THIS WEEK" : back === 1 ? "LAST WEEK" : `${a.getDate()} ${MONTHS[a.getMonth()]} – ${e.getDate()} ${MONTHS[e.getMonth()]}`.toUpperCase();
+      if (S.span === "month") return `${MONTHS[a.getMonth()]} ${a.getFullYear()}`.toUpperCase();
+      return String(r.year);
+    }
+    const hm = s => { const m = Math.round(s / 60); return m < 60 ? m + " min" : Math.floor(m / 60) + " h " + (m % 60) + " m"; };
+    const keyArtist = r => (r.artist || "Unknown artist").trim();
+    function tally(rows, keyOf, extra) {
+      const m = new Map();
+      for (const r of rows) { const k = keyOf(r); if (!k) continue; const e = m.get(k) || { k, n: 0, secs: 0, ...extra(r) }; e.n += r.n || 1; e.secs += r.secs || 0; m.set(k, e); }
+      return [...m.values()].sort((a, b) => b.n - a.n || b.secs - a.secs);
+    }
+    // All time also counts songs played before the history began, from each song's play count
+    function allTimeRows(hist) {
+      const histBy = new Map(); for (const r of hist) histBy.set(r.track, (histBy.get(r.track) || 0) + 1);
+      const extra = [];
+      for (const t of tracks) { const before = (t.plays || 0) - (histBy.get(t.id) || 0); if (before > 0) extra.push({ at: 0, track: t.id, title: t.title, artist: t.artist || "", album: t.album || "", genre: t.genre || "", secs: (t.duration || 0) * before, n: before }); }
+      return [...hist, ...extra];
+    }
+    async function rowsFor(r) { const h = (await playsSince(r.from)).filter(x => x.at < r.to); return S.span === "all" ? allTimeRows(h) : h; }
+    const count = rows => rows.reduce((n, r) => n + (r.n || 1), 0), secsOf = rows => rows.reduce((n, r) => n + (r.secs || 0), 0);
+    function list(el, items, sub, onClick) {
+      const max = items.length ? items[0].n : 1;
+      el.innerHTML = items.length ? items.slice(0, 10).map((it, i) => `<div class="row-i" data-i="${i}" title="Play"><span class="n">${i + 1}</span><span class="t">${esc(it.k)}${sub(it) ? `<small>${esc(sub(it))}</small>` : ""}</span><span class="c">${it.n}</span><i class="bg" style="width:calc(${(it.n / max) * 100}% - 60px)"></i></div>`).join("") : `<div class="empty">Nothing yet</div>`;
+      el.onclick = e => { const r = e.target.closest("[data-i]"); if (r) onClick(items[+r.dataset.i]); };
+    }
+    // tells Amp to play these songs (the same message Files and Terminal use)
+    function play(ids) { ids = ids.filter(id => tracks.some(t => t.id === id)); if (!ids.length) { toast("Those songs aren't in the library any more", true); return; } if (window.parent !== window) parent.postMessage({ neonOs: "play", ids }, location.origin); }
+    const idsWhere = f => tracks.filter(f).sort((a, b) => (b.plays || 0) - (a.plays || 0)).map(t => t.id);
+    function bars(svg, vals, labels, nowIdx) {
+      const W = 300, H = 110, n = vals.length, max = Math.max(1, ...vals), bw = W / n;
+      svg.setAttribute("viewBox", `0 0 ${W} ${H + 12}`); svg.setAttribute("preserveAspectRatio", "none");
+      svg.innerHTML = vals.map((v, i) => { const h = v ? Math.max(2, (v / max) * H) : 2; return `<rect class="${v ? "" : "zero"}${i === nowIdx ? " now" : ""}" x="${i * bw + bw * 0.15}" y="${H - h}" width="${bw * 0.7}" height="${h}"><title>${esc(labels[i])}: ${v}</title></rect>`; }).join("") +
+        labels.map((l, i) => (n <= 12 || i % Math.ceil(n / 8) === 0) ? `<text x="${i * bw + bw / 2}" y="${H + 10}" text-anchor="middle">${esc(l.split(" ")[0])}</text>` : "").join("");
+      svg.setAttribute("aria-label", labels.map((l, i) => `${l} ${vals[i]}`).join(", "));
+    }
+    let lastRows = [];
+    async function draw() {
+      document.querySelectorAll("[data-span]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.span === S.span)));
+      const r = range(); $("when").textContent = label(r); $("next").disabled = back === 0 || S.span === "all"; $("prev").disabled = S.span === "all";
+      const rows = await rowsFor(r); lastRows = rows;
+      const prev = S.span === "all" ? null : await rowsFor(range(S.span, back + 1));
+      const diff = (a, b) => b == null || !b ? "" : a === b ? `<small>same as before</small>` : `<small class="${a > b ? "up" : "down"}">${a > b ? "▲" : "▼"} ${Math.abs(Math.round((a - b) / b * 100))}% on the one before</small>`;
+      const songs = tally(rows, r => r.track, r => ({ track: r.track, title: r.title, artist: r.artist })), artists = tally(rows, keyArtist, () => ({}));
+      const albums = tally(rows, r => r.album ? r.album + "\u0000" + keyArtist(r) : "", r => ({ album: r.album, artist: keyArtist(r) })), genres = tally(rows, r => (r.genre || "").trim(), () => ({}));
+      $("tiles").innerHTML = [["Plays", count(rows), prev && count(prev)], ["Listening", hm(secsOf(rows)), null, secsOf(rows), prev && secsOf(prev)], ["Songs", songs.length], ["Artists", artists.length]]
+        .map(([l, v, p, a2, b2]) => `<div class="card tile"><span class="lbl">${l}</span><b>${esc(String(v))}</b>${p != null ? diff(v, p) : a2 != null ? diff(a2, b2) : ""}</div>`).join("");
+      // songs carry their title for the list (the key is the song's id)
+      songs.forEach(s => { s.k = s.title; });
+      list($("tSongs"), songs, s => s.artist, s => play([s.track]));
+      list($("tArtists"), artists, () => "", a => play(idsWhere(t => (t.artist || "Unknown artist").trim() === a.k)));
+      albums.forEach(a => { a.k = a.album; });
+      list($("tAlbums"), albums, a => a.artist, a => play(tracks.filter(t => t.album === a.album && (t.artist || "Unknown artist").trim() === a.artist).sort((x, y) => (x.track || 0) - (y.track || 0)).map(t => t.id)));
+      list($("tGenres"), genres, () => "", g => play(idsWhere(t => (t.genre || "").trim() === g.k)));
+      // over time: each day of a week or month, each month of a year, each year for all time
+      const dated = rows.filter(x => x.at);
+      if (S.span === "week" || S.span === "month") {
+        const vals = Array(r.days).fill(0); for (const x of dated) vals[Math.floor((x.at - r.from) / DAY)]++;
+        const labs = vals.map((_, i) => { const d = new Date(r.from + i * DAY + 3600e3); return S.span === "week" ? d.toLocaleDateString(undefined, { weekday: "short" }) + " " + d.getDate() : String(d.getDate()); });
+        $("byLbl").textContent = "Plays each day"; bars($("byChart"), vals, labs, back === 0 ? Math.floor((Date.now() - r.from) / DAY) : -1);
+      } else if (S.span === "year") {
+        const vals = Array(12).fill(0); for (const x of dated) vals[new Date(x.at).getMonth()]++;
+        $("byLbl").textContent = "Plays each month"; bars($("byChart"), vals, MONTHS, back === 0 ? new Date().getMonth() : -1);
+      } else {
+        const ys = dated.map(x => new Date(x.at).getFullYear()), y0 = Math.min(new Date().getFullYear(), ...ys), y1 = new Date().getFullYear(), vals = [];
+        for (let y = y0; y <= y1; y++) vals.push(ys.filter(v => v === y).length);
+        $("byLbl").textContent = "Plays each year (since the history began)"; bars($("byChart"), vals, vals.map((_, i) => String(y0 + i)), vals.length - 1);
+      }
+      const hours = Array(24).fill(0); for (const x of dated) hours[new Date(x.at).getHours()]++;
+      bars($("hourChart"), hours, hours.map((_, i) => String(i).padStart(2, "0") + ":00"), -1);
+      const fp = await firstPlay();
+      $("since").textContent = fp ? `Plays are counted from ${new Date(fp).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}${S.span === "all" ? "; All time also counts each song's plays from before then" : ""}.` : "Plays are counted from the first song you play past halfway (or 30 seconds) in Amp.";
+      $("mkPl").disabled = !songs.length;
+    }
+    async function load() { store = makeLocalStore(); await store.init(); tracks = store.tracks; draw(); }
+    document.querySelectorAll("[data-span]").forEach(b => b.addEventListener("click", () => { S.span = b.dataset.span; back = 0; save(); draw(); }));
+    $("prev").addEventListener("click", () => { back++; draw(); });
+    $("next").addEventListener("click", () => { back = Math.max(0, back - 1); draw(); });
+    $("mkPl").addEventListener("click", async () => {
+      const ids = tally(lastRows, r => r.track, () => ({})).map(s => s.k).filter(id => tracks.some(t => t.id === id)).slice(0, 25); if (!ids.length) return;
+      const name = `Top 25 · ${label(range()).replace(/^THIS /, "This ").replace(/^LAST /, "Last ").replace(/^ALL TIME$/, "All time")}`;
+      const pl = await store.createPlaylist(name); await store.updatePlaylist(pl.id, { tracks: ids }); notifyLibraryChange("edit");
+      toast(`Made the playlist "${name}"`);
+    });
+
+    // ---------- the year in music ----------
+    async function recap(year = range("year", S.span === "year" ? back : 0).year) {
+      const r = range("year", new Date().getFullYear() - year), rows = await rowsFor(r);
+      const songs = tally(rows, x => x.track, x => ({ title: x.title, artist: x.artist })), artists = tally(rows, keyArtist, () => ({})), genres = tally(rows, x => (x.genre || "").trim(), () => ({}));
+      const months = Array(12).fill(0); rows.forEach(x => months[new Date(x.at).getMonth()]++);
+      const days = new Map(); rows.forEach(x => { const d = new Date(x.at).toDateString(); days.set(d, (days.get(d) || 0) + 1); });
+      const bestDay = [...days.entries()].sort((a, b) => b[1] - a[1])[0];
+      const earlier = new Set((await playsSince(0)).filter(x => x.at < r.from).map(x => x.track)), fresh = songs.filter(s => !earlier.has(s.k)).length;
+      const bm = months.indexOf(Math.max(...months));
+      $("rc").innerHTML = !rows.length ? `<h1 id="rcT">${year} in music</h1><div class="card"><p>No plays counted in ${year} yet. Play some songs in Amp and come back.</p></div><div class="acts"><button class="btn" data-x>Close</button></div>` : `
+        <h1 id="rcT">${year} in music</h1>
+        <div class="card" style="text-align:center"><span class="lbl">You listened for</span><span class="big">${Math.round(secsOf(rows) / 60).toLocaleString()}</span><span class="sub">minutes, over ${count(rows).toLocaleString()} plays of ${songs.length.toLocaleString()} songs</span></div>
+        <div class="grid2">
+          <div class="card"><span class="lbl">Top artist</span><span class="name">${esc(artists[0].k)}</span><span class="sub">${artists[0].n} plays · ${hm(artists[0].secs)}</span></div>
+          <div class="card"><span class="lbl">Top song</span><span class="name">${esc(songs[0].title)}</span><span class="sub">${esc(songs[0].artist || "")}${songs[0].artist ? " · " : ""}${songs[0].n} plays</span></div>
+          <div class="card"><span class="lbl">Top genre</span><span class="name">${esc(genres[0] ? genres[0].k : "—")}</span><span class="sub">${genres[0] ? genres[0].n + " plays" : "Songs need a genre in their details"}</span></div>
+          <div class="card"><span class="lbl">Busiest month</span><span class="name">${MONTHS[bm]}</span><span class="sub">${months[bm]} plays${bestDay ? ` · busiest day ${new Date(bestDay[0]).toLocaleDateString(undefined, { day: "numeric", month: "long" })} (${bestDay[1]})` : ""}</span></div>
+        </div>
+        <div class="card"><span class="lbl">Top five artists</span><span class="sub" style="font-size:14px;color:var(--ink)">${artists.slice(0, 5).map((a, i) => `${i + 1}. ${esc(a.k)}`).join("&nbsp;&nbsp; ")}</span><span class="sub">${fresh} of this year's songs were new to you.</span></div>
+        <div class="acts"><button class="btn" data-play>Play your top 25</button><button class="btn" data-x>Close</button></div>`;
+      $("recap").hidden = false; ($("rc").querySelector("[data-play]") || $("rc").querySelector("[data-x]")).focus();
+      $("rc").onclick = e => { if (e.target.closest("[data-x]")) $("recap").hidden = true; if (e.target.closest("[data-play]")) play(songs.slice(0, 25).map(s => s.k)); };
+    }
+    $("recapBtn").addEventListener("click", () => recap());
+    addEventListener("keydown", e => { if (e.key === "Escape" && !$("recap").hidden) $("recap").hidden = true; });
+    onPlayed(() => draw()); onLibraryChange(load);
+    load();
+    window.__stats = { recap };
+  </script>
+</body>
+</html>

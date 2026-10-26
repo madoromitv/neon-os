@@ -2,7 +2,7 @@
 "files": {
 "apps/about/index.html": "b797ac57aafa",
 "apps/amp/amp.css": "0bfd41670bd0",
-"apps/amp/amp.js": "dcdd60571ba7",
+"apps/amp/amp.js": "cc644d18130e",
 "apps/amp/index.html": "42f76dc867e7",
 "apps/arcade/beat.js": "7d676ce91978",
 "apps/arcade/index.html": "53443836138b",
@@ -24,7 +24,7 @@
 "apps/files/fm.js": "fd0254ed8ce1",
 "apps/files/index.html": "8c7065cb9bf6",
 "apps/help/index.html": "65bdead29e3a",
-"apps/mixer/index.html": "a08bc482f6d2",
+"apps/mixer/index.html": "9405e71e09d4",
 "apps/monitor/index.html": "f560e5b1c6b0",
 "apps/notes/index.html": "ad84c643493b",
 "apps/photos/editor.js": "c20e758d2556",
@@ -34,8 +34,9 @@
 "apps/pulse/pulse.js": "b6ce6f8885cc",
 "apps/radio/index.html": "18334e947a78",
 "apps/recorder/index.html": "1bda07c612a9",
-"apps/registry.js": "c19bb2120cad",
+"apps/registry.js": "76b39cad486b",
 "apps/settings/index.html": "cc119cb66f91",
+"apps/stats/index.html": "c1b97ff9033d",
 "apps/tape/index.html": "b22478de9062",
 "apps/tape/tape.css": "0b08cf5f7aa8",
 "apps/tape/tape.js": "14a20caa300d",
@@ -44,7 +45,7 @@
 "core/analyser.js": "98c9c57dd440",
 "core/analysis-worker.js": "49a98cea4ac6",
 "core/analysis.js": "4b3245af5052",
-"core/backup.js": "645c4cbb133b",
+"core/backup.js": "49b401fd9771",
 "core/bin.js": "98a873ed68c9",
 "core/chop.js": "ca2aa8e2cb9d",
 "core/clock.js": "4708943ac952",
@@ -55,6 +56,7 @@
 "core/engine.js": "96a3fe439736",
 "core/fx.js": "d8f023c4b85e",
 "core/glow.js": "d147d410736b",
+"core/history.js": "2189f8e71d19",
 "core/library-tree.js": "3bedf330b3b0",
 "core/library.js": "e813ac56631e",
 "core/linked.js": "a532ecf47dce",
@@ -107,5 +109,5 @@
 "style-kit/ui.js": "ffc75925026f",
 "style-kit/vlist.js": "32be7a331f52"
 },
-"version": "09a95b5cf8"
+"version": "b2caeef24a"
 }
