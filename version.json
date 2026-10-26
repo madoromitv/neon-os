@@ -2,7 +2,7 @@
 "files": {
 "apps/about/index.html": "b797ac57aafa",
 "apps/amp/amp.css": "0bfd41670bd0",
-"apps/amp/amp.js": "cc644d18130e",
+"apps/amp/amp.js": "769d49aa5d38",
 "apps/amp/index.html": "42f76dc867e7",
 "apps/arcade/beat.js": "7d676ce91978",
 "apps/arcade/index.html": "53443836138b",
@@ -35,7 +35,7 @@
 "apps/radio/index.html": "18334e947a78",
 "apps/recorder/index.html": "1bda07c612a9",
 "apps/registry.js": "78c3ff694dcb",
-"apps/settings/index.html": "7177eecaada8",
+"apps/settings/index.html": "cde35c6d26bc",
 "apps/stats/index.html": "c1b97ff9033d",
 "apps/tape/index.html": "b22478de9062",
 "apps/tape/tape.css": "0b08cf5f7aa8",
@@ -74,6 +74,7 @@
 "core/picker.js": "899b53c81313",
 "core/rack.js": "27de394985a9",
 "core/reminders.js": "9535cbd0f6d8",
+"core/scrobble.js": "421742763bbf",
 "core/shortcuts.js": "0509b4535d91",
 "core/sounds.js": "097bccfdabf0",
 "core/storage.js": "87a5f34d250d",
@@ -99,7 +100,7 @@
 "os/quick.js": "03686d7387e3",
 "os/search.js": "af8347f20e9c",
 "os/shell.css": "f411e04657b1",
-"os/shell.js": "9c9a9a3e3ebe",
+"os/shell.js": "8efdd3f7641f",
 "os/wallpic.js": "621151d22b33",
 "os/widgets.js": "40ab3b155aef",
 "style-kit/apps.css": "1d92e00d41e4",
@@ -112,5 +113,5 @@
 "style-kit/ui.js": "ffc75925026f",
 "style-kit/vlist.js": "32be7a331f52"
 },
-"version": "0d84873a0e"
+"version": "1078a5a840"
 }

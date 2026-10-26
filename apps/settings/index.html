@@ -27,6 +27,10 @@
   .btn:disabled { opacity: .45; }
   p.warn { color: var(--ink); border-left: 2px solid var(--ball); padding-left: 8px; }
   section.flash { outline: 1px solid var(--ball); outline-offset: 6px; border-radius: 2px; transition: outline-color 1.2s; }
+  .scr { display: grid; gap: 6px; }
+  .scr input { flex: 1; min-width: 0; }
+  .scr .svc { font-size: 12px; letter-spacing: .06em; min-width: 92px; }
+  .scr .on { color: var(--ball); }
   .midimap { display: grid; gap: 2px; }
   .midimap .mg { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 6px 0 2px; }
   .midimap .mr { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: center; }
@@ -82,6 +86,18 @@
     <span class="lbl">Icons on the desktop</span>
     <div class="checks" id="deskApps"></div>
     <p>Drag icons on the desktop to move them; right-click the desktop and pick Arrange icons to put them back in order.</p>
+  </section>
+  <section class="group" aria-labelledby="scrLbl">
+    <span class="lbl" id="scrLbl">Scrobbling</span>
+    <p>Send the songs you play in Amp to your listening profile: each one once it's played half way (or 4 minutes), and what's playing now.</p>
+    <div class="scr">
+      <div class="row"><b class="svc">ListenBrainz</b><span class="hint" id="lbState">Not connected</span></div>
+      <div class="row"><input type="password" id="lbToken" placeholder="User token from listenbrainz.org/settings" aria-label="ListenBrainz user token" autocomplete="off"><button class="btn" id="lbGo">Connect</button><button class="btn" id="lbOff" hidden>Disconnect</button></div>
+      <div class="row"><b class="svc">Last.fm</b><span class="hint" id="lfmState">Not connected</span></div>
+      <div class="row" id="lfmKeys"><input type="text" id="lfmKey" placeholder="API key" aria-label="Last.fm API key" autocomplete="off"><input type="password" id="lfmSecret" placeholder="Shared secret" aria-label="Last.fm shared secret" autocomplete="off"><button class="btn" id="lfmGo">Connect</button></div>
+      <div class="row"><button class="btn" id="lfmOff" hidden>Disconnect</button><span class="hint" id="scrQueue"></span></div>
+    </div>
+    <p>Last.fm: Neon OS has no server of its own, so it uses your own free API key: make one at last.fm/api/account/create (any name; leave the callback empty), paste the key and secret, press Connect and allow Neon OS on Last.fm. They stay in this browser.</p>
   </section>
   <section class="group" aria-labelledby="midiLbl">
     <span class="lbl" id="midiLbl">MIDI controller</span>
@@ -196,6 +212,36 @@
     syncMusic(getTheme());
     $id("reactT").addEventListener("click", () => syncMusic(setTheme({ react: getTheme().react === false })));
     $id("coverT").addEventListener("click", () => syncMusic(setTheme({ coverColor: !getTheme().coverColor })));
+    // ---------- scrobbling (core/scrobble.js) ----------
+    {
+      const SC = await import("../../core/scrobble.js"), { toast: say } = await import("../../style-kit/ui.js");
+      const draw = () => {
+        const c = SC.getConf(), lbOn = c.lb.on && c.lb.token, lfmOn = c.lfm.on && c.lfm.sk;
+        $id("lbState").textContent = lbOn ? `Connected as ${c.lb.user}` : "Not connected"; $id("lbState").classList.toggle("on", !!lbOn);
+        $id("lbToken").hidden = $id("lbGo").hidden = !!lbOn; $id("lbOff").hidden = !lbOn;
+        $id("lfmState").textContent = lfmOn ? `Connected as ${c.lfm.user}` : "Not connected"; $id("lfmState").classList.toggle("on", !!lfmOn);
+        $id("lfmKeys").hidden = !!lfmOn; $id("lfmOff").hidden = !lfmOn;
+        const q = SC.queued(); $id("scrQueue").textContent = q ? `${q} listen${q === 1 ? "" : "s"} waiting to be sent (offline?)` : "";
+      };
+      $id("lbGo").addEventListener("click", async () => {
+        const token = $id("lbToken").value.trim(); if (!token) { $id("lbToken").focus(); return; }
+        $id("lbGo").disabled = true;
+        try { const user = await SC.checkListenBrainz(token); SC.setConf({ lb: { token, user, on: true } }); $id("lbToken").value = ""; say(`Scrobbling to ListenBrainz as ${user}`); }
+        catch (e) { say(/token/i.test(e.message) ? "ListenBrainz says that token isn't right" : "Couldn't reach ListenBrainz: check the connection", true); }
+        $id("lbGo").disabled = false; draw();
+      });
+      $id("lbOff").addEventListener("click", () => { SC.setConf({ lb: { token: "", user: "", on: false } }); draw(); });
+      $id("lfmGo").addEventListener("click", () => {
+        const key = $id("lfmKey").value.trim(), secret = $id("lfmSecret").value.trim(); if (!key || !secret) { (key ? $id("lfmSecret") : $id("lfmKey")).focus(); return; }
+        SC.setConf({ lfm: { ...SC.getConf().lfm, key, secret } });
+        try { localStorage.setItem("neon-os:lfm-pending", "1"); } catch (e) {}
+        const home = new URL("../../", location.href).href; // Last.fm sends you back to the desktop, which finishes connecting
+        window.open(SC.lastfmAuthUrl(key, home), "_blank");
+      });
+      $id("lfmOff").addEventListener("click", () => { SC.setConf({ lfm: { key: "", secret: "", sk: "", user: "", on: false } }); draw(); });
+      addEventListener("storage", e => { if (e.key === "neon-os:scrobble" || e.key === "neon-os:scrobble-queue") draw(); });
+      draw();
+    }
     // ---------- MIDI controller (core/midi.js) ----------
     {
       const M = await import("../../core/midi.js");

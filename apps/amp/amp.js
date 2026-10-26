@@ -10,6 +10,7 @@ import { SMART, smartById, buildGroups, albumOrder, viewSongs, viewGroups, viewT
 import { getTheme, setTheme, onTheme, applyTheme, liveBall, setCoverBall } from "../../core/theme.js";
 import { coverColour } from "../../core/cover-colour.js";
 import { logPlay } from "../../core/history.js";
+import * as Scrobble from "../../core/scrobble.js";
 import { notify } from "../../core/notify.js";
 import { createGlow, createGlow2D } from "../../core/glow.js";
 import { createLive, listInputs } from "../../core/live.js";
@@ -556,7 +557,7 @@ function normalise(raw) {
 function unloadTrack() { Eng.stop(); Eng.buf = null; loadedId = null; data = null; setNowPlaying(); }
 let countedId = null; // a play counts once the song has run 30 seconds (or half of a short one)
 async function playIndex(i, { autoplay = true, at = 0, fromHistory = false } = {}) {
-  countedId = null;
+  countedId = null; npSent = null; scrobbled = null;
   if (i < 0 || i >= pl.length) return;
   const t = byId(pl[i]); if (!t) return;
   if (!fromHistory && cur >= 0 && cur !== i) { history.push(cur); if (history.length > 200) history.shift(); }
@@ -749,7 +750,7 @@ function djPlan(A, B, durA, durB) {
   return { at, from, xf, beats };
 }
 Eng.onAdvance = () => {
-  const p = pending; pending = null; shufflePick = null; countedId = null;
+  const p = pending; pending = null; shufflePick = null; countedId = null; npSent = null; scrobbled = null;
   if (!p) return;
   if (cur >= 0 && cur !== p.i) { history.push(cur); if (history.length > 200) history.shift(); }
   cur = pl[p.i] === p.id ? p.i : pl.indexOf(p.id);
@@ -1600,7 +1601,7 @@ function drawMini(envs, playing) {
   void envs;
 }
 
-let idleT = 0, lastNow = performance.now(), lastUi = 0;
+let idleT = 0, lastNow = performance.now(), lastUi = 0, npSent = null, npStart = 0, scrobbled = null;
 function frame(now) {
   const dt = Math.min(0.05, (now - lastNow) / 1000); lastNow = now;
   const playing = !!data && Eng.state === "playing";
@@ -1666,6 +1667,12 @@ function frame(now) {
   }
   glow.end();
 
+  // scrobbling (Settings → Scrobbling): now playing when a song starts; a listen once it's played half or 4 minutes
+  if (loadedId && Eng.state === "playing" && Scrobble.enabled()) {
+    const t = byId(loadedId);
+    if (npSent !== loadedId) { npSent = loadedId; npStart = Date.now() - Eng.time() * 1000; if (t && !t.builtin) Scrobble.nowPlaying(t).catch(() => {}); }
+    if (scrobbled !== loadedId && Eng.duration > 30 && Eng.time() > Math.min(240, Eng.duration / 2)) { scrobbled = loadedId; if (t && !t.builtin) Scrobble.scrobble(t, npStart).catch(() => {}); }
+  }
   if (loadedId && countedId !== loadedId && Eng.state === "playing" && Eng.time() > Math.min(30, Eng.duration * 0.5)) {
     countedId = loadedId; const t = byId(loadedId);
     if (t && !t.builtin) logPlay(t, Eng.duration); // listening history, for Stats

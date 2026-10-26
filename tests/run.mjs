@@ -838,6 +838,55 @@ const tests = {
     check(await p.evaluate(() => !(window.neonOsBeat && window.neonOsBeat.playing && performance.now() - window.neonOsBeat.at < 300)), "stopping the slideshow pauses it");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "scrobbling to ListenBrainz and Last.fm"() {
+    const p = await page({ viewport: { width: 1400, height: 900 } });
+    // pretend services: what Neon OS sends is kept to check
+    const sent = []; let lbDown = false;
+    await p.context().route("https://api.listenbrainz.org/**", async r => {
+      const u = r.request().url(), auth = r.request().headers().authorization;
+      if (u.endsWith("validate-token")) return r.fulfill({ json: auth === "Token good" ? { valid: true, user_name: "mannie" } : { valid: false }, headers: { "access-control-allow-origin": "*" } });
+      if (lbDown) return r.fulfill({ status: 503, body: "", headers: { "access-control-allow-origin": "*" } });
+      sent.push({ svc: "lb", body: JSON.parse(r.request().postData() || "{}") }); return r.fulfill({ json: { status: "ok" }, headers: { "access-control-allow-origin": "*" } });
+    });
+    await p.context().route("https://ws.audioscrobbler.com/**", async r => {
+      const params = Object.fromEntries(new URLSearchParams(r.request().method() === "POST" ? r.request().postData() : r.request().url().split("?")[1]));
+      sent.push({ svc: "lfm", params });
+      if (params.method === "auth.getSession") return r.fulfill({ json: { session: { key: "sk1", name: "mannie_fm" } }, headers: { "access-control-allow-origin": "*" } });
+      return r.fulfill({ json: { scrobbles: {} }, headers: { "access-control-allow-origin": "*" } });
+    });
+    await desk(p);
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="settings"]'); await p.waitForSelector('[data-wid="settings"]'); await p.waitForTimeout(1200);
+    const sf = p.frame({ url: /settings/ });
+    await sf.fill("#lbToken", "bad"); await sf.click("#lbGo"); await p.waitForTimeout(500);
+    check(/Not connected/.test(await sf.$eval("#lbState", e => e.textContent)), "a wrong ListenBrainz token is refused");
+    await sf.fill("#lbToken", "good"); await sf.click("#lbGo"); await p.waitForTimeout(500);
+    check(/mannie/.test(await sf.$eval("#lbState", e => e.textContent)), "the right token connects, showing the user");
+    // Last.fm: key and secret, then back from Last.fm with a token
+    await sf.fill("#lfmKey", "KEY1"); await sf.fill("#lfmSecret", "SECRET1");
+    await p.context().route("https://www.last.fm/**", r => r.fulfill({ body: "<p>Allow Neon OS?</p>", contentType: "text/html" }));
+    const popup = p.waitForEvent("popup"); await sf.click("#lfmGo"); const pop = await popup; await pop.waitForLoadState().catch(() => {});
+    check(/last\.fm\/api\/auth\/\?api_key=KEY1&cb=/.test(pop.url()), "Connect sends you to Last.fm to allow it");
+    await pop.close();
+    await p.goto(URL + "?token=TOK9"); await p.waitForTimeout(1500);
+    const gs = sent.find(x => x.params && x.params.method === "auth.getSession");
+    const sig = await p.evaluate(async () => (await import("/core/scrobble.js")).md5("api_keyKEY1methodauth.getSessiontokenTOK9SECRET1"));
+    check(gs && gs.params.api_sig === sig, "the token becomes a session, signed the way Last.fm asks");
+    check(await p.evaluate(async () => (await import("/core/scrobble.js")).getConf().lfm.sk === "sk1"), "Last.fm is connected");
+    // Amp says what's playing to both
+    await amp(p, ["beat120.wav"]); await p.click("#bPlay"); await p.waitForTimeout(1500);
+    check(sent.some(x => x.svc === "lb" && x.body.listen_type === "playing_now") && sent.some(x => x.svc === "lfm" && x.params.method === "track.updateNowPlaying" && x.params.sk === "sk1"), "playing a song sends now playing to both");
+    // a listen goes to both; when a service is down it waits and goes with the next one
+    lbDown = true;
+    await p.evaluate(async () => { const S = await import("/core/scrobble.js"); await S.scrobble({ title: "First", artist: "Aster", album: "Night", duration: 200 }, Date.now() - 200000); });
+    check(await p.evaluate(async () => (await import("/core/scrobble.js")).queued()) === 1, "a listen waits while the service is down");
+    lbDown = false;
+    await p.evaluate(async () => { const S = await import("/core/scrobble.js"); await S.scrobble({ title: "Second", artist: "Aster", duration: 200 }, Date.now() - 100000); });
+    const batch = sent.filter(x => x.svc === "lb" && x.body.listen_type === "import").pop();
+    check(batch && batch.body.payload.map(x => x.track_metadata.track_name).join() === "First,Second" && await p.evaluate(async () => (await import("/core/scrobble.js")).queued()) === 0, "then both go together once it's back");
+    const lfmS = sent.filter(x => x.svc === "lfm" && x.params.method === "track.scrobble").pop();
+    check(lfmS && lfmS.params["track[0]"] && lfmS.params["artist[0]"] === "Aster" && lfmS.params["timestamp[0]"], "Last.fm gets the listens with their times");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "details editor and Tidy names"() {
     const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
     await p.click("#mlRows .trow"); await p.click("#mlRows .trow:nth-of-type(3)", { modifiers: ["Shift"] });

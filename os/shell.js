@@ -1292,6 +1292,13 @@ if (window.neonOsDesktop && window.neonOsDesktop.onUpdate) {
 // shortcuts on the installed app's icon: ?open=amp, ?search=1
 function launchShortcut() {
   const q = new URLSearchParams(location.search), open = q.get("open");
+  // coming back from allowing Neon OS on Last.fm (Settings → Scrobbling): swap the token for a lasting session
+  if (q.get("token") && (() => { try { return localStorage.getItem("neon-os:lfm-pending"); } catch (e) { return null; } })()) {
+    try { localStorage.removeItem("neon-os:lfm-pending"); } catch (e) {}
+    import("../core/scrobble.js").then(m => m.lastfmSession(q.get("token"))).then(user => addNotice({ title: "Scrobbling to Last.fm", text: `Connected as ${user}. Songs you play in Amp now show on your profile.`, app: "settings" }))
+      .catch(err => addNotice({ title: "Last.fm didn't connect", text: String(err && err.message || err) + ". Check the API key and secret in Settings and try again.", app: "settings" }));
+    history.replaceState(null, "", location.pathname);
+  }
   if (open && appById(open)) openApp(open);
   if (q.has("search")) setTimeout(openSearch, 200);
   if (open || q.has("search")) history.replaceState(null, "", location.pathname);
