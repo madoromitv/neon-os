@@ -6,7 +6,7 @@ on:
   pull_request:
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # ubuntu-latest moved to 26, which Playwright's --with-deps doesn't support yet
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
