@@ -1,8 +1,13 @@
 // Neon OS core: version and what's new
 // Bump VERSION and add an entry at the top of CHANGES with each update people should hear about:
 // the desktop shows "What's new" once, the next time Neon OS opens, and About lists them all.
-export const VERSION = "1.6";
+export const VERSION = "1.7";
 export const CHANGES = [
+  { v: "1.7", date: "2026-10-26", items: [
+    "Every window resizes from every edge, Amp's player and equalizer included: a taller player gets a bigger display, a taller equalizer longer sliders",
+    "Windows that touch are joined, across apps, like the classic player: drag one and the rest come along, resize one and the windows lined up with it stretch while the ones beyond are pushed along. Shift-drag pulls a window away",
+    "Fixed: Amp's song title no longer covers the kbps and bpm readouts",
+  ] },
   { v: "1.6", date: "2026-10-19", items: [
     "Select all and Delete in every library: Photos, Amp, Files, Notes, Recorder and Video. Ctrl or Shift-click to choose a few, Ctrl+A for all, Delete to remove",
     "Deleting asks once: move them to the Bin (kept 30 days) or delete for good to free the space now. Thousands of photos go in one go",

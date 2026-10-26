@@ -136,13 +136,15 @@ async function mountNative(app, savedWins) {
   for (const sec of sections) {
     const wid = `${app.id}:${sec.id}`, el = desk.querySelector(`[data-wid="${CSS.escape(wid)}"]`);
     els[wid] = el;
-    const resizable = /Pl|Vis|Ml/.test(sec.id);
-    wins[wid] = savedWins && savedWins[wid] ? { ...savedWins[wid], z: ++zTop } : { wid, appId: app.id, x: 0, y: 0, w: 560, h: 300, z: ++zTop, min: false, snap: null, autoH: !resizable };
-    wireWindow(wid, resizable);
+    // every window resizes both ways; layouts saved when the player and equalizer only grew sideways get a height
+    wins[wid] = savedWins && savedWins[wid] ? { ...savedWins[wid], z: ++zTop } : { wid, appId: app.id, x: 0, y: 0, w: 560, h: 0, z: ++zTop, min: false, snap: null };
+    if (wins[wid].autoH || !wins[wid].h) { wins[wid].autoH = false; wins[wid].needH = true; }
+    wireWindow(wid, true);
     addNativeButtons(app, sec.id, el);
   }
   if (!sections.some(s => savedWins && savedWins[`${app.id}:${s.id}`])) defaultAmpLayout(app.id);
   appWins(app.id).forEach(render);
+  for (const k of appWins(app.id)) if (wins[k].needH) { delete wins[k].needH; wins[k].h = Math.max(wins[k].h || 0, natH(k)); render(k); }
   await import(new URL(app.url + app.native.js, location.href).href);
   followCollapse(app.id);
   const top = appWins(app.id).sort((a, b) => wins[b].z - wins[a].z)[0];
@@ -206,11 +208,11 @@ function followCollapse(appId) {
 // Amp's classic layout: player, equalizer and playlist stacked on the left; visualiser over the library on the right.
 function defaultAmpLayout(appId) {
   const a = area(), L = 108, T = 14, G = 0, CW = 560;
-  const id = s => `${appId}:${s}`, hOf = s => (els[id(s)] ? els[id(s)].offsetHeight : 200) || 200;
+  const id = s => `${appId}:${s}`, hOf = s => (els[id(s)] ? natH(id(s)) : 200) || 200;
   const set = (s, g) => { if (wins[id(s)]) Object.assign(wins[id(s)], g, { snap: null }); };
-  set("winMain", { x: L, y: T, w: CW }); render(id("winMain"));
+  set("winMain", { x: L, y: T, w: CW }); render(id("winMain")); set("winMain", { h: hOf("winMain") });
   const eqY = T + hOf("winMain") + G;
-  set("winEq", { x: L, y: eqY, w: CW }); render(id("winEq"));
+  set("winEq", { x: L, y: eqY, w: CW }); render(id("winEq")); set("winEq", { h: hOf("winEq") });
   const plY = eqY + hOf("winEq") + G;
   set("winPl", { x: L, y: plY, w: CW, h: Math.max(160, a.h - plY - T) });
   const rx = L + CW + G, rw = Math.max(320, a.w - rx - 16), vh = Math.round((a.h - 2 * T - G) * 0.55);
@@ -219,6 +221,15 @@ function defaultAmpLayout(appId) {
 }
 
 // ---------- window behaviour shared by both kinds ----------
+// the height a window's content needs (Amp's player and equalizer can't shrink below it)
+function natH(k) {
+  const el = els[k]; if (!el) return 140;
+  const old = el.style.height, sh = el.classList.contains("shaded");
+  if (sh) el.classList.remove("shaded"); el.style.height = "auto";
+  const h = el.offsetHeight; el.style.height = old; if (sh) el.classList.add("shaded");
+  return h;
+}
+const minH = k => /:win(Main|Eq)$/.test(k) ? Math.max(140, natH(k)) : 140;
 // Every window gets eight resize handles (edges and corners). Windows whose height follows their content
 // (Amp's player and equalizer) only resize sideways.
 const DIRS = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
@@ -334,7 +345,7 @@ function showSnap(zone) {
   Object.assign(snapEl.style, { left: g.x + 6 + "px", top: g.y + 6 + "px", width: g.w - 12 + "px", height: g.h - 12 + "px" });
 }
 const visible = k => wins[k] && !wins[k].min && !closed.has(wins[k].appId) && here(wins[k].appId) && els[k] && !els[k].hidden;
-function rectOf(k) { const g = geom(wins[k]); if (wins[k].autoH || wins[k].snap) { g.h = els[k].offsetHeight; g.w = els[k].offsetWidth; } return g; }
+function rectOf(k) { const g = geom(wins[k]); if (wins[k].autoH || wins[k].snap || els[k].classList.contains("shaded")) { g.h = els[k].offsetHeight; g.w = els[k].offsetWidth; } return g; }
 // the edges a moving window may dock to
 function targets(skip) {
   const a = area(), xs = [{ v: 0 }, { v: a.w }], ys = [{ v: 0 }, { v: a.h }];
@@ -354,23 +365,25 @@ function pull(edges, list, lo, hi) {
   }
   return best || 0;
 }
-// windows of the same app touching the given one, and everything touching those
+// Joined windows: any windows (of any app) whose edges touch, and everything touching those, move and resize together.
 function dockedGroup(wid) {
-  const app = wins[wid].appId, group = new Set([wid]), todo = [wid];
+  const group = new Set([wid]), todo = [wid];
   const touch = (a, b) => {
     const A = rectOf(a), B = rectOf(b), near = (p, q) => Math.abs(p - q) <= 2;
     const vOver = A.y < B.y + B.h && B.y < A.y + A.h, hOver = A.x < B.x + B.w && B.x < A.x + A.w;
     return (vOver && (near(A.x + A.w, B.x) || near(B.x + B.w, A.x))) || (hOver && (near(A.y + A.h, B.y) || near(B.y + B.h, A.y)));
   };
-  while (todo.length) { const c = todo.pop(); for (const k of appWins(app)) if (!group.has(k) && visible(k) && !wins[k].snap && touch(c, k)) { group.add(k); todo.push(k); } }
+  if (wins[wid].snap) return group;
+  while (todo.length) { const c = todo.pop(); for (const k in wins) if (!group.has(k) && visible(k) && !wins[k].snap && touch(c, k)) { group.add(k); todo.push(k); } }
   return group;
 }
 function startDrag(e, wid) {
   if (e.button !== 0 || e.target.closest("button") || compact) return;
   const st = wins[wid], el = els[wid];
   e.preventDefault(); el.setPointerCapture(e.pointerId);
-  const lead = /:winMain$/.test(wid);
-  const group = lead && !st.snap ? dockedGroup(wid) : new Set([wid]);
+  // a window carries the windows joined to it; Shift-drag pulls this one away on its own
+  const group = e.shiftKey || st.snap ? new Set([wid]) : dockedGroup(wid);
+  if (group.size > 1) for (const k of group) els[k].classList.add("carried");
   const start = {}; for (const k of group) { const r = rectOf(k); start[k] = { x: r.x, y: r.y }; }
   const sx0 = desk.scrollLeft, sy0 = desk.scrollTop;
   let g = geom(st), offX = e.clientX + (st.snap ? 0 : sx0) - g.x, offY = e.clientY + (st.snap ? 0 : sy0) - g.y, zone = null, moved = false;
@@ -402,6 +415,7 @@ function startDrag(e, wid) {
   const up = () => {
     el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
     document.body.classList.remove("dragging"); showSnap(null);
+    for (const k of group) els[k].classList.remove("carried");
     if (zone) { st.snap = zone; sfx.snap(); }
     for (const k of group) { keepInView(wins[k], els[k]); render(k); }
     saveLayout();
@@ -419,19 +433,64 @@ function startResize(e, wid, dir) {
   const inX = { left: "e", tl: "e", bl: "e", right: "w", tr: "w", br: "w" }[st.snap], inY = { tl: "s", tr: "s", bl: "n", br: "n" }[st.snap];
   if (st.snap && st.snap !== "max" && [...dir].every(c => c === inX || c === inY)) return splitDrag(e, wid, dir.includes(inX || "-"), dir.includes(inY || "-"));
   if (st.snap) { const g = rectOf(wid); Object.assign(st, g, { snap: null }); if (st.autoH) delete st.h; render(wid); }
-  const s = rectOf(wid), sx = e.clientX, sy = e.clientY, MINW = 260, MINH = 140;
-  const t = targets(new Set([wid]));
+  // a border two joined windows share belongs to the one above (or to the left): grabbing the lower window's top
+  // edge resizes the window above it and pushes this one down, like the classic player
+  if ((dir === "n" || dir === "w") && !e.shiftKey && !e.redirected) {
+    const me = rectOf(wid), near2 = (p, q) => Math.abs(p - q) <= 2;
+    const other = [...dockedGroup(wid)].find(k => { if (k === wid) return false; const o = rectOf(k);
+      return dir === "n" ? near2(o.y + o.h, me.y) && o.x < me.x + me.w && me.x < o.x + o.w && !els[k].classList.contains("shaded") : near2(o.x + o.w, me.x) && o.y < me.y + me.h && me.y < o.y + o.h; });
+    if (other) { el.releasePointerCapture && el.releasePointerCapture(e.pointerId); lastRz = {}; e.redirected = true; return startResize(e, other, dir === "n" ? "s" : "e"); }
+  }
+  // Joined windows resize as one block: windows lined up along the edge being dragged (a column for the sides,
+  // a row for the top and bottom) stretch with it, and joined windows beyond that edge are pushed along.
+  // Shift resizes this window on its own; Alt places the edge freely, without pulling to other edges.
+  const group = e.shiftKey ? new Set([wid]) : dockedGroup(wid), R = {}, MINW = 260;
+  for (const k of group) R[k] = rectOf(k);
+  const mins = {}; for (const k of group) mins[k] = minH(k);
+  const near = (p, q) => Math.abs(p - q) <= 2;
+  const touchY = (A, B) => A.x < B.x + B.w && B.x < A.x + A.w && (near(A.y + A.h, B.y) || near(B.y + B.h, A.y));
+  const touchX = (A, B) => A.y < B.y + B.h && B.y < A.y + A.h && (near(A.x + A.w, B.x) || near(B.x + B.w, A.x));
+  function plan(side) {
+    const sideways = side === "e" || side === "w";
+    const edgeOf = r => side === "e" ? r.x + r.w : side === "w" ? r.x : side === "s" ? r.y + r.h : r.y;
+    const v = edgeOf(R[wid]), along = new Set([wid]), todo = [wid];
+    while (todo.length) { const c = todo.pop(); for (const k of group) if (!along.has(k) && near(edgeOf(R[k]), v) && !(!sideways && els[k].classList.contains("shaded")) && (sideways ? touchY(R[c], R[k]) : touchX(R[c], R[k]))) { along.add(k); todo.push(k); } }
+    const beyond = k => { const B = R[k]; return side === "e" ? B.x >= v - 2 : side === "w" ? B.x + B.w <= v + 2 : side === "s" ? B.y >= v - 2 : B.y + B.h <= v + 2; };
+    const pushed = new Set(), q = [...along];
+    while (q.length) { const c = q.pop(); for (const k of group) if (!along.has(k) && !pushed.has(k) && beyond(k) && (touchX(R[c], R[k]) || touchY(R[c], R[k]))) { pushed.add(k); q.push(k); } }
+    // how far the edge may go before a window in the line gets too small
+    let lo = -Infinity, hi = Infinity;
+    for (const k of along) {
+      const r = R[k];
+      if (side === "e") lo = Math.max(lo, MINW - r.w); if (side === "w") hi = Math.min(hi, r.w - MINW);
+      if (side === "s") lo = Math.max(lo, mins[k] - r.h); if (side === "n") hi = Math.min(hi, r.h - mins[k]);
+      if (side === "w") lo = Math.max(lo, -r.x); if (side === "n") lo = Math.max(lo, -r.y);
+    }
+    for (const k of pushed) { if (side === "w") lo = Math.max(lo, -R[k].x); if (side === "n") lo = Math.max(lo, -R[k].y); }
+    return { side, v, along, pushed, lo, hi };
+  }
+  const plans = [...dir].map(plan), moving = new Set(); for (const pl of plans) { pl.along.forEach(k => moving.add(k)); pl.pushed.forEach(k => moving.add(k)); }
+  const t = targets(new Set([...group]));
   document.body.classList.add("dragging");
+  if (group.size > 1) for (const k of moving) els[k].classList.add("carried");
   const move = ev => {
-    let { x, y, w, h } = s; const dx = ev.clientX - sx, dy = ev.clientY - sy, free = ev.altKey;
-    if (dir.includes("e")) { let r = s.x + s.w + dx; if (!free) r += pull([r], t.xs, y, y + h); w = Math.max(MINW, r - s.x); }
-    if (dir.includes("w")) { let l = s.x + dx; if (!free) l += pull([l], t.xs, y, y + h); l = Math.min(l, s.x + s.w - MINW); x = l; w = s.x + s.w - l; }
-    if (dir.includes("s")) { let b = s.y + s.h + dy; if (!free) b += pull([b], t.ys, x, x + w); h = Math.max(MINH, b - s.y); }
-    if (dir.includes("n")) { let tp = Math.max(0, s.y + dy); if (!free) tp += pull([tp], t.ys, x, x + w); tp = Math.min(tp, s.y + s.h - MINH); y = tp; h = s.y + s.h - tp; }
-    st.x = x; st.y = y; st.w = w; if (!st.autoH) st.h = h;
-    render(wid);
+    const geo = {}; for (const k of moving) geo[k] = { ...R[k] };
+    for (const pl of plans) {
+      let d = pl.side === "e" || pl.side === "w" ? ev.clientX - sx : ev.clientY - sy;
+      if (!ev.altKey) { const me = R[wid], at = pl.v + d; d += pl.side === "e" || pl.side === "w" ? pull([at], t.xs, me.y, me.y + me.h) : pull([at], t.ys, me.x, me.x + me.w); }
+      d = Math.round(clamp(d, pl.lo, pl.hi));
+      for (const k of pl.along) { const g = geo[k];
+        if (pl.side === "e") g.w = R[k].w + d; else if (pl.side === "w") { g.x = R[k].x + d; g.w = R[k].w - d; }
+        else if (pl.side === "s") g.h = R[k].h + d; else { g.y = R[k].y + d; g.h = R[k].h - d; } }
+      for (const k of pl.pushed) { const g = geo[k]; if (pl.side === "e" || pl.side === "w") g.x = R[k].x + d; else g.y = R[k].y + d; }
+    }
+    for (const k of moving) { const st2 = wins[k], g = geo[k]; st2.x = g.x; st2.y = g.y; st2.w = g.w; if (!els[k].classList.contains("shaded")) st2.h = g.h; render(k); }
   };
-  const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); document.body.classList.remove("dragging"); keepInView(st, el); render(wid); saveLayout(); };
+  const sx = e.clientX, sy = e.clientY;
+  const up = () => {
+    el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
+    document.body.classList.remove("dragging"); for (const k of moving) { els[k].classList.remove("carried"); keepInView(wins[k], els[k]); render(k); } saveLayout();
+  };
   el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
 }
 // dragging the border between snapped windows resizes all of them together
@@ -864,7 +923,7 @@ desk.addEventListener("pointerdown", e => {
   let box = null;
   const move = ev => {
     const x = ev.clientX - r0.left + desk.scrollLeft, y = ev.clientY - r0.top + desk.scrollTop;
-    if (!box) { if (Math.hypot(x - ox, y - oy) < 5) return; box = document.createElement("div"); box.className = "marquee"; desk.appendChild(box); document.body.classList.add("dragging"); }
+    if (!box) { if (Math.hypot(x - ox, y - oy) < 5) return; box = document.createElement("div"); box.className = "selbox"; desk.appendChild(box); document.body.classList.add("dragging"); }
     const L = Math.min(x, ox), T = Math.min(y, oy), Wd = Math.abs(x - ox), Ht = Math.abs(y - oy);
     Object.assign(box.style, { left: L + "px", top: T + "px", width: Wd + "px", height: Ht + "px" });
     const hit = new Set(keep);

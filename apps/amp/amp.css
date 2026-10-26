@@ -191,3 +191,11 @@ body.obs .stage { background: transparent; box-shadow: none; }
 .transport { gap: 3px; }
 .transport .btn.icon { width: 31px; min-width: 0; padding: 0; }
 .transport .spacer { min-width: 4px; }
+
+/* ----- taller player and equalizer: the display and the sliders grow with the window ----- */
+#winMain > .wbody, #winEq > .wbody { min-height: 0; }
+#winMain .main-top { flex: 1 1 auto; min-height: 98px; }
+#winMain .lcd-left { height: auto; min-height: 98px; grid-template-rows: 56px minmax(32px, 1fr); overflow: hidden; }
+#winMain .mini { height: auto; min-height: 32px; align-self: stretch; contain: size; } /* contain: its pixel size never feeds back into the layout */
+#winMain .main-right { justify-content: space-between; }
+#winEq .eq-body { flex: 1 1 auto; height: auto; min-height: 128px; }

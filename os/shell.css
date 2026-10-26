@@ -26,7 +26,7 @@ body { overflow: hidden; user-select: none; }
 .dicon .tile svg { width: 20px; height: 20px; filter: drop-shadow(0 0 4px var(--ball-dim)); }
 .dicon:hover, .dicon:focus-visible { background: #ffffff0d; outline: none; }
 .dicon.sel { background: var(--sel); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ball) 45%, transparent); }
-.marquee { position: absolute; z-index: 4; border: 1px solid var(--ball); background: color-mix(in srgb, var(--ball) 12%, transparent); box-shadow: 0 0 10px var(--ball-dim); pointer-events: none; border-radius: 1px; }
+.selbox { position: absolute; z-index: 4; border: 1px solid var(--ball); background: color-mix(in srgb, var(--ball) 12%, transparent); box-shadow: 0 0 10px var(--ball-dim); pointer-events: none; border-radius: 1px; }
 
 /* windows */
 .owin { position: absolute; min-width: 260px; min-height: 140px; }
@@ -318,3 +318,5 @@ body.compact .qs { left: 4px; right: 4px; width: auto; }
 .wg-note { font: 18px/1.2 var(--font-lcd); color: var(--ball); white-space: pre-wrap; max-height: 220px; overflow: hidden; display: grid; gap: 4px; cursor: pointer; } .wg-note b { font-size: 21px; }
 .wg-stat { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-dim); } .wg-stat b { font: 18px/1 var(--font-lcd); color: var(--ball); }
 body.compact .widgets { display: none; }
+/* windows being carried or stretched along with the one under the pointer (joined windows) */
+.owin.carried { box-shadow: 0 0 0 1px var(--ball-dim), 0 8px 24px #0008; }

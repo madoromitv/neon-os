@@ -2,11 +2,24 @@
 
 A browser desktop and suite of apps in the Neon Orbit style: bevelled gunmetal chrome, LCD panels and glow in the colour of the orb.
 
+## Contents
+
+- [Using the desktop](#using-the-desktop)
+- [Apps](#apps)
+- [How it's built](#how-its-built)
+- [Adding an app](#adding-an-app)
+- [Run it on your computer](#run-it-on-your-computer)
+- [Tests](#tests)
+- [Your music](#your-music)
+- [Roadmap](#roadmap)
+
+## Using the desktop
+
 It starts with a short boot screen (click to skip, or turn it off in Settings), then the desktop. Open apps from the Neon button, the desktop icons or a right-click on the desktop; the layout is remembered.
 
 - **Snap:** drag a window to the left or right edge for half the screen, a corner for a quarter, the top for full screen
-- **Dock:** windows pull towards the screen edges and each other when close; hold Alt to place freely
-- **Resize:** from any edge or corner; double-click a top or bottom edge for full height, a side edge for full width
+- **Dock and join:** windows pull towards the screen edges and each other when close (hold Alt to place freely). Windows whose edges touch are joined, whatever app they belong to, like the classic player: drag any of them and the rest come along; Shift-drag pulls one away on its own
+- **Resize:** every window, from any edge or corner, Amp's player and equalizer included (a taller player gets a bigger display, a taller equalizer longer sliders). Joined windows resize as one block: windows lined up along the edge stretch with it and the ones beyond are pushed along; the border two joined windows share resizes the one above or to the left. Shift resizes one window alone. Double-click a top or bottom edge for full height, a side edge for full width
 - **Shared borders:** drag the border between snapped windows to resize them together
 - **Keyboard:** Ctrl+Alt+arrows snap the front window (Left/Right for halves, then Up/Down for quarters, Up for full screen, Down to restore or minimise). Press **?** anywhere for the full list
 - **Switch apps:** hold Alt and press ` to step through open apps, let go to switch. Ctrl+Alt+M minimises, Ctrl+Alt+W closes, Ctrl+Alt+D shows the desktop, Ctrl+Alt+1 to 9 open apps, Ctrl+Alt+Space opens the start menu. These work inside every app, even while typing
@@ -28,7 +41,6 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Phones and tablets:** on a narrow screen, one app shows at a time, filling the screen; Amp's windows stack in one scrolling column. Switch apps from the taskbar
 - **Accessibility:** high contrast and reduce motion in Settings; every window, menu, icon and the app switcher works from the keyboard, with labels for screen readers
 - **Close:** the X on Amp's player closes all of Amp and stops the music; the X on any other Amp panel closes just that panel
-- **Amp's player** carries every Amp window docked to it, like the classic player; drag any other Amp window to pull it free
 - **Link:** turn on Link in Pulse and Drift and they share one tempo and start/stop, playing in time in separate windows
 - **Effects:** Pulse, Drift, Chop and Tape share one effects row: reverb with room size, a delay that echoes in time with the tempo (1/4, 3/16, 1/8, 1/16) with repeats, and a compressor with a meter. Exports include the effects, and Tape plays each lane through its app's own effects, then its own on the whole track
 - **Saved as you go:** there's no Save button anywhere. Window positions and sizes, snapped layouts, library sections and column sorting (click a column header in Amp, Files, Decks or Chop), the Decks mixer and the songs on each deck, Rack patterns and settings are all remembered the moment they change

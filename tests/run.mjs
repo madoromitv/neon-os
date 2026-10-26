@@ -600,6 +600,43 @@ const tests = {
     check((await p.$$eval("#list [data-id]", e => e.length)) === 0, "Recorder deletes every chosen recording");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "every window resizes, and joined windows move and resize together"() {
+    const p = await page({ viewport: { width: 1600, height: 1000 } }); await desk(p); await amp(p); await p.waitForTimeout(800);
+    const box = sel => p.$eval(sel, e => { const r = e.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }; });
+    const W = s => `[data-wid="amp:${s}"]`;
+    const drag = async (sel, dx, dy, mods = []) => { const b = await p.$eval(sel, e => { const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }); for (const m of mods) await p.keyboard.down(m); await p.mouse.move(b.x, b.y); await p.mouse.down(); await p.mouse.move(b.x + dx / 2, b.y + dy / 2, { steps: 4 }); await p.mouse.move(b.x + dx, b.y + dy, { steps: 4 }); await p.mouse.up(); for (const m of mods) await p.keyboard.up(m); await p.waitForTimeout(300); };
+    const m0 = await box(W("winMain")), e0 = await box(W("winEq")), pl0 = await box(W("winPl")), v0 = await box(W("winVis")), mini0 = await box("#mini");
+    check(Math.abs(m0.y + m0.h - e0.y) <= 2 && Math.abs(e0.y + e0.h - pl0.y) <= 2, "Amp starts with player, equalizer and playlist joined");
+    // the player grows taller: its display grows, and the windows joined below are pushed down
+    await drag(W("winMain") + " .rz-s", 0, 80);
+    const m1 = await box(W("winMain")), e1 = await box(W("winEq")), mini1 = await box("#mini");
+    check(m1.h >= m0.h + 70 && mini1.h >= mini0.h + 60, `the player resizes in height and its display grows (${m0.h}→${m1.h}, display ${mini0.h}→${mini1.h})`);
+    check(Math.abs(e1.y - (e0.y + (m1.h - m0.h))) <= 2, "the equalizer joined below moves down with it");
+    await drag(W("winEq") + " .rz-s", 0, 60); const e2 = await box(W("winEq"));
+    check(e2.h >= e1.h + 50, "the equalizer resizes in height too");
+    // the player's right edge: the column below widens with it, the windows to the right are pushed along
+    await drag(W("winMain") + " .rz-e", 40, 0);
+    const m3 = await box(W("winMain")), e3 = await box(W("winEq")), pl3 = await box(W("winPl")), v3 = await box(W("winVis"));
+    check(m3.w >= m0.w + 30 && Math.abs(e3.w - m3.w) <= 2 && Math.abs(pl3.w - m3.w) <= 2, "widening the player widens the equalizer and playlist lined up below it");
+    check(Math.abs(v3.x - (v0.x + (m3.w - m0.w))) <= 2 && Math.abs(v3.w - v0.w) <= 2, "the visualiser joined to the right is pushed along, keeping its size");
+    // dragging any joined window carries the group; Shift-drag pulls one away
+    await drag(W("winEq") + " .titlebar .ttl", 30, 20); const m4 = await box(W("winMain")), e4 = await box(W("winEq"));
+    check(Math.abs(m4.x - m3.x - 30) <= 14 && Math.abs(e4.y - m4.y - m4.h) <= 2, "dragging the equalizer carries the windows joined to it");
+    await drag(W("winEq") + " .titlebar .ttl", 0, 120, ["Shift"]); const m5 = await box(W("winMain")), e5 = await box(W("winEq"));
+    check(m5.x === m4.x && m5.y === m4.y && e5.y > m5.y + m5.h + 40, "Shift-drag pulls one window away on its own");
+    // a framed app joins too: dock Clock under the equalizer that was pulled away, then drag Clock
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="clock"]'); await p.waitForSelector('[data-wid="clock"]'); await p.waitForTimeout(800);
+    const c0 = await box('[data-wid="clock"]');
+    await drag('[data-wid="clock"] .titlebar', e5.x - c0.x + 5, e5.y + e5.h - c0.y + 6);
+    const c1 = await box('[data-wid="clock"]');
+    check(Math.abs(c1.y - (e5.y + e5.h)) <= 2 && Math.abs(c1.x - e5.x) <= 2, `a framed window docks to an Amp window (${c1.x},${c1.y} vs ${e5.x},${e5.y + e5.h})`);
+    await drag('[data-wid="clock"] .titlebar', 40, 30); const e6 = await box(W("winEq"));
+    check(Math.abs(e6.x - e5.x - 40) <= 14 && Math.abs(e6.y - e5.y - 30) <= 14, "and dragging it carries the Amp window joined to it");
+    await p.reload(); await p.waitForTimeout(1500);
+    const m6 = await box(W("winMain"));
+    check(Math.abs(m6.h - m5.h) <= 2, "sizes are remembered");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "details editor and Tidy names"() {
     const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
     await p.click("#mlRows .trow"); await p.click("#mlRows .trow:nth-of-type(3)", { modifiers: ["Shift"] });
