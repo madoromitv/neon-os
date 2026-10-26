@@ -664,17 +664,20 @@ const tests = {
   },
   async "Mixer: a volume and level for each app"() {
     const p = await page({ viewport: { width: 1500, height: 950 } }); await desk(p); await amp(p, ["song.wav"]); // a steady 20-second tone, so levels compare fairly
-    await p.click("#bPlay"); await p.waitForTimeout(800);
+    if (await p.$eval("#bLevel", b => b.getAttribute("aria-pressed") === "true")) await p.click("#bLevel"); // levelling would change the loudness mid-test
+    await p.click("#bPlay"); await p.waitForTimeout(1500);
     await p.click("#volBtn"); await p.click("#trMix"); await p.waitForSelector('[data-wid="mixer"]'); await p.waitForTimeout(1500);
     const mf = p.frame({ url: /mixer/ });
     check((await mf.$$eval(".strip", e => e.length)) >= 12, "the Mixer has a strip for each app that makes sound, and Master");
     await mf.waitForFunction(() => document.querySelector('[data-ch="amp"]').classList.contains("live"), null, { timeout: 5000 }).catch(() => {});
     check(await mf.$eval('[data-ch="amp"]', e => e.classList.contains("live") && parseFloat(e.querySelector(".meter i").style.height) > 5), "Amp's light and meter show it playing");
-    const level = () => p.evaluate(() => new Promise(res => { let mx = 0; const ch = new BroadcastChannel("neon-os:levels"); ch.onmessage = e => { if (e.data.app === "amp") mx = Math.max(mx, e.data.level); }; setTimeout(() => { ch.close(); res(mx); }, 1500); }));
+    // Amp's typical level over 1.5 s (the median, so a moment mid-change doesn't decide it)
+    const level = () => p.evaluate(() => new Promise(res => { const v = []; const ch = new BroadcastChannel("neon-os:levels"); ch.onmessage = e => { if (e.data.app === "amp") v.push(e.data.level); }; setTimeout(() => { ch.close(); v.sort((a, b) => a - b); res(v.length ? v[v.length >> 1] : 0); }, 1500); }));
     const l0 = await level();
     // drag Amp's fader to about a quarter
     const f = await mf.$('[data-ch="amp"] [data-f]'), b = await f.boundingBox();
-    await p.mouse.click(b.x + b.width / 2, b.y + b.height * 0.75 + 5.5 * 0.5); await p.waitForTimeout(400);
+    await p.mouse.click(b.x + b.width / 2, b.y + b.height * 0.75 + 5.5 * 0.5);
+    await p.waitForFunction(async () => { const a = (await import("/core/mixer.js")).getMix().apps.amp; return a && a.v < 0.5; }, null, { timeout: 5000 }).catch(() => {}); await p.waitForTimeout(800);
     const v = await p.evaluate(async () => (await import("/core/mixer.js")).getMix().apps.amp.v);
     check(v > 0.15 && v < 0.35, `Amp's fader sets its volume in the mix (${Math.round(v * 100)}%)`);
     const l1 = await level();
