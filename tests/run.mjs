@@ -663,7 +663,7 @@ const tests = {
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
   async "Mixer: a volume and level for each app"() {
-    const p = await page({ viewport: { width: 1500, height: 950 } }); await desk(p); await amp(p, ["beat120.wav"]);
+    const p = await page({ viewport: { width: 1500, height: 950 } }); await desk(p); await amp(p, ["song.wav"]); // a steady 20-second tone, so levels compare fairly
     await p.click("#bPlay"); await p.waitForTimeout(800);
     await p.click("#volBtn"); await p.click("#trMix"); await p.waitForSelector('[data-wid="mixer"]'); await p.waitForTimeout(1500);
     const mf = p.frame({ url: /mixer/ });

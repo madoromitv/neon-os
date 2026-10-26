@@ -43,7 +43,7 @@
 "apps/tape/tape.js": "14a20caa300d",
 "apps/terminal/index.html": "a033ff03907c",
 "apps/tuner/index.html": "774107237fff",
-"apps/video/index.html": "cd46b4950294",
+"apps/video/index.html": "1499fd2870f2",
 "core/analyser.js": "98c9c57dd440",
 "core/analysis-worker.js": "49a98cea4ac6",
 "core/analysis.js": "4b3245af5052",
@@ -77,7 +77,7 @@
 "core/picker.js": "899b53c81313",
 "core/rack.js": "27de394985a9",
 "core/reminders.js": "9535cbd0f6d8",
-"core/scrobble.js": "421742763bbf",
+"core/scrobble.js": "bd194127be03",
 "core/shortcuts.js": "0509b4535d91",
 "core/sounds.js": "097bccfdabf0",
 "core/storage.js": "87a5f34d250d",
@@ -103,7 +103,7 @@
 "os/quick.js": "03686d7387e3",
 "os/search.js": "af8347f20e9c",
 "os/shell.css": "f411e04657b1",
-"os/shell.js": "620703b1cd83",
+"os/shell.js": "b5ad2933643c",
 "os/wallpic.js": "621151d22b33",
 "os/widgets.js": "40ab3b155aef",
 "style-kit/apps.css": "1d92e00d41e4",
@@ -117,5 +117,5 @@
 "style-kit/vlist.js": "32be7a331f52",
 "vendor/lamejs/lame.min.js": "00d43c063dcf"
 },
-"version": "25962b6a8a"
+"version": "85749a7b6e"
 }

@@ -87,7 +87,7 @@
     import { pickFiles } from "../../core/picker.js";
     applyTheme(); onTheme(applyTheme);
     const $ = id => document.getElementById(id), v = $("v"), KEY = "neon-os:video", POS = "neon-os:video-pos";
-    mixMedia(v, "video", { meter: true }); // the Mixer sets its volume and shows its level
+    mixMedia(v, "video"); // the Mixer sets its volume (its meter shows the volume while playing: routing the sound through Web Audio could leave a video that starts by itself silent)
     let S = { vol: 1, muted: false, speed: 1, loop: false, wide: false, src: "opened" };
     try { S = { ...S, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) {}
     const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };

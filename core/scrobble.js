@@ -7,8 +7,11 @@
 // secret, so it uses your own free API key and secret (last.fm/api/account/create), then you allow it on Last.fm.
 const KEY = "neon-os:scrobble", QUEUE = "neon-os:scrobble-queue";
 const LB = "https://api.listenbrainz.org/1/", LFM = "https://ws.audioscrobbler.com/2.0/";
-export const getConf = () => { try { return { lb: { token: "", on: false, user: "" }, lfm: { key: "", secret: "", sk: "", user: "", on: false }, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) { return { lb: {}, lfm: {} }; } };
-export function setConf(patch) { const c = { ...getConf(), ...patch }; try { localStorage.setItem(KEY, JSON.stringify(c)); } catch (e) {} return c; }
+// read once and kept (Amp asks every frame whether scrobbling is on); another window's change refreshes it
+let confCache = null;
+export const getConf = () => { if (confCache) return confCache; try { confCache = { lb: { token: "", on: false, user: "" }, lfm: { key: "", secret: "", sk: "", user: "", on: false }, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) { confCache = { lb: {}, lfm: {} }; } return confCache; };
+export function setConf(patch) { const c = { ...getConf(), ...patch }; try { localStorage.setItem(KEY, JSON.stringify(c)); } catch (e) {} confCache = c; return c; }
+if (typeof window !== "undefined") addEventListener("storage", e => { if (e.key === KEY) confCache = null; });
 const queue = () => { try { return JSON.parse(localStorage.getItem(QUEUE) || "[]"); } catch (e) { return []; } };
 const setQueue = q => { try { localStorage.setItem(QUEUE, JSON.stringify(q.slice(-500))); } catch (e) {} };
 export const queued = () => queue().length;

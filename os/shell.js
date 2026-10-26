@@ -1070,9 +1070,12 @@ function sizeWall() { WW = innerWidth; WH = innerHeight; wglow.resize(WW, WH, Ma
 // While Amp plays (or Live listens), Amp leaves the beat in window.neonOsBeat each frame. With "Move to the music"
 // on (Settings → Desktop, on by default; never with Reduce motion), the orb wallpaper turns with the tempo, swells
 // with the loudness and kicks with the bass, the haze breathes, and window titles and lit LEDs flash on each beat.
+// the setting is looked up at most twice a second (this runs every frame), so a change anywhere lands within half a second
+let reactOn = true, reactAt = -1e9;
 function musicBeat() {
-  const B = window.neonOsBeat, t = getTheme();
-  return B && B.playing && performance.now() - B.at < 300 && t.react !== false && !calmOn(t) ? B : null;
+  const B = window.neonOsBeat, now = performance.now();
+  if (now - reactAt > 500) { reactAt = now; const t = getTheme(); reactOn = t.react !== false && !calmOn(t); }
+  return B && B.playing && now - B.at < 300 && reactOn ? B : null;
 }
 let lastBeatI = null, beatRaf = 0, beatOffT = 0;
 function beatTick() {
@@ -1332,6 +1335,7 @@ const widgets = initWidgets({ layer: $("widgets"), nowPlaying: () => mounted.has
 lockApi = initLock({ nowPlaying: () => mounted.has("amp") && !closed.has("amp") ? nowPlaying : null, transport, sfx, onChange: m => { if (m) { closeMenu(); closeTray(); closeNotices(); closeSearch(); } } });
 applyTheme();
 onTheme(t => {
+  reactAt = -1e9;
   applyTheme(t); buildSprite();
   if (wallKeyOf(t) !== wallKey) loadWall(); else { showWallPic(t); startWall(); }
   startBeat();
