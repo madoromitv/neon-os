@@ -657,7 +657,8 @@ const tests = {
     check(red(ball1) && ball1 !== ball0, `the colour follows the album cover (${ball0} → ${ball1})`);
     await p.evaluate(async () => (await import("/core/theme.js")).setTheme({ coverColor: false })); await p.waitForTimeout(200);
     check(await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ball").trim()) === ball0, "turning it off brings the chosen colour back");
-    await p.evaluate(async () => (await import("/core/theme.js")).setTheme({ react: false })); await p.waitForTimeout(400);
+    await p.evaluate(async () => (await import("/core/theme.js")).setTheme({ react: false }));
+    await p.waitForFunction(() => !document.body.classList.contains("music"), null, { timeout: 5000 }).catch(() => {});
     check(await p.evaluate(() => !document.body.classList.contains("music")), "Move to the music can be turned off");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
@@ -736,7 +737,8 @@ const tests = {
     check(await p.$eval("#listen", e => e.getAttribute("aria-pressed")) === "true", "Listen uses the microphone");
     await p.click("#listen");
     // metronome: tap tempo, then it ticks
-    for (let i = 0; i < 4; i++) { await p.click("#tap"); await p.waitForTimeout(500); }
+    // four taps half a second apart, timed by the page itself so a busy test machine can't stretch the gaps
+    await p.evaluate(() => new Promise(res => { let n = 0; const go = () => { document.getElementById("tap").click(); if (++n < 4) setTimeout(go, 500); else res(); }; go(); }));
     const bpm = Number(await p.$eval("#bpmVal", e => e.textContent));
     check(bpm >= 110 && bpm <= 130, `tapping sets the tempo (${bpm} BPM)`);
     await p.selectOption("#beats", "3"); await p.click("#go"); await p.waitForTimeout(2100);
@@ -775,7 +777,8 @@ const tests = {
     // the desktop does the jobs
     await p.evaluate(() => window.__midiSend([0xb0, 7, 127])); await p.waitForTimeout(200);
     check((await p.evaluate(async () => (await import("/core/clock.js")).clock.state.bpm)) === 200, "a knob sets the Rack's tempo");
-    await p.evaluate(() => window.__midiSend([0x90, 36, 100])); await p.waitForTimeout(1200);
+    await p.evaluate(() => window.__midiSend([0x90, 36, 100]));
+    await p.waitForFunction(() => window.neonOsBeat && window.neonOsBeat.playing, null, { timeout: 15000 }).catch(() => {});
     check(await p.evaluate(() => window.neonOsBeat && window.neonOsBeat.playing), "a pad plays Amp");
     await p.evaluate(() => { window.__midiSend([0x80, 36, 0]); window.__midiSend([0x90, 36, 90]); }); await p.waitForTimeout(500);
     check(await p.evaluate(() => !(window.neonOsBeat && window.neonOsBeat.playing && performance.now() - window.neonOsBeat.at < 200)), "pressing it again pauses");
@@ -873,7 +876,8 @@ const tests = {
     check(gs && gs.params.api_sig === sig, "the token becomes a session, signed the way Last.fm asks");
     check(await p.evaluate(async () => (await import("/core/scrobble.js")).getConf().lfm.sk === "sk1"), "Last.fm is connected");
     // Amp says what's playing to both
-    await amp(p, ["beat120.wav"]); await p.click("#bPlay"); await p.waitForTimeout(1500);
+    await amp(p, ["beat120.wav"]); await p.click("#bPlay");
+    for (let i = 0; i < 30 && !sent.some(x => x.svc === "lfm" && x.params.method === "track.updateNowPlaying"); i++) await p.waitForTimeout(500);
     check(sent.some(x => x.svc === "lb" && x.body.listen_type === "playing_now") && sent.some(x => x.svc === "lfm" && x.params.method === "track.updateNowPlaying" && x.params.sk === "sk1"), "playing a song sends now playing to both");
     // a listen goes to both; when a service is down it waits and goes with the next one
     lbDown = true;

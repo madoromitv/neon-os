@@ -35,7 +35,7 @@
 "apps/pulse/pulse.js": "b6ce6f8885cc",
 "apps/radio/index.html": "18334e947a78",
 "apps/recorder/index.html": "1bda07c612a9",
-"apps/registry.js": "bc3bba243996",
+"apps/registry.js": "450cb9a94585",
 "apps/settings/index.html": "cde35c6d26bc",
 "apps/stats/index.html": "c1b97ff9033d",
 "apps/tape/index.html": "b22478de9062",
@@ -86,7 +86,7 @@
 "core/tags.js": "75eb59d9d99d",
 "core/theme.js": "e9976692af9e",
 "core/thumb-worker.js": "fbb86a84fca8",
-"core/version.js": "ddfcd20ff1b2",
+"core/version.js": "eed473ed4416",
 "core/wav.js": "d68352af64ec",
 "icons/apple-touch-icon.png": "923c068ad26e",
 "icons/favicon-64.png": "324a764fc6fe",
@@ -117,5 +117,5 @@
 "style-kit/vlist.js": "32be7a331f52",
 "vendor/lamejs/lame.min.js": "00d43c063dcf"
 },
-"version": "32583b29c7"
+"version": "25962b6a8a"
 }

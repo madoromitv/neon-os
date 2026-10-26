@@ -1,8 +1,18 @@
 // Neon OS core: version and what's new
 // Bump VERSION and add an entry at the top of CHANGES with each update people should hear about:
 // the desktop shows "What's new" once, the next time Neon OS opens, and About lists them all.
-export const VERSION = "1.7";
+export const VERSION = "1.8";
 export const CHANGES = [
+  { v: "1.8", date: "2026-10-26", items: [
+    "The desktop moves to the music: the orb wallpaper turns with the tempo and kicks with the bass, and window titles and lights flash on the beat. Follow the album cover takes the colour of everything from the song playing",
+    "Mixer: a fader, mute and level meter for each app, Master, and the speakers or headphones it plays through (in the tray's Volume panel)",
+    "Stats: your top songs, artists, albums and genres by week, month and year, listening time, and a Recap of your year in music",
+    "Tuner: a tuner using the microphone, and a metronome that can play in time with the Rack",
+    "MIDI controllers: give any knob, fader or pad a job in Amp, the Mixer, the Rack or Decks (Settings → MIDI controller)",
+    "Wake up to a playlist, fall asleep with a sleep timer, start music with a Calendar event, and play music with a Photos slideshow",
+    "Scrobbling to ListenBrainz and Last.fm (Settings → Scrobbling)",
+    "Converter: FLAC and more to MP3, Opus or WAV, keeping titles and covers, and optionally shrinking the library's copies",
+  ] },
   { v: "1.7", date: "2026-10-26", items: [
     "Every window resizes from every edge, Amp's player and equalizer included: a taller player gets a bigger display, a taller equalizer longer sliders",
     "Windows that touch are joined, across apps, like the classic player: drag one and the rest come along, resize one and the windows lined up with it stretch while the ones beyond are pushed along. Shift-drag pulls a window away",

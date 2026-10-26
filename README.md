@@ -33,6 +33,11 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 - **Several desktops:** the numbers beside the Neon button switch desktop and + adds one (up to 4). Each app sits on one desktop; Ctrl+Alt+[ and ] move between them, Ctrl+Alt+Shift+[ and ] take the front app along, and a window's right-click menu moves it to any desktop. Opening an app that's on another desktop goes there
 - **Lock screen and screensaver:** Ctrl+Alt+L (or Lock in the start menu) shows the time, the date and what's playing with its controls. Set a PIN in Settings to keep casual hands off (it isn't encryption). After a spell with no mouse or keys (Settings: never to 1 hour, 10 minutes to start), the screensaver is the orb drifting over black; waking it asks for the PIN if one is set
 - **The Bin:** songs, playlists, notes and pictures you delete wait in the Bin for 30 days; put them back (a song returns to the playlists it was in) or delete them for good
+- **The desktop moves to the music:** while Amp plays (or Live listens), the orb wallpaper turns with the tempo, swells with the loudness and kicks with the bass, the haze breathes, and window titles, lit LEDs and the Neon button flash on each beat (Settings → Desktop: Move to the music; off with Reduce motion). **Follow the album cover** (Settings → Colour) takes the colour of everything from the cover of the song playing, and goes back to your colour when it's off
+- **Mixer:** a fader, mute and live level meter for each app that makes sound (Amp, Decks, Radio, the Rack, Recorder, Tuner, Video, Arcade, system sounds) and Master, plus the speakers or headphones it all comes out of (Chrome and Edge). Open it from the tray's Volume panel
+- **Music in the everyday apps:** a Clock alarm can wake you to a playlist (or all songs or favourites, shuffled) fading in over 30 seconds; the Clock timer can be a sleep timer that fades the music out and pauses it; a Calendar event can start music when it begins; a Photos slideshow can play music while it runs. The music plays behind whatever's in front
+- **MIDI controllers:** Settings → MIDI controller gives any knob, fader, pad or key a job: Amp's play, next, previous, stop and volume, the Mixer's Master and mute, the Rack's start/stop and tempo, Decks' crossfader, faders, play, cue and sync, or the next wallpaper. Press Learn, move the control
+- **Scrobbling:** Settings → Scrobbling sends what you play in Amp to ListenBrainz (paste your token) or Last.fm (your own free API key), with now playing; listens made offline wait and go later
 - **Choosing many at once:** every library (Photos, Amp, Files, Notes, Recorder, Video) has Select all and Delete; Ctrl- or Shift-click chooses a few, Ctrl+A chooses all, Delete removes them. Deleting asks once: to the Bin, or for good to free the space now
 - **Opening and saving files:** every app uses the same picker: the system's open dialog to bring files in, and for exports, recordings and backups the system's save dialog when **Ask where to save** is on in Settings (Chrome and Edge), otherwise straight to Downloads
 - **Search everywhere:** Ctrl+K (or Ctrl+Space) finds apps, songs, artists, albums, genres, playlists and settings; Enter opens or plays
@@ -58,17 +63,21 @@ It starts with a short boot screen (click to skip, or turn it off in Settings), 
 | Amp | Music player with library, playlists, equalizer and the Neon Orbit visualiser (**Auto DJ**, Fade's last setting, mixes songs on the beat with a bass swap; **Lyrics** over the visualiser, read from the songs' own tags (ID3 lyrics in MP3, FLAC comments, M4A), an .lrc beside the song, or pasted; Look presets and settings for balls, trail, size, glow and spin; **Live** to dance to a microphone, line-in or mixer, following its tempo; **Rec** to record the visualiser and its sound as a video); volume levelling (Level), gapless playback and crossfades of 3 to 12 seconds (Fade); edit details and cover art for several songs at once (Ctrl+I) and Tidy names to merge artists, albums and genres spelled more than one way; browse by artist, album and genre, smart playlists, favourites and play counts; stays quick with thousands of songs | Working |
 | Files | A file manager for folders on your computer (Computer: browse, open in the right app, rename, copy, cut and paste, new folder, delete to the Bin, search, preview), plus the same library sections as Amp (songs, artists, albums, genres, smart playlists, playlists) plus notes; play in Amp, favourite, download, edit details and cover art (several songs at once), tidy names, delete | Working |
 | Notes | Notes in folders with search; the first line is the title; open text files as notes, export one as a text file, stamp the date; deleted notes go to the Bin | Working |
-| Clock | The time, world clocks, alarms that repeat on chosen days, a timer and a stopwatch with laps; alarms and timers go off with Clock closed (and as system notifications when Neon OS is in the background) | Working |
-| Calendar | A month view with events and reminders (at the time, 5 minutes to a day before); reminders go off with Calendar closed | Working |
+| Clock | The time, world clocks, alarms that repeat on chosen days (and can wake you to music, fading in), a timer (or a sleep timer that fades the music out) and a stopwatch with laps; alarms and timers go off with Clock closed (and as system notifications when Neon OS is in the background) | Working |
+| Calendar | A month view with events and reminders (at the time, 5 minutes to a day before); reminders go off with Calendar closed; an event can start music when it begins | Working |
 | Calculator | Sums worked out properly (× and ÷ before + and −, brackets, %), from the keypad or keyboard, with history; Tempo turns a BPM (or tapped tempo) into note lengths in ms and Hz for delays and reverbs | Working |
 | Video | Videos from your computer (Open videos, drop them in, or open them from your file explorer) or a linked folder; seek, volume %, speed, loop, subtitles (.vtt or .srt), pop-out and full screen; each video carries on where you stopped, and Amp pauses while one plays | Working |
 | Browser | Tabs, an address bar that also searches (DuckDuckGo, Google, Bing, Startpage or Wikipedia), back and forward, bookmarks and a start page. In the desktop app every site works and links that open a new window become tabs; on the website, only sites that allow being shown inside another page do (the rest open outside) | Working |
-| Photos | The viewer always shows the whole picture. **Edit** crops (free or a fixed shape), turns, flips, straightens, and sets light, contrast, colour, warmth and a vignette, with filters (Neon tints in the orb colour); save a copy, replace the original (it goes to the Bin), save as, or set as wallpaper. Add pictures or link a folder of them (read in place); thumbnails with a size %, sorting, a viewer, a slideshow, and Set as wallpaper. Quick with thousands of pictures: previews are made once in background workers and kept, and only the rows on screen are drawn | Working |
+| Photos | The viewer always shows the whole picture. **Edit** crops (free or a fixed shape), turns, flips, straightens, and sets light, contrast, colour, warmth and a vignette, with filters (Neon tints in the orb colour); save a copy, replace the original (it goes to the Bin), save as, or set as wallpaper. Add pictures or link a folder of them (read in place); thumbnails with a size %, sorting, a viewer, a slideshow (with music if you like), and Set as wallpaper. Quick with thousands of pictures: previews are made once in background workers and kept, and only the rows on screen are drawn | Working |
 | System monitor | Open apps with how long they've been open and any errors, with Show, Restart and Close; memory, storage and how quickly the desktop responds; how many songs, playlists, notes, events, alarms and pictures are stored | Working |
 | Recorder | Record from a microphone or line-in with a level meter (R); trim on the waveform, save as WAV, add to the library or open in Chop | Working |
 | Radio | Internet radio stations (search by name or style, favourites) and podcasts (search, subscribe, episodes with seek, speed and carry-on) | Working |
 | Terminal | Commands: open and close apps, play songs or playlists, volume, alarms and timers, notes, the calendar, sums, note lengths for a tempo, colour and wallpaper, desktops, and ls/cd/cat through linked folders. Type help | Working |
 | Arcade | Beat: a rhythm game made from your own songs' beats (D F J K, three difficulties); Mines, in the Neon style | Working |
+| Mixer | A fader, mute button and live level meter for each app that makes sound, plus Master and Mute all; choose the speakers or headphones (Chrome and Edge); Reset | Working |
+| Stats | What you listen to: plays, listening time, songs and artists for a week, month, year or all time, compared with the one before; plays each day or month and by time of day; top songs, artists, albums and genres (click to play), the top 25 as a playlist, and **Recap**, your year in music. Counted from Amp's plays, kept in its own history (in backups too) | Working |
+| Tuner | A tuner that listens through the microphone (note, Hz, cents and a needle; guitar, bass, ukulele, violin or any note; reference A from 415 to 466 Hz; click a string to hear it) and a metronome (30 to 300 BPM, tap tempo, beats in a bar, ticks per beat, accent; Link plays in time with the Rack) | Working |
+| Converter | FLAC (or anything the browser plays) to MP3 (128 to 320 kbps), Opus (96 to 192 kbps) or WAV, keeping the title, artist, album and cover; files, a drop, or songs from the library (Amp's right-click → Convert…); save each, or all into a folder; optionally swap the library's copies for the smaller ones | Working |
 | Bin | Everything deleted in the last 30 days, by kind; put back, delete for good, or empty | Working |
 | Settings | Orb colour for every app at once, wallpaper and desktop icons, high contrast and reduce motion, screensaver and lock screen PIN, library protection and install, backup and restore, layout reset, where to save | Working |
 | Shortcuts | Every keyboard shortcut and mouse move, searchable (press ? anywhere) | Working |
@@ -136,6 +145,13 @@ core/        shared engine, used by every app
   reminders.js alarms, the timer and calendar reminders; the desktop checks them every second
   photos.js    pictures added to Photos, linked picture folders, their remembered lists and previews
   thumb-worker.js  makes Photos' previews off the main thread
+  mixer.js     the volume mixer: every app's sound goes through it (a volume, mute and level per app, Master, the output)
+  history.js   listening history: one row per play, for Stats
+  cover-colour.js  a neon colour taken from album art (Follow the album cover)
+  music-cue.js the music other apps start: alarms, events, slideshows
+  midi.js      MIDI controllers: the jobs, the map and listening
+  scrobble.js  sending plays to ListenBrainz and Last.fm
+  convert.js   decoding songs for the Converter, with encode-worker.js making MP3 (lamejs) and Opus (WebCodecs, in Ogg)
 apps/
   registry.js  the list of apps the desktop shows
   amp/         the player
@@ -157,6 +173,11 @@ apps/
   settings/    settings
   help/        the Shortcuts list
   about/       version, what's new, links
+  mixer/       the Mixer
+  stats/       listening stats and Recap
+  tuner/       tuner and metronome
+  convert/     the Converter
+vendor/        lamejs, the MP3 encoder (LGPL, unmodified)
 desktop/       the desktop app (Electron): main.js opens Neon OS in its own window, updater.js keeps its files up to date; GitHub builds the installers
 version.json   every file with a fingerprint (written by tools/precache.py); the desktop app updates from it
 tests/         browser tests (run.mjs) and the test songs they use (fixtures.py)
@@ -214,4 +235,5 @@ To keep them safe or move them, open **Settings → Back up everything**. You ge
 2. Neon OS shell: desktop, window manager, launcher, settings (done)
 3. The Rack: Pulse, Drift, Chop, Tape and Decks, with Pulse, Drift and Chop on a shared clock (done)
 4. A complete OS: installable everywhere (desktop app for Windows, macOS and Linux), everyday apps (Clock, Calendar, Calculator, Notes, Photos, System monitor, Bin), several desktops, lock screen and screensaver, one shared file picker (done)
-5. The game: on hold. A standalone game that plays and looks like Neon OS; its story and mechanics are still to be worked out. Neon OS stays a clean tool with no lore in it.
+5. Music-driven OS: the desktop moves to the music and can take its colour from the album cover, Mixer, Stats, Tuner, Converter, MIDI controllers, music in Clock, Calendar and Photos, and scrobbling (done, 1.8)
+6. The game: on hold. A standalone game that plays and looks like Neon OS; its story and mechanics are still to be worked out. Neon OS stays a clean tool with no lore in it.
