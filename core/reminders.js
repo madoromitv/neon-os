@@ -29,10 +29,10 @@ export function dueNow(now = new Date()) {
     if (a.days && a.days.length && !a.days.includes(now.getDay())) continue;
     a.lastFired = today + " " + hm; cc = true;
     if (!a.days || !a.days.length) a.on = false; // a one-off alarm turns itself off
-    out.push({ kind: "alarm", title: a.label || "Alarm", text: `It's ${hm}.`, app: "clock" });
+    out.push({ kind: "alarm", title: a.label || "Alarm", text: `It's ${hm}.`, app: "clock", music: a.music || "" });
   }
   if (c.timer && c.timer.endsAt && t >= c.timer.endsAt) {
-    out.push({ kind: "timer", title: c.timer.label || "Timer finished", text: `${fmtDur(c.timer.total)} is up.`, app: "clock" });
+    out.push({ kind: "timer", title: c.timer.label || (c.timer.sleep ? "Sleep timer" : "Timer finished"), text: c.timer.sleep ? `${fmtDur(c.timer.total)} is up: the music is fading out.` : `${fmtDur(c.timer.total)} is up.`, app: "clock", sleep: !!c.timer.sleep });
     c.timer.endsAt = null; c.timer.left = 0; cc = true;
   }
   if (cc) saveClock(c);
@@ -42,6 +42,15 @@ export function dueNow(now = new Date()) {
     ev.fired = true; ch = true;
     if (t - at > 6 * 3600e3) continue; // missed by hours (Neon OS was closed): don't ring late
     out.push({ kind: "event", title: ev.title || "Event", text: `${ev.time ? ev.time + " · " : "Today · "}${new Date(ev.date + "T00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}`, app: "calendar" });
+  }
+  // an event with music starts it when the event begins (not at its reminder)
+  for (const ev of cal.events) {
+    if (!ev.music || ev.musicFired) continue;
+    const [y, m, d] = ev.date.split("-").map(Number), [hh, mm] = (ev.time || "09:00").split(":").map(Number), at = new Date(y, m - 1, d, hh, mm).getTime();
+    if (t < at) continue;
+    ev.musicFired = true; ch = true;
+    if (t - at > 30 * 60000) continue; // long past: don't start music late
+    out.push({ kind: "music", title: ev.title || "Event", text: "Starting the music for it", app: "calendar", music: ev.music, quiet: true });
   }
   if (ch) saveCalendar(cal);
   return out;

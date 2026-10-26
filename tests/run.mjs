@@ -786,6 +786,58 @@ const tests = {
     check(/A 100%/.test(await p.frame({ url: /decks/ }).$eval("#xfPct", e => e.textContent)), "a knob moves Decks' crossfader");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "music in the everyday apps: wake to music, sleep timer, events and slideshows"() {
+    const p = await page({ viewport: { width: 1400, height: 900 } }); await desk(p); await amp(p, ["beat120.wav", "song.wav"]);
+    const pl = await p.evaluate(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); const pl = await s.createPlaylist("Morning"); await s.updatePlaylist(pl.id, { tracks: [s.tracks.find(t => /song/i.test(t.title)).id] }); return pl.id; });
+    await p.evaluate(() => dispatchEvent(new CustomEvent("neonos:transport", { detail: "stop" })));
+    // Clock lists the playlists to wake to
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="clock"]'); await p.waitForSelector('[data-wid="clock"]'); await p.waitForTimeout(1200);
+    const cf = p.frame({ url: /clock/ });
+    check((await cf.$$eval("#aMusic option", e => e.map(o => o.textContent))).includes("Playlist: Morning"), "an alarm can wake you to a playlist");
+    // an alarm due now with the Morning playlist: Amp plays it, fading in
+    await p.evaluate(pl => { const d = new Date(), hm = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); const c = JSON.parse(localStorage.getItem("neon-os:clock") || "{}"); c.alarms = [{ id: "w1", time: hm, label: "Wake up", days: [], on: true, music: "pl:" + pl }]; localStorage.setItem("neon-os:clock", JSON.stringify(c)); }, pl);
+    await p.waitForFunction(() => /SONG/i.test(document.getElementById("marqueeText").textContent) && window.neonOsBeat !== undefined, null, { timeout: 8000 }).catch(() => {});
+    await p.waitForTimeout(1500);
+    const ampVol = () => p.evaluate(() => parseInt(document.getElementById("volPct").textContent) / 100); // Amp's own readout (it saves the volume only once it settles)
+    const vol1 = await ampVol();
+    check(/SONG/i.test(await p.evaluate(() => document.getElementById("marqueeText").textContent)), "the alarm plays the playlist in Amp");
+    check(vol1 < 0.4, `and the music fades in (volume ${Math.round(vol1 * 100)}% after 1.5 s)`);
+    await p.waitForTimeout(2500);
+    const vol2 = await ampVol();
+    check(vol2 > vol1, `getting louder (${Math.round(vol2 * 100)}%)`);
+    // moving the volume yourself stops the fade
+    await p.evaluate(() => window.postMessage({ neonOs: "volume", v: 0.8 }, location.origin)); await p.waitForTimeout(1200);
+    check(Math.abs((await ampVol()) - 0.8) < 0.02, "setting the volume yourself takes over from the fade");
+    // a sleep timer ending fades the music out
+    await p.evaluate(() => { const c = JSON.parse(localStorage.getItem("neon-os:clock")); c.timer = { label: "", endsAt: Date.now() + 500, left: 0, total: 60000, sleep: true }; localStorage.setItem("neon-os:clock", JSON.stringify(c)); });
+    await p.waitForTimeout(5000);
+    const vol3 = await ampVol();
+    check(vol3 < 0.75 && (await p.$$eval(".notice", e => e.map(x => x.textContent).join())).includes("Sleep timer"), `a sleep timer fades the music out (${Math.round(vol3 * 100)}% after 4 s)`);
+    await p.evaluate(() => window.postMessage({ neonOs: "volume", v: 0.8 }, location.origin));
+    await p.evaluate(() => dispatchEvent(new CustomEvent("neonos:transport", { detail: "stop" }))); await p.waitForTimeout(400);
+    // a Calendar event with music starts it when it begins
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="calendar"]'); await p.waitForSelector('[data-wid="calendar"]'); await p.waitForTimeout(1000);
+    check((await p.frame({ url: /calendar/ }).$$eval("#music option", e => e.length)) >= 4, "a Calendar event can start music");
+    await p.evaluate(() => { const d = new Date(), k = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"), hm = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      localStorage.setItem("neon-os:calendar", JSON.stringify({ events: [{ id: "e1", title: "Party", date: k, time: hm, remind: null, music: "all" }] })); });
+    await p.waitForFunction(() => window.neonOsBeat && window.neonOsBeat.playing, null, { timeout: 8000 }).catch(() => {});
+    check(await p.evaluate(() => !!(window.neonOsBeat && window.neonOsBeat.playing) || /BEAT|SONG/i.test(document.getElementById("marqueeText").textContent)), "the event's music starts on time");
+    check(await p.evaluate(() => JSON.parse(localStorage.getItem("neon-os:calendar")).events[0].musicFired === true), "and only once");
+    await p.evaluate(() => dispatchEvent(new CustomEvent("neonos:transport", { detail: "stop" }))); await p.waitForTimeout(400);
+    // a Photos slideshow plays music while it runs and pauses it after
+    await p.screenshot({ path: FX + "pm.png", clip: { x: 0, y: 0, width: 40, height: 30 } });
+    await p.evaluate(pl => localStorage.setItem("neon-os:photos", JSON.stringify({ ...JSON.parse(localStorage.getItem("neon-os:photos") || "{}"), showMusic: "pl:" + pl })), pl);
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="photos"]'); await p.waitForSelector('[data-wid="photos"]'); await p.waitForTimeout(1200);
+    const pf = p.frame({ url: /photos/ });
+    const ch = p.waitForEvent("filechooser"); await pf.click("#add"); await (await ch).setFiles(FX + "pm.png"); await p.waitForTimeout(1200);
+    check((await pf.$eval("#showMusic", e => e.value)) === "pl:" + pl, "Photos remembers the slideshow's music");
+    await pf.click("#show"); await p.waitForTimeout(2500);
+    check(await p.evaluate(() => (window.neonOsBeat && window.neonOsBeat.playing) || /SONG/i.test(document.getElementById("marqueeText").textContent)), "the slideshow starts the music");
+    check(await p.evaluate(() => document.querySelector('[data-wid="photos"]').classList.contains("lit")), "and the slideshow stays in front");
+    await pf.click("#vPlay"); await p.waitForTimeout(800);
+    check(await p.evaluate(() => !(window.neonOsBeat && window.neonOsBeat.playing && performance.now() - window.neonOsBeat.at < 300)), "stopping the slideshow pauses it");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "details editor and Tidy names"() {
     const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
     await p.click("#mlRows .trow"); await p.click("#mlRows .trow:nth-of-type(3)", { modifiers: ["Shift"] });

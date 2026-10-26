@@ -41,11 +41,12 @@
         <div class="row"><span class="lbl">Remind me</span><select id="remind" aria-label="Reminder">
           <option value="">No reminder</option><option value="0">At the time</option><option value="5">5 minutes before</option><option value="15">15 minutes before</option>
           <option value="30">30 minutes before</option><option value="60">1 hour before</option><option value="1440">1 day before</option></select></div>
+        <div class="row"><span class="lbl">Play</span><select id="music" aria-label="Music to start when the event begins"><option value="">No music</option></select></div>
         <div class="row"><button class="btn" type="submit" id="saveBtn">Add event</button><button class="btn" type="button" id="cancel" hidden>Cancel</button><button class="btn" type="button" id="del" hidden style="color:var(--danger)">Delete</button></div>
       </form>
       <span class="lbl">Coming up</span>
       <div class="list" id="upcoming"></div>
-      <p class="hint">Reminders go off while Neon OS is open, even with Calendar closed. All-day events remind at 9:00.</p>
+      <p class="hint">Reminders go off while Neon OS is open, even with Calendar closed. All-day events remind at 9:00. Music chosen for an event starts in Amp when the event begins.</p>
     </div>
   </div>
   <script type="module">
@@ -76,7 +77,7 @@
     function drawDay() {
       $("dayLbl").textContent = new Date(sel + "T00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
       const evs = byDay(sel);
-      $("events").innerHTML = evs.map(e => `<div class="item ev" data-id="${e.id}" style="cursor:pointer" title="Edit"><b>${esc(e.time || "All day")}</b><span><strong>${esc(e.title)}</strong><small>${esc(remindText(e.remind) ? "Reminder " + remindText(e.remind) : "")}</small></span></div>`).join("");
+      $("events").innerHTML = evs.map(e => `<div class="item ev" data-id="${e.id}" style="cursor:pointer" title="Edit"><b>${esc(e.time || "All day")}</b><span><strong>${esc(e.title)}</strong><small>${esc([remindText(e.remind) ? "Reminder " + remindText(e.remind) : "", e.music ? "♪ music at the start" : ""].filter(Boolean).join(" · "))}</small></span></div>`).join("");
       if (!editing) $("date").value = sel;
     }
     function drawUpcoming() {
@@ -84,9 +85,11 @@
       $("upcoming").innerHTML = list.length ? list.map(e => `<div class="item ev" data-id="${e.id}" style="cursor:pointer"><b>${esc(new Date(e.date + "T00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }))}</b><span><strong>${esc(e.title)}</strong><small>${esc(e.time || "All day")}</small></span></div>`).join("") : `<p class="empty">Nothing coming up.</p>`;
     }
     const drawAll = () => { drawGrid(); drawDay(); drawUpcoming(); };
+    // music to start when an event begins (core/music-cue.js; the desktop plays it in Amp)
+    import("../../core/music-cue.js").then(m => m.fillMusicSelect($("music")));
     function edit(id) {
       const e = C.events.find(x => x.id === id); if (!e) return;
-      editing = id; sel = e.date; $("title").value = e.title; $("date").value = e.date; $("time").value = e.time || ""; $("remind").value = e.remind == null ? "" : String(e.remind);
+      editing = id; sel = e.date; $("title").value = e.title; $("date").value = e.date; $("time").value = e.time || ""; $("remind").value = e.remind == null ? "" : String(e.remind); $("music").value = e.music || "";
       $("formLbl").textContent = "Edit event"; $("saveBtn").textContent = "Save"; $("cancel").hidden = $("del").hidden = false; drawAll(); $("title").focus();
     }
     function resetForm() { editing = null; $("form").reset(); $("date").value = sel; $("formLbl").textContent = "New event"; $("saveBtn").textContent = "Add event"; $("cancel").hidden = $("del").hidden = true; }
@@ -95,7 +98,7 @@
     $("upcoming").addEventListener("click", e => { const it = e.target.closest("[data-id]"); if (it) { const ev = C.events.find(x => x.id === it.dataset.id); view = new Date(+ev.date.slice(0, 4), +ev.date.slice(5, 7) - 1, 1); edit(it.dataset.id); } });
     $("form").addEventListener("submit", e => {
       e.preventDefault();
-      const ev = { title: $("title").value.trim(), date: $("date").value, time: $("time").value || null, remind: $("remind").value === "" ? null : +$("remind").value, fired: false };
+      const ev = { title: $("title").value.trim(), date: $("date").value, time: $("time").value || null, remind: $("remind").value === "" ? null : +$("remind").value, fired: false, music: $("music").value, musicFired: false };
       if (!ev.title || !ev.date) return;
       if (editing) Object.assign(C.events.find(x => x.id === editing), ev); else C.events.push({ id: uid(), ...ev });
       if (ev.remind != null && "Notification" in window && Notification.permission === "default") Notification.requestPermission();

@@ -106,6 +106,7 @@
     <div class="bottom">
       <button class="btn" id="vPlay" aria-pressed="false"><i class="led"></i>Slideshow</button>
       <span class="lbl">Every</span><select id="speed" aria-label="Seconds per picture"><option value="3">3 seconds</option><option value="5">5 seconds</option><option value="8">8 seconds</option><option value="15">15 seconds</option></select>
+      <span class="lbl">Music</span><select id="showMusic" aria-label="Music during the slideshow"><option value="">No music</option></select>
       <span class="spacer"></span>
       <button class="btn" id="vEdit" title="Crop, turn, light, colour and filters">Edit</button>
       <button class="btn" id="vWall">Set as wallpaper</button>
@@ -345,10 +346,18 @@
       const n = shown[(at + 1) % shown.length]; if (n && n !== p) fullUrl(n).catch(() => {});
     }
     function closeView() { $("viewer").hidden = true; play(false); const b = grid.querySelector(`.pic[data-i="${at}"]`); if (b) b.focus(); else { grid.scrollTop = Math.floor(at / geo.cols) * geo.rowH; } }
+    // a slideshow can play music in Amp while it runs, paused again when it stops (only if the slideshow started it)
+    let showMusicOn = false;
     function play(on) {
+      const was = !!timer;
       clearInterval(timer); timer = null; $("vPlay").setAttribute("aria-pressed", String(on));
       if (on) timer = setInterval(() => view(at + 1), S.speed * 1000);
+      if (window.parent === window) return;
+      if (on && !was && S.showMusic) { showMusicOn = true; parent.postMessage({ neonOs: "cue-music", value: S.showMusic, fadeIn: 3 }, location.origin); }
+      if (!on && showMusicOn) { showMusicOn = false; parent.postMessage({ neonOs: "transport", act: "pause" }, location.origin); }
     }
+    import("../../core/music-cue.js").then(m => m.fillMusicSelect($("showMusic"), S.showMusic || ""));
+    $("showMusic").addEventListener("change", () => { S.showMusic = $("showMusic").value; save(); });
     // ---------- choosing pictures: click the tick (or Ctrl/Shift-click) to choose; while choosing, a click chooses ----------
     const chosen = new Set(); let lastPick = -1, picking = false;
     function syncChosen() {

@@ -580,11 +580,13 @@ addEventListener("message", async e => {
   if (d.neonOs === "welcome") { showWelcome(); return; }
   if (d.neonOs === "lock") { doAction("lock"); return; }
   if (d.neonOs === "wall-next") { wallPic.next(); return; }
+  if (d.neonOs === "cue-music" && typeof d.value === "string") { cueMusic(d.value, { fadeIn: d.fadeIn || 0 }); return; } // a Photos slideshow's music
+  if (d.neonOs === "sleep" && typeof d.secs === "number") { sleepFade(d.secs); return; }
   // the Terminal (and other apps) can ask for these
   if (d.neonOs === "close" && appById(d.app)) { closeApp(d.app); return; }
   if (d.neonOs === "transport" && ["toggle", "next", "prev", "pause", "stop"].includes(d.act)) { transport(d.act); return; }
   if (d.neonOs === "desk" && Number.isInteger(d.n)) { if (d.n >= desks.n && desks.n < DESK_MAX) addDesk(); else goDesk(d.n); return; }
-  if (d.neonOs === "volume" && typeof d.v === "number") { musicVol = clamp(d.v, 0, 1); dispatchEvent(new CustomEvent("neonos:volume", { detail: musicVol })); renderVolIcon(); return; }
+  if (d.neonOs === "volume" && typeof d.v === "number") { setMusicVol(d.v); return; }
   if (d.neonOs === "status") { e.source.postMessage({ neonOsStatus: { apps: taskList().map(t => t.name), desk: desks.cur + 1, desks: desks.n, playing: nowPlaying && mounted.has("amp") && !closed.has("amp") ? { title: nowPlaying.title, artist: nowPlaying.artist, state: nowPlaying.state } : null, volume: musicVol } }, location.origin); return; }
   if (d.neonOs === "open-files" && Array.isArray(d.files)) { openFiles(d.files); return; } // Files opening songs or videos
   if (d.neonOs === "open-url" && typeof d.url === "string") { await openApp("browser"); sendTo("browser", { neonOsBrowserOpen: d.url }); return; }
@@ -668,6 +670,34 @@ async function transport(act) {
   if (!mounted.has("amp") || closed.has("amp")) { if (act !== "toggle") return; await openApp("amp"); }
   dispatchEvent(new CustomEvent("neonos:transport", { detail: act }));
 }
+// ---------- music started by other apps (core/music-cue.js) ----------
+// An alarm's music fades in over 30 seconds; a sleep timer fades the music out over 30 seconds, pauses it, and puts
+// the volume back for next time. Moving the volume yourself during a fade stops the fade.
+let ramp = null;
+function rampVolume(to, secs, done) {
+  clearInterval(ramp && ramp.iv); const from = musicVol, t0 = performance.now();
+  ramp = { iv: setInterval(() => {
+    const k = Math.min(1, (performance.now() - t0) / (secs * 1000)); setMusicVol(from + (to - from) * k, true);
+    if (k >= 1) { clearInterval(ramp.iv); ramp = null; if (done) done(); }
+  }, 200) };
+}
+function setMusicVol(v, fromRamp) { if (!fromRamp && ramp) { clearInterval(ramp.iv); ramp = null; } musicVol = clamp(v, 0, 1); dispatchEvent(new CustomEvent("neonos:volume", { detail: musicVol })); renderVolIcon(); }
+// the music plays behind whatever you're doing: Amp opens if it has to, but the window in front stays in front
+async function cueMusic(value, { fadeIn = 0 } = {}) {
+  const { idsFor } = await import("../core/music-cue.js"), ids = await idsFor(value);
+  if (!ids.length) { addNotice({ title: "No songs to play", text: "The music chosen for this is empty or gone.", app: "amp" }); return; }
+  const was = front();
+  if (!mounted.has("amp") || closed.has("amp")) { await openApp("amp"); if (was && wins[was]) focus(was); }
+  const target = musicVol || 0.8;
+  if (fadeIn) setMusicVol(0.02, true);
+  dispatchEvent(new CustomEvent("neonos:play", { detail: { ids } }));
+  if (fadeIn) setTimeout(() => rampVolume(target, fadeIn), 300);
+}
+function sleepFade(secs) {
+  if (!nowPlaying || nowPlaying.state !== "playing") return;
+  const back = musicVol; rampVolume(0, secs, () => { transport("pause"); setTimeout(() => setMusicVol(back, true), 400); });
+}
+
 // ---------- MIDI controllers (core/midi.js; assigned in Settings) ----------
 const midiActs = "BroadcastChannel" in window ? new BroadcastChannel("neon-os:midi-act") : null;
 startMidi((id, v) => {
@@ -780,7 +810,7 @@ function openTray() {
     <div class="row"><button class="btn" id="trSnd" aria-pressed="${t.sounds !== false}"><i class="led"></i>System sounds</button><button class="btn" id="trMix" title="Volume for each app, their levels, and the speakers or headphones">Mixer</button></div></div>`;
   document.body.appendChild(el);
   const music = Slider(el.querySelector("#trMusic"), { min: 0, max: 1, step: 0.01, value: musicVol, label: "Music volume", text: v => Math.round(v * 100) + "%",
-    onInput: v => { musicVol = v; el.querySelector("#trMusicPct").textContent = Math.round(v * 100) + "%"; dispatchEvent(new CustomEvent("neonos:volume", { detail: v })); renderVolIcon(); } });
+    onInput: v => { setMusicVol(v); el.querySelector("#trMusicPct").textContent = Math.round(v * 100) + "%"; } });
   Slider(el.querySelector("#trSys"), { min: 0, max: 1, step: 0.01, value: t.sysVol == null ? 0.6 : t.sysVol, label: "System sounds volume", text: v => Math.round(v * 100) + "%",
     onInput: v => { setTheme({ sysVol: v }); el.querySelector("#trSysPct").textContent = Math.round(v * 100) + "%"; }, onChange: () => sfx.tick() });
   el.querySelector("#trMix").addEventListener("click", () => { closeTray(); openApp("mixer"); });
@@ -1272,7 +1302,9 @@ function launchShortcut() {
 // notification too (if allowed in Clock).
 setInterval(() => {
   for (const d of dueNow()) {
-    addNotice({ title: d.title, text: d.text, app: d.app }); sfx.alarm();
+    addNotice({ title: d.title, text: d.text, app: d.app });
+    if (d.music) cueMusic(d.music, { fadeIn: d.kind === "alarm" ? 30 : 0 }); else if (!d.quiet) sfx.alarm(); // wake up to music instead of the bleep
+    if (d.sleep) sleepFade(30);
     if (document.hidden && "Notification" in window && Notification.permission === "granted") { try { new Notification(d.title, { body: d.text, icon: "icons/icon-192.png" }); } catch (e) {} }
   }
 }, 1000);

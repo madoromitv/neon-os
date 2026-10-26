@@ -53,6 +53,7 @@
       <span class="lbl">New alarm</span>
       <div class="row"><input type="time" id="aTime" required aria-label="Time" value="07:30"><input type="text" id="aLabel" placeholder="Label (optional)" aria-label="Label"></div>
       <div class="days" id="aDays" aria-label="Repeat on"></div>
+      <div class="row"><span class="lbl">Wake to</span><select id="aMusic" aria-label="Music for this alarm"><option value="">No music</option></select><span class="hint">Music fades in over 30 seconds instead of the alarm sound.</span></div>
       <div class="row"><button class="btn" type="submit">Add alarm</button><span class="hint">No days ticked: rings once.</span></div>
     </form>
   </section>
@@ -62,6 +63,7 @@
     <div class="row center" id="tPresets"></div>
     <div class="hms"><input type="number" id="tH" min="0" max="23" value="0" aria-label="Hours"><b>:</b><input type="number" id="tM" min="0" max="59" value="5" aria-label="Minutes"><b>:</b><input type="number" id="tS" min="0" max="59" value="0" aria-label="Seconds"></div>
     <div class="row center"><input type="text" id="tLabel" placeholder="Label (optional)" aria-label="Timer label"></div>
+    <div class="row center"><button class="btn" id="tSleep" aria-pressed="false" title="When the timer ends, the music fades out over 30 seconds and pauses"><i class="led"></i>Sleep: fade out the music</button></div>
     <div class="row center"><button class="btn" id="tGo">Start</button><button class="btn" id="tReset">Reset</button></div>
   </section>
 
@@ -106,9 +108,12 @@
     const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     $("aDays").innerHTML = [1, 2, 3, 4, 5, 6, 0].map(d => `<label><input type="checkbox" value="${d}"><span>${DAYS[d]}</span></label>`).join("");
     const daysText = a => !a.days || !a.days.length ? "Once" : a.days.length === 7 ? "Every day" : a.days.length === 5 && !a.days.includes(0) && !a.days.includes(6) ? "Weekdays" : a.days.slice().sort((x, y) => ((x + 6) % 7) - ((y + 6) % 7)).map(d => DAYS[d]).join(" ");
+    // music to wake to (core/music-cue.js): the names of the choices, for the list
+    const musicNames = {};
+    import("../../core/music-cue.js").then(async m => { await m.fillMusicSelect($("aMusic")); for (const o of await m.musicChoices()) musicNames[o.value] = o.label.replace(/^Playlist: /, ""); drawAlarms(); });
     function drawAlarms() {
       const list = C.alarms.slice().sort((a, b) => a.time.localeCompare(b.time));
-      $("alarms").innerHTML = list.length ? list.map(a => `<div class="item alarm${a.on ? "" : " off"}"><b>${esc(a.time)}</b><span><strong>${esc(a.label || "Alarm")}</strong><small>${esc(daysText(a))}</small></span>
+      $("alarms").innerHTML = list.length ? list.map(a => `<div class="item alarm${a.on ? "" : " off"}"><b>${esc(a.time)}</b><span><strong>${esc(a.label || "Alarm")}</strong><small>${esc(daysText(a))}${a.music ? ` · ♪ ${esc(musicNames[a.music] || "music")}` : ""}</small></span>
         <button class="btn" data-toggle="${a.id}" aria-pressed="${a.on}"><i class="led"></i>${a.on ? "On" : "Off"}</button><button class="btn mini" data-del="${a.id}" aria-label="Delete alarm">×</button></div>`).join("") : `<p class="hint">No alarms yet.</p>`;
     }
     $("alarms").addEventListener("click", e => {
@@ -118,7 +123,7 @@
     });
     $("alarmForm").addEventListener("submit", e => {
       e.preventDefault();
-      C.alarms.push({ id: uid(), time: $("aTime").value, label: $("aLabel").value.trim(), days: [...document.querySelectorAll("#aDays input:checked")].map(i => +i.value), on: true });
+      C.alarms.push({ id: uid(), time: $("aTime").value, label: $("aLabel").value.trim(), days: [...document.querySelectorAll("#aDays input:checked")].map(i => +i.value), on: true, music: $("aMusic").value });
       save(); drawAlarms(); $("aLabel").value = ""; askNotify();
     });
 
@@ -132,6 +137,7 @@
       $("tLeft").textContent = fmtDur(Math.max(0, left));
       $("tFill").style.strokeDashoffset = String(628.3 * (1 - Math.max(0, Math.min(1, left / total))));
       $("tGo").textContent = running ? "Pause" : T.left ? "Resume" : "Start";
+      $("tSleep").setAttribute("aria-pressed", String(!!T.sleep));
     }
     $("tGo").addEventListener("click", () => {
       const T = C.timer;
@@ -140,7 +146,8 @@
       else { const ms = typed(); if (!ms) return; T.total = ms; T.endsAt = Date.now() + ms; T.label = $("tLabel").value.trim(); askNotify(); }
       save(); drawTimer();
     });
-    $("tReset").addEventListener("click", () => { C.timer = { label: "", endsAt: null, left: 0, total: 0 }; save(); drawTimer(); });
+    $("tReset").addEventListener("click", () => { C.timer = { label: "", endsAt: null, left: 0, total: 0, sleep: !!C.timer.sleep }; save(); drawTimer(); });
+    $("tSleep").addEventListener("click", () => { C.timer.sleep = !C.timer.sleep; save(); drawTimer(); });
     ["tH", "tM", "tS"].forEach(id => $(id).addEventListener("input", () => { if (!C.timer.endsAt && !C.timer.left) drawTimer(); }));
 
     // ---------- stopwatch (keeps running with Clock closed) ----------
