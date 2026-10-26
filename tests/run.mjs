@@ -644,14 +644,16 @@ const tests = {
     await p.evaluate(async () => { const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"); g.fillStyle = "#e02020"; g.fillRect(0, 0, 64, 64); g.fillStyle = "#111"; g.fillRect(0, 0, 64, 20);
       const blob = await new Promise(r => c.toBlob(r, "image/png")), { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); await s.updateTrack(s.tracks[0].id, { coverBlob: blob }); });
     await p.reload(); await p.waitForTimeout(900); await amp(p);
-    await p.click("#bPlay"); await p.waitForTimeout(1500);
+    await p.click("#bPlay");
+    await p.waitForFunction(() => window.neonOsBeat && window.neonOsBeat.playing && document.body.classList.contains("music"), null, { timeout: 15000 }).catch(() => {});
     check(await p.evaluate(() => !!(window.neonOsBeat && window.neonOsBeat.playing && window.neonOsBeat.bpm > 100)), "Amp shares the beat with the desktop");
     check(await p.evaluate(() => document.body.classList.contains("music")), "the desktop follows the music while it plays");
     const flashed = await p.evaluate(() => new Promise(res => { let n = 0; const iv = setInterval(() => { if (document.body.classList.contains("onbeat")) n++; }, 15); setTimeout(() => { clearInterval(iv); res(n); }, 2500); }));
     check(flashed > 0, `window titles flash on the beat (${flashed} samples lit)`);
     const ball0 = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ball").trim());
     // Amp has already worked out the playing song's cover colour; turning Follow the album cover on uses it
-    await p.evaluate(async () => (await import("/core/theme.js")).setTheme({ coverColor: true })); await p.waitForTimeout(300);
+    await p.evaluate(async () => (await import("/core/theme.js")).setTheme({ coverColor: true }));
+    await p.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue("--ball").trim() !== "#3ff2ff", null, { timeout: 8000 }).catch(() => {});
     const ball1 = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ball").trim());
     const red = h => { const [r, g, b] = [1, 3, 5].map(o => parseInt(h.slice(o, o + 2), 16)); return r > 200 && g < 120 && b < 120; };
     check(red(ball1) && ball1 !== ball0, `the colour follows the album cover (${ball0} → ${ball1})`);
@@ -666,8 +668,8 @@ const tests = {
     const p = await page({ viewport: { width: 1500, height: 950 } }); await desk(p); await amp(p, ["song.wav"]); // a steady 20-second tone, so levels compare fairly
     if (await p.$eval("#bLevel", b => b.getAttribute("aria-pressed") === "true")) await p.click("#bLevel"); // levelling would change the loudness mid-test
     await p.click("#bPlay"); await p.waitForTimeout(1500);
-    await p.click("#volBtn"); await p.click("#trMix"); await p.waitForSelector('[data-wid="mixer"]'); await p.waitForTimeout(1500);
-    const mf = p.frame({ url: /mixer/ });
+    await p.click("#volBtn"); await p.click("#trMix"); await p.waitForSelector('[data-wid="mixer"]'); await p.waitForTimeout(500);
+    const mf = p.frame({ url: /mixer/ }); await mf.waitForSelector('[data-ch="master"]', { timeout: 15000 }).catch(() => {});
     check((await mf.$$eval(".strip", e => e.length)) >= 12, "the Mixer has a strip for each app that makes sound, and Master");
     await mf.waitForFunction(() => document.querySelector('[data-ch="amp"]').classList.contains("live"), null, { timeout: 5000 }).catch(() => {});
     check(await mf.$eval('[data-ch="amp"]', e => e.classList.contains("live") && parseFloat(e.querySelector(".meter i").style.height) > 5), "Amp's light and meter show it playing");
@@ -699,24 +701,26 @@ const tests = {
       const rows = [add(a, now - 3e5), add(a, now - 6e5), add(a, now - 9e5), add(b, now - 12e5), add(b, now - 40 * 864e5), add(a, now - 400 * 864e5)];
       await new Promise(r => { const t = db.transaction("plays", "readwrite"); rows.forEach(x => t.objectStore("plays").add(x)); t.oncomplete = r; }); db.close();
     });
-    await p.click("#startBtn"); await p.click('.sm-item[data-app="stats"]'); await p.waitForSelector('[data-wid="stats"]'); await p.waitForTimeout(1500);
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="stats"]'); await p.waitForSelector('[data-wid="stats"]'); await p.waitForTimeout(500);
     const sf = p.frame({ url: /stats/ });
+    await sf.waitForSelector("#tArtists .row-i", { timeout: 20000 }).catch(() => {});
     const tiles = await sf.$$eval(".tile b", e => e.map(x => x.textContent));
     check(tiles[0] === "4" && tiles[1] === "12 min" && tiles[3] === "2", `this week: plays, listening time and artists (${tiles.join(", ")})`);
     check((await sf.$eval("#tArtists .row-i .t", e => e.textContent)) === "Aster" && (await sf.$eval("#tSongs .row-i .c", e => e.textContent)) === "3", "top artists and songs are counted");
     check((await sf.$$eval("#tGenres .row-i .t", e => e.map(x => x.textContent))).join() === "Synthwave,Ambient", "top genres");
-    await sf.click('[data-span="year"]'); await p.waitForTimeout(500);
+    await sf.click('[data-span="year"]'); await sf.waitForFunction(() => /^\d{4}$/.test(document.getElementById("when").textContent), null, { timeout: 10000 }).catch(() => {}); await p.waitForTimeout(300);
     const inYear = await p.evaluate(async () => (await (await import("/core/history.js")).playsSince(+new Date(new Date().getFullYear(), 0, 1))).length);
     check((await sf.$eval(".tile b", e => e.textContent)) === String(inYear), `the year view counts the year's plays (${inYear})`);
-    await sf.click("#prev"); await p.waitForTimeout(400);
+    await sf.click("#prev"); await sf.waitForFunction(y => document.getElementById("when").textContent === y, String(new Date().getFullYear() - 1), { timeout: 8000 }).catch(() => {});
     check((await sf.$eval("#when", e => e.textContent)) === String(new Date().getFullYear() - 1), "‹ steps back a year");
-    await sf.click('[data-span="all"]'); await p.waitForTimeout(500);
+    await sf.click('[data-span="all"]'); await sf.waitForFunction(() => document.getElementById("when").textContent === "ALL TIME" && Number(document.querySelector(".tile b").textContent) >= 6, null, { timeout: 8000 }).catch(() => {});
     check(Number(await sf.$eval(".tile b", e => e.textContent)) >= 6, "All time counts every play");
     // clicking a song plays it in Amp
-    await sf.click('[data-span="week"]'); await p.waitForTimeout(400); await sf.click("#tSongs .row-i");
+    await sf.click('[data-span="week"]'); await sf.waitForFunction(() => document.getElementById("when").textContent === "THIS WEEK" && document.querySelector("#tSongs .row-i"), null, { timeout: 8000 }).catch(() => {}); await sf.click("#tSongs .row-i");
     await p.waitForFunction(() => /quiet|loud/i.test(document.getElementById("marqueeText").textContent), null, { timeout: 8000 }).catch(() => {});
     check(await p.evaluate(() => /quiet|loud/i.test(document.getElementById("marqueeText").textContent)), "clicking a top song plays it in Amp");
-    await sf.$eval("#mkPl", b => b.click()); await p.waitForTimeout(600); // Amp came to the front when it started playing
+    await sf.$eval("#mkPl", b => b.click()); // Amp came to the front when it started playing
+    await p.waitForFunction(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return s.playlists.some(pl => /^Top 25/.test(pl.name)); }, null, { timeout: 8000, polling: 400 }).catch(() => {});
     check(await p.evaluate(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); return s.playlists.some(pl => /^Top 25/.test(pl.name) && pl.tracks.length === 2); }), "the top 25 becomes a playlist");
     await sf.$eval("#recapBtn", b => b.click()); await p.waitForTimeout(400);
     check(!(await sf.$eval("#recap", e => e.hidden)) && /Aster/.test(await sf.$eval("#rc", e => e.textContent)), "Recap shows the year's top artist");
@@ -725,7 +729,7 @@ const tests = {
     await p.evaluate(() => dispatchEvent(new CustomEvent("neonos:transport", { detail: "stop" }))); await p.waitForTimeout(1200);
     const n0 = await p.evaluate(async () => (await (await import("/core/history.js")).playsSince(0)).length), t0 = Number(await sf.$eval(".tile b", e => e.textContent));
     await p.evaluate(async () => { const h = await import("/core/history.js"); const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); await h.logPlay(s.tracks[2], 2); });
-    await p.waitForTimeout(500);
+    await sf.waitForFunction(t => Number(document.querySelector(".tile b").textContent) === t + 1, t0, { timeout: 8000 }).catch(() => {});
     check((await p.evaluate(async () => (await (await import("/core/history.js")).playsSince(0)).length)) === n0 + 1 && Number(await sf.$eval(".tile b", e => e.textContent)) === t0 + 1, `a new play shows in Stats straight away (${t0} → ${await sf.$eval(".tile b", e => e.textContent)})`);
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
