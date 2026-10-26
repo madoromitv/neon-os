@@ -751,6 +751,41 @@ const tests = {
     await p.evaluate(async () => (await import("/core/clock.js")).clock.stop()); await p.waitForTimeout(200);
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "MIDI controllers drive the desktop"() {
+    const p = await page({ viewport: { width: 1500, height: 950 } });
+    // a pretend controller in every window: window.__midiSend([status, data1, data2]) plays a message from it
+    await p.addInitScript(() => {
+      const inp = new EventTarget(); inp.name = "Test Pad"; inp.id = "t1";
+      const acc = new EventTarget(); acc.inputs = new Map([["t1", inp]]); acc.outputs = new Map();
+      navigator.requestMIDIAccess = async () => acc;
+      window.__midiSend = bytes => { const e = new Event("midimessage"); e.data = new Uint8Array(bytes); inp.dispatchEvent(e); };
+    });
+    await desk(p); await amp(p, ["beat120.wav"]);
+    // assign in Settings: Learn, then move a knob
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="settings"]'); await p.waitForSelector('[data-wid="settings"]'); await p.waitForTimeout(1200);
+    const sf = p.frame({ url: /settings/ });
+    await sf.click('[data-learn="rack.tempo"]'); await p.waitForTimeout(300);
+    check(/MOVE A CONTROL/.test(await sf.$eval('[data-learn="rack.tempo"]', b => b.parentElement.textContent)), "Learn waits for a control");
+    await sf.evaluate(() => window.__midiSend([0xb0, 7, 64])); await p.waitForTimeout(300);
+    check(/CC 7/.test(await sf.$eval('[data-learn="rack.tempo"]', b => b.parentElement.textContent)) && /Test Pad/.test(await sf.$eval("#midiState", e => e.textContent)), "moving a knob assigns it, and the controller is named");
+    await sf.click('[data-learn="amp.toggle"]'); await sf.evaluate(() => window.__midiSend([0x90, 36, 100])); await p.waitForTimeout(200);
+    await sf.click('[data-learn="mix.master"]'); await sf.evaluate(() => window.__midiSend([0xb0, 10, 30])); await p.waitForTimeout(200);
+    await sf.click('[data-learn="decks.xfade"]'); await sf.evaluate(() => window.__midiSend([0xb0, 11, 30])); await p.waitForTimeout(400);
+    check(Object.keys(await p.evaluate(async () => (await import("/core/midi.js")).getMap())).length === 4, "four jobs assigned");
+    // the desktop does the jobs
+    await p.evaluate(() => window.__midiSend([0xb0, 7, 127])); await p.waitForTimeout(200);
+    check((await p.evaluate(async () => (await import("/core/clock.js")).clock.state.bpm)) === 200, "a knob sets the Rack's tempo");
+    await p.evaluate(() => window.__midiSend([0x90, 36, 100])); await p.waitForTimeout(1200);
+    check(await p.evaluate(() => window.neonOsBeat && window.neonOsBeat.playing), "a pad plays Amp");
+    await p.evaluate(() => { window.__midiSend([0x80, 36, 0]); window.__midiSend([0x90, 36, 90]); }); await p.waitForTimeout(500);
+    check(await p.evaluate(() => !(window.neonOsBeat && window.neonOsBeat.playing && performance.now() - window.neonOsBeat.at < 200)), "pressing it again pauses");
+    await p.evaluate(() => window.__midiSend([0xb0, 10, 64])); await p.waitForTimeout(200);
+    check(Math.abs((await p.evaluate(async () => (await import("/core/mixer.js")).getMix().master)) - 64 / 127) < 0.01, "a knob sets the Mixer's Master");
+    await p.click("#startBtn"); await p.click('.sm-item[data-app="decks"]'); await p.waitForSelector('[data-wid="decks"]'); await p.waitForTimeout(1500);
+    await p.evaluate(() => window.__midiSend([0xb0, 11, 0])); await p.waitForTimeout(400);
+    check(/A 100%/.test(await p.frame({ url: /decks/ }).$eval("#xfPct", e => e.textContent)), "a knob moves Decks' crossfader");
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "details editor and Tidy names"() {
     const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
     await p.click("#mlRows .trow"); await p.click("#mlRows .trow:nth-of-type(3)", { modifiers: ["Shift"] });

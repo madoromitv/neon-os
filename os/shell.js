@@ -19,6 +19,9 @@ import { Slider, openMenu as popMenu } from "../style-kit/ui.js";
 import { runBoot } from "./boot.js";
 import { initLock } from "./lock.js";
 import { createWallPic } from "./wallpic.js";
+import { startMidi } from "../core/midi.js";
+import { getMix, setMix } from "../core/mixer.js";
+import { clock } from "../core/clock.js";
 
 window.neonOsShell = true; // apps running inside the desktop (Amp) check this
 const $ = id => document.getElementById(id);
@@ -665,6 +668,18 @@ async function transport(act) {
   if (!mounted.has("amp") || closed.has("amp")) { if (act !== "toggle") return; await openApp("amp"); }
   dispatchEvent(new CustomEvent("neonos:transport", { detail: act }));
 }
+// ---------- MIDI controllers (core/midi.js; assigned in Settings) ----------
+const midiActs = "BroadcastChannel" in window ? new BroadcastChannel("neon-os:midi-act") : null;
+startMidi((id, v) => {
+  if (id.startsWith("amp.") && id !== "amp.volume") transport(id.slice(4));
+  else if (id === "amp.volume") { musicVol = v; dispatchEvent(new CustomEvent("neonos:volume", { detail: v })); renderVolIcon(); }
+  else if (id === "mix.master") setMix({ master: v });
+  else if (id === "mix.muteAll") setMix({ muteAll: !getMix().muteAll });
+  else if (id === "rack.toggle") { if (clock.state.playing) clock.stop(); else clock.start(clock.state.bpm); }
+  else if (id === "rack.tempo") clock.setBpm(Math.round(60 + v * 140));
+  else if (id === "desk.wall") { if (wallMode === "slideshow") wallPic.next(); else { const order = ["orb", "fog", "plain"], t = getTheme(); setTheme({ wall: order[(Math.max(0, order.indexOf(t.wall || "orb")) + 1) % order.length] }); } }
+  else if (id.startsWith("decks.") && midiActs) midiActs.postMessage({ id, v });
+});
 const MP = { prev: "M6 6h2v12H6zm3.5 6 8.5 6V6z", next: "M16 6h2v12h-2zM6 18l8.5-6L6 6z", play: "M8 5v14l11-7z", pause: "M6 5h4v14H6zm8 0h4v14h-4z" };
 let nowPlaying = null, miniBuilt = false, lockApi = null;
 addEventListener("neonos:nowplaying", e => { nowPlaying = e.detail; renderMini(); });

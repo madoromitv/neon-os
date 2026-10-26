@@ -16,7 +16,7 @@
 "apps/chop/index.html": "75235cf7f1c6",
 "apps/clock/index.html": "9d011a3453ce",
 "apps/decks/decks.css": "2d6e8b96ce44",
-"apps/decks/decks.js": "7bfa423b7c37",
+"apps/decks/decks.js": "a3fb1873a325",
 "apps/decks/index.html": "6d1f768a7327",
 "apps/drift/drift.css": "a4663c7e5748",
 "apps/drift/drift.js": "252de678d766",
@@ -35,7 +35,7 @@
 "apps/radio/index.html": "18334e947a78",
 "apps/recorder/index.html": "1bda07c612a9",
 "apps/registry.js": "78c3ff694dcb",
-"apps/settings/index.html": "cc119cb66f91",
+"apps/settings/index.html": "7177eecaada8",
 "apps/stats/index.html": "c1b97ff9033d",
 "apps/tape/index.html": "b22478de9062",
 "apps/tape/tape.css": "0b08cf5f7aa8",
@@ -64,6 +64,7 @@
 "core/live.js": "d7a1d2e76188",
 "core/loudness.js": "82581a61b1c9",
 "core/lyrics.js": "27d7a8a4300b",
+"core/midi.js": "99971f7d8f63",
 "core/mixer.js": "492b60fb4af2",
 "core/notebook.js": "a5c2f167ca44",
 "core/notify.js": "cc00dcb5226e",
@@ -97,7 +98,7 @@
 "os/quick.js": "03686d7387e3",
 "os/search.js": "af8347f20e9c",
 "os/shell.css": "f411e04657b1",
-"os/shell.js": "f62a0669a183",
+"os/shell.js": "c55486192eba",
 "os/wallpic.js": "621151d22b33",
 "os/widgets.js": "40ab3b155aef",
 "style-kit/apps.css": "1d92e00d41e4",
@@ -110,5 +111,5 @@
 "style-kit/ui.js": "ffc75925026f",
 "style-kit/vlist.js": "32be7a331f52"
 },
-"version": "0ab37f4e0b"
+"version": "5069f1c01c"
 }

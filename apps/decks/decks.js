@@ -227,8 +227,9 @@ document.querySelectorAll("[data-filter]").forEach(el => { const k = el.dataset.
 document.querySelectorAll("[data-echo]").forEach(b => { const k = b.dataset.echo; b.setAttribute("aria-pressed", String(!!mix.echo[k])); b.addEventListener("click", () => { ensure(); mix.echo[k] = !mix.echo[k]; b.setAttribute("aria-pressed", String(mix.echo[k])); applyFx(k); saveDecks(); }); });
 document.querySelectorAll("[data-echob]").forEach(s => { const k = s.dataset.echob; s.value = String(mix.echoBeats[k]); s.addEventListener("change", () => { mix.echoBeats[k] = +s.value; applyFx(k); saveDecks(); }); });
 document.querySelectorAll("[data-eq]").forEach(el => { const k = el.dataset.eq; Slider(el, { min: -12, max: 12, step: 0.5, value: mix.eq[k], label: `${k} EQ (double-click to reset)`, text: v => `${v} dB`, onInput: v => { mix.eq[k] = v; applyMix(); document.querySelector(`[data-eqv="${k}"]`).textContent = v === 0 ? "0" : `${v > 0 ? "+" : ""}${v}`; } }); });
-document.querySelectorAll("[data-fader]").forEach(el => { const k = el.dataset.fader; Slider(el, { min: 0, max: 1, step: 0.01, value: mix.fader[k], orient: "v", label: `Deck ${k} volume`, text: v => Math.round(v * 100) + "%", onInput: v => { mix.fader[k] = v; applyMix(); document.querySelector(`[data-fpct="${k}"]`).textContent = Math.round(v * 100) + "%"; } }); });
-Slider($("xfade"), { min: 0, max: 1, step: 0.005, value: mix.xfade, label: "Crossfader", text: v => v < 0.48 ? `${Math.round((1 - v) * 100)}% A` : v > 0.52 ? `${Math.round(v * 100)}% B` : "Centre", onInput: v => { mix.xfade = v; applyMix(); $("xfPct").textContent = v < 0.48 ? `A ${Math.round((1 - v) * 100)}%` : v > 0.52 ? `B ${Math.round(v * 100)}%` : "C"; } });
+const faderS = {};
+document.querySelectorAll("[data-fader]").forEach(el => { const k = el.dataset.fader; faderS[k] = Slider(el, { min: 0, max: 1, step: 0.01, value: mix.fader[k], orient: "v", label: `Deck ${k} volume`, text: v => Math.round(v * 100) + "%", onInput: v => { mix.fader[k] = v; applyMix(); document.querySelector(`[data-fpct="${k}"]`).textContent = Math.round(v * 100) + "%"; } }); });
+const xfadeS = Slider($("xfade"), { min: 0, max: 1, step: 0.005, value: mix.xfade, label: "Crossfader", text: v => v < 0.48 ? `${Math.round((1 - v) * 100)}% A` : v > 0.52 ? `${Math.round(v * 100)}% B` : "Centre", onInput: v => { mix.xfade = v; applyMix(); $("xfPct").textContent = v < 0.48 ? `A ${Math.round((1 - v) * 100)}%` : v > 0.52 ? `B ${Math.round(v * 100)}%` : "C"; } });
 Slider($("master"), { min: 0, max: 1, step: 0.01, value: mix.master, label: "Master volume", text: v => Math.round(v * 100) + "%", onInput: v => { mix.master = v; applyMix(); $("masterPct").textContent = Math.round(v * 100) + "%"; } });
 
 // record the mix as it plays
@@ -335,3 +336,12 @@ $("reset").addEventListener("click", async () => {
 buildDeck("A"); buildDeck("B");
 loadLibrary(); requestAnimationFrame(frame);
 addEventListener("resize", () => { for (const k of ["A", "B"]) if (D[k].buf) drawWave(D[k]); });
+
+// a MIDI controller (assigned in Settings, heard by the desktop) moves the crossfader and faders and presses play, cue and sync
+if ("BroadcastChannel" in window) new BroadcastChannel("neon-os:midi-act").addEventListener("message", e => {
+  const { id, v } = e.data || {}, m = /^decks\.(?:([AB])\.)?(\w+)$/.exec(id || ""); if (!m) return;
+  const [, k, what] = m;
+  if (what === "xfade") xfadeS.set(v, true);
+  else if (what === "vol" && faderS[k]) faderS[k].set(v, true);
+  else if (["play", "cue", "sync"].includes(what) && D[k]) { const b = D[k].el.querySelector(`[data-a="${what}"]`); if (b) b.click(); }
+});

@@ -27,6 +27,12 @@
   .btn:disabled { opacity: .45; }
   p.warn { color: var(--ink); border-left: 2px solid var(--ball); padding-left: 8px; }
   section.flash { outline: 1px solid var(--ball); outline-offset: 6px; border-radius: 2px; transition: outline-color 1.2s; }
+  .midimap { display: grid; gap: 2px; }
+  .midimap .mg { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 6px 0 2px; }
+  .midimap .mr { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: center; }
+  .midimap .mr .as { font: 17px/1 var(--font-lcd); color: var(--ink-dim); min-width: 120px; text-align: right; }
+  .midimap .mr .as.set { color: var(--ball); }
+  .midimap .mr .btn[aria-pressed="true"] { color: var(--ball); }
   .seg .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
   .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px 10px; }
   .checks label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
@@ -76,6 +82,12 @@
     <span class="lbl">Icons on the desktop</span>
     <div class="checks" id="deskApps"></div>
     <p>Drag icons on the desktop to move them; right-click the desktop and pick Arrange icons to put them back in order.</p>
+  </section>
+  <section class="group" aria-labelledby="midiLbl">
+    <span class="lbl" id="midiLbl">MIDI controller</span>
+    <div class="row"><span class="hint" id="midiState">Plug in a controller, then press Learn beside a job and move a knob or press a pad.</span></div>
+    <div class="midimap" id="midiMap"></div>
+    <p>Knobs and faders suit volumes, the crossfader and tempo; pads and keys suit play, cue and the rest. Works in Chrome and Edge; the browser asks once to use MIDI devices.</p>
   </section>
   <section class="group" aria-labelledby="axLbl">
     <span class="lbl" id="axLbl">Accessibility</span>
@@ -184,6 +196,38 @@
     syncMusic(getTheme());
     $id("reactT").addEventListener("click", () => syncMusic(setTheme({ react: getTheme().react === false })));
     $id("coverT").addEventListener("click", () => syncMusic(setTheme({ coverColor: !getTheme().coverColor })));
+    // ---------- MIDI controller (core/midi.js) ----------
+    {
+      const M = await import("../../core/midi.js");
+      let learning = null, listening = null;
+      const draw = () => {
+        const map = M.getMap(); let g = "", html = "";
+        for (const a of M.ACTIONS) {
+          if (a.group !== g) { g = a.group; html += `<div class="mg">${g}</div>`; }
+          html += `<div class="mr"><span>${a.name}</span><span class="as${map[a.id] ? " set" : ""}">${learning === a.id ? "MOVE A CONTROL…" : M.describe(map[a.id]).toUpperCase()}</span><button class="btn mini" data-learn="${a.id}" aria-pressed="${learning === a.id}">Learn</button><button class="btn mini" data-clear="${a.id}" ${map[a.id] ? "" : "disabled"} aria-label="Clear ${a.name}">✕</button></div>`;
+        }
+        $id("midiMap").innerHTML = html;
+      };
+      const hear = async () => {
+        if (listening) return true;
+        listening = await M.listenMidi(m => {
+          if (!learning || (m.t === "note" && !m.on)) return;
+          const map = M.getMap(); for (const k in map) if (M.same(map[k], m) && k !== learning) delete map[k]; // one job per control
+          map[learning] = { t: m.t, ch: m.ch, n: m.n }; M.setMap(map); learning = null; draw();
+        });
+        if (!listening) { $id("midiState").textContent = "This browser can't use MIDI devices (try Chrome or Edge), or it wasn't allowed."; return false; }
+        const n = listening.count(); $id("midiState").textContent = n ? `Connected: ${listening.names().join(", ")}` : "No controller found yet: plug one in.";
+        return true;
+      };
+      $id("midiMap").addEventListener("click", async e => {
+        const l = e.target.closest("[data-learn]"), c = e.target.closest("[data-clear]");
+        if (l) { learning = learning === l.dataset.learn ? null : l.dataset.learn; draw(); if (learning && !(await hear())) { learning = null; draw(); } }
+        if (c) { const map = M.getMap(); delete map[c.dataset.clear]; M.setMap(map); draw(); }
+      });
+      addEventListener("keydown", e => { if (e.key === "Escape" && learning) { learning = null; draw(); } });
+      M.onMap(draw); draw();
+      window.__midiLearn = { learn: id => { learning = id; draw(); }, take: m => { if (!learning) return; const map = M.getMap(); map[learning] = m; M.setMap(map); learning = null; draw(); } };
+    }
     const syncAx = t => { $id("hcT").setAttribute("aria-pressed", String(!!t.contrast)); $id("calmT").setAttribute("aria-pressed", String(calmOn(t))); };
     $id("hcT").addEventListener("click", () => syncAx(setTheme({ contrast: !getTheme().contrast })));
     $id("calmT").addEventListener("click", () => syncAx(setTheme({ calm: !calmOn() })));
