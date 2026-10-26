@@ -172,7 +172,8 @@ const tests = {
     fs.writeFileSync(FX + "clip.webm", Buffer.from(b64, "base64"));
     await desk(p); await p.click("#startBtn"); await p.click('.sm-item[data-app="video"]'); await p.waitForTimeout(1200);
     const vf = p.frame({ url: /apps\/video/ });
-    const vc = p.waitForEvent("filechooser"); await vf.click("#open"); await (await vc).setFiles(FX + "clip.webm"); await p.waitForTimeout(1500);
+    const vc = p.waitForEvent("filechooser"); await vf.click("#open"); await (await vc).setFiles(FX + "clip.webm");
+    await vf.waitForFunction(() => { const v = document.getElementById("v"); return !v.paused && v.currentTime > 0; }, null, { timeout: 15000 }).catch(() => {});
     check(await vf.$eval("#v", v => !v.paused && v.currentTime > 0) && /clip\.webm/.test(await vf.$eval("#ttl", e => e.textContent)), "Video opens and plays a clip");
     await vf.click("#v"); await p.waitForTimeout(300);
     check(await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("neon-os:video-pos") || "{}")).some(k => k.startsWith("clip.webm"))), "Video remembers where it got to");
