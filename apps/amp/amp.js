@@ -429,6 +429,7 @@ function trackMenu(ids) {
     ...(sendToItems(ids).length ? ["-", ...sendToItems(ids)] : []),
     ...(mlView.type === "pl" && store.canWrite ? ["-", { text: "Remove from this playlist", run: () => removeFromPlaylist(mlView.id, ids) }] : []),
     ...(store.canWrite && own.length ? ["-", { text: own.length === 1 ? "Edit details" : `Edit details of ${own.length} songs`, key: "Ctrl+I", run: () => editTracks(own.map(t => t.id)) }] : []),
+    ...(own.length && window.neonOsShell ? [{ text: own.length === 1 ? "Convert…" : `Convert ${own.length} songs…`, run: () => postMessage({ neonOs: "convert", ids: own.map(t => t.id) }, location.origin) }] : []),
     ...(store.canWrite && own.length ? [{ text: own.length === 1 ? "Delete from library" : `Delete ${own.length} songs from library`, danger: true, run: () => deleteTracks(own) }] : []),
   ];
 }

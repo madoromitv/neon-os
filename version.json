@@ -2,7 +2,7 @@
 "files": {
 "apps/about/index.html": "b797ac57aafa",
 "apps/amp/amp.css": "0bfd41670bd0",
-"apps/amp/amp.js": "769d49aa5d38",
+"apps/amp/amp.js": "3172eb02e4f4",
 "apps/amp/index.html": "42f76dc867e7",
 "apps/arcade/beat.js": "7d676ce91978",
 "apps/arcade/index.html": "53443836138b",
@@ -15,6 +15,7 @@
 "apps/chop/chop.js": "c7e7556c06fa",
 "apps/chop/index.html": "75235cf7f1c6",
 "apps/clock/index.html": "affd1fafbb2d",
+"apps/convert/index.html": "2928015143ec",
 "apps/decks/decks.css": "2d6e8b96ce44",
 "apps/decks/decks.js": "a3fb1873a325",
 "apps/decks/index.html": "6d1f768a7327",
@@ -34,7 +35,7 @@
 "apps/pulse/pulse.js": "b6ce6f8885cc",
 "apps/radio/index.html": "18334e947a78",
 "apps/recorder/index.html": "1bda07c612a9",
-"apps/registry.js": "78c3ff694dcb",
+"apps/registry.js": "bc3bba243996",
 "apps/settings/index.html": "cde35c6d26bc",
 "apps/stats/index.html": "c1b97ff9033d",
 "apps/tape/index.html": "b22478de9062",
@@ -50,10 +51,12 @@
 "core/bin.js": "98a873ed68c9",
 "core/chop.js": "ca2aa8e2cb9d",
 "core/clock.js": "4708943ac952",
+"core/convert.js": "eeef6d3d208e",
 "core/cover-colour.js": "42d5c6692bae",
 "core/desk.js": "86176df7f1cc",
 "core/details.js": "b2ab69d24aa1",
 "core/drums.js": "478055057256",
+"core/encode-worker.js": "8c197c80f92f",
 "core/engine.js": "96a3fe439736",
 "core/fx.js": "d8f023c4b85e",
 "core/glow.js": "d147d410736b",
@@ -100,7 +103,7 @@
 "os/quick.js": "03686d7387e3",
 "os/search.js": "af8347f20e9c",
 "os/shell.css": "f411e04657b1",
-"os/shell.js": "8efdd3f7641f",
+"os/shell.js": "620703b1cd83",
 "os/wallpic.js": "621151d22b33",
 "os/widgets.js": "40ab3b155aef",
 "style-kit/apps.css": "1d92e00d41e4",
@@ -111,7 +114,8 @@
 "style-kit/library.css": "d67036f3acf3",
 "style-kit/tokens.css": "ac79e91fabe4",
 "style-kit/ui.js": "ffc75925026f",
-"style-kit/vlist.js": "32be7a331f52"
+"style-kit/vlist.js": "32be7a331f52",
+"vendor/lamejs/lame.min.js": "00d43c063dcf"
 },
-"version": "1078a5a840"
+"version": "32583b29c7"
 }

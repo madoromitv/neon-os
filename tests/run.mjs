@@ -887,6 +887,36 @@ const tests = {
     check(lfmS && lfmS.params["track[0]"] && lfmS.params["artist[0]"] === "Aster" && lfmS.params["timestamp[0]"], "Last.fm gets the listens with their times");
     check(!p.errors.length, "no errors " + p.errors.join(" | "));
   },
+  async "Converter: FLAC to MP3, Opus and WAV, keeping the details"() {
+    const p = await page({ viewport: { width: 1300, height: 900 } }); await p.goto(URL + "apps/convert/"); await p.waitForTimeout(500);
+    const decoded = async (format) => p.evaluate(async f => { const it = window.__convert.items.find(i => i.format === f && i.out); const buf = await new OfflineAudioContext(2, 1, 48000).decodeAudioData(await it.out.arrayBuffer()); return { secs: buf.duration, ch: buf.numberOfChannels, size: it.out.size, head: [...new Uint8Array(await it.out.slice(0, 4).arrayBuffer())].map(b => String.fromCharCode(b)).join(""), text: new TextDecoder("latin1").decode(await it.out.slice(0, 20000).arrayBuffer()) }; }, format);
+    for (const f of ["mp3", "opus", "wav"]) {
+      await p.click(`[data-f="${f}"]`);
+      const ch = p.waitForEvent("filechooser"); await p.click("#addFiles"); await (await ch).setFiles(FX + "song.flac"); await p.waitForTimeout(300);
+      await p.click("#go");
+      await p.waitForFunction(() => window.__convert.items.every(i => i.state === "done" || i.state === "failed"), null, { timeout: 30000 }).catch(() => {});
+      const st = await p.evaluate(() => window.__convert.items.map(i => i.state + (i.error ? ":" + i.error : "")).join());
+      if (/failed/.test(st)) { check(false, `${f}: ${st}`); continue; }
+      const r = await decoded(f);
+      check(Math.abs(r.secs - 3) < 0.15 && r.ch === 2, `FLAC → ${f.toUpperCase()} plays back whole (${r.secs.toFixed(2)} s, ${r.ch} channels, ${Math.round(r.size / 1000)} KB)`);
+      if (f === "mp3") check(r.head.startsWith("ID3") && /F\0l\0a\0c\0 \0S\0o\0n\0g/.test(r.text) && /APIC/.test(r.text), "the MP3 carries the title, artist and cover (ID3)");
+      if (f === "opus") check(r.head === "OggS" && /OpusHead/.test(r.text) && /TITLE=Flac Song/.test(r.text) && /ARTIST=Aster/.test(r.text) && /METADATA_BLOCK_PICTURE=/.test(r.text), "the Opus file carries its tags and cover (Ogg)");
+      if (f === "wav") check(r.head === "RIFF", "WAV comes out as a WAV");
+    }
+    check(/smaller/.test(await p.$eval("#total", e => e.textContent)), "it shows how much smaller the files are");
+    // a song from the library: Convert…, swapped for the smaller copy
+    await desk(p); await amp(p);
+    await p.setInputFiles("#fileIn", FX + "song.flac"); await p.waitForTimeout(2500);
+    const before = await p.evaluate(async () => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); const t = s.tracks.find(x => x.title === "Flac Song"); return { id: t.id, size: t.blob.size }; });
+    await p.click('#mlRows .trow:has-text("Flac Song")', { button: "right" }); await p.click('.pop .mi:has-text("Convert")'); await p.waitForSelector('[data-wid="convert"]'); await p.waitForTimeout(1200);
+    const cf = p.frame({ url: /convert/ });
+    check(/Flac Song/.test(await cf.$eval("#queue", e => e.textContent)), "Amp's Convert… sends the song to the Converter");
+    await cf.click('[data-f="mp3"]'); await cf.check("#swap"); await cf.click("#go");
+    await cf.waitForFunction(() => window.__convert.items.every(i => i.state === "done" || i.state === "failed"), null, { timeout: 30000 }).catch(() => {});
+    const after = await p.evaluate(async id => { const { makeLocalStore } = await import("/core/storage.js"), s = makeLocalStore(); await s.init(); const t = s.tracks.find(x => x.id === id); return { size: t.blob.size, mime: t.mime, title: t.title }; }, before.id);
+    check(after.size < before.size / 3 && after.mime === "audio/mpeg" && after.title === "Flac Song", `the library keeps the song, now a smaller MP3 (${Math.round(before.size / 1000)} → ${Math.round(after.size / 1000)} KB)`);
+    check(!p.errors.length, "no errors " + p.errors.join(" | "));
+  },
   async "details editor and Tidy names"() {
     const p = await page(); await desk(p); await amp(p, ["quiet.wav", "loud.wav"]);
     await p.click("#mlRows .trow"); await p.click("#mlRows .trow:nth-of-type(3)", { modifiers: ["Shift"] });

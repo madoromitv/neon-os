@@ -582,6 +582,7 @@ addEventListener("message", async e => {
   if (d.neonOs === "wall-next") { wallPic.next(); return; }
   if (d.neonOs === "cue-music" && typeof d.value === "string") { cueMusic(d.value, { fadeIn: d.fadeIn || 0 }); return; } // a Photos slideshow's music
   if (d.neonOs === "sleep" && typeof d.secs === "number") { sleepFade(d.secs); return; }
+  if (d.neonOs === "convert" && Array.isArray(d.ids)) { await openApp("convert"); sendTo("convert", { neonOsConvert: d.ids }); return; } // Amp's Convert…
   // the Terminal (and other apps) can ask for these
   if (d.neonOs === "close" && appById(d.app)) { closeApp(d.app); return; }
   if (d.neonOs === "transport" && ["toggle", "next", "prev", "pause", "stop"].includes(d.act)) { transport(d.act); return; }

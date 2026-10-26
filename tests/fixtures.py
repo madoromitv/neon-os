@@ -51,3 +51,51 @@ with open("tests/.fixtures/lyrics.m4a", "wb") as f:
     f.write(atom(b"ftyp", b"M4A \x00\x00\x00\x00") + atom(b"moov", atom(b"udta", atom(b"meta", b"\x00\x00\x00\x00" + atom(b"ilst", lyr)))))
 with open("tests/.fixtures/lyrics-txxx.mp3", "wb") as f:  # how ffmpeg writes them
     f.write(id3([("TIT2", b"\x03Txxx words"), ("TXXX", b"\x03USLT\x00Custom one\nCustom two\x00")]) + b"\xff\xfb" + b"\x00" * 400)
+
+def tiny_png(w, h, rgb):
+    import zlib
+    raw = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+# a real FLAC (verbatim frames: simple, but any player decodes it): 3 s of stereo tones, with tags and a cover
+def flac_file(path, secs=3.0, rate=44100):
+    import math, struct
+    def crc8(b):
+        c = 0
+        for x in b:
+            c ^= x
+            for _ in range(8): c = ((c << 1) ^ 0x07) & 255 if c & 128 else (c << 1) & 255
+        return c
+    def crc16(b):
+        c = 0
+        for x in b:
+            c ^= x << 8
+            for _ in range(8): c = ((c << 1) ^ 0x8005) & 0xFFFF if c & 0x8000 else (c << 1) & 0xFFFF
+        return c
+    def utf8num(n):
+        if n < 0x80: return bytes([n])
+        if n < 0x800: return bytes([0xC0 | n >> 6, 0x80 | n & 63])
+        return bytes([0xE0 | n >> 12, 0x80 | (n >> 6) & 63, 0x80 | n & 63])
+    total, bs = int(secs * rate), 4096
+    L = [int(9000 * math.sin(2 * math.pi * 440 * i / rate)) for i in range(total)]
+    R = [int(9000 * math.sin(2 * math.pi * 660 * i / rate)) for i in range(total)]
+    si = struct.pack(">HH", bs, bs) + b"\x00\x00\x00\x00\x00\x00"
+    v = (rate << 44) | ((2 - 1) << 41) | ((16 - 1) << 36) | total
+    si += v.to_bytes(8, "big") + b"\x00" * 16
+    cover = tiny_png(16, 16, (224, 32, 32))
+    vcb = vorbis(["TITLE=Flac Song", "ARTIST=Aster", "ALBUM=Night Drive", "DATE=2026", "TRACKNUMBER=3"])
+    pic = struct.pack(">I", 3) + struct.pack(">I", 9) + b"image/png" + struct.pack(">I", 0) + b"\x00" * 16 + struct.pack(">I", len(cover)) + cover
+    blocks = [(0, si), (4, vcb)] + ([(6, pic)] if cover else [])
+    out = bytearray(b"fLaC")
+    for i, (t, body) in enumerate(blocks): out += bytes([(0x80 if i == len(blocks) - 1 else 0) | t]) + len(body).to_bytes(3, "big") + body
+    for fi, start in enumerate(range(0, total, bs)):
+        n = min(bs, total - start)
+        hdr = bytearray(b"\xff\xf8") + bytes([(0xC if n == bs else 0x7) << 4 | 0x9, 0x1 << 4 | 0x4 << 1]) + utf8num(fi)
+        if n != bs: hdr += (n - 1).to_bytes(2, "big")
+        hdr += bytes([crc8(hdr)])
+        frame = bytearray(hdr)
+        for ch in (L, R): frame += b"\x02" + b"".join(struct.pack(">h", s) for s in ch[start:start + n])
+        frame += crc16(frame).to_bytes(2, "big")
+        out += frame
+    open(path, "wb").write(out)
+flac_file("tests/.fixtures/song.flac")

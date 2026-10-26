@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Converter · Neon OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=VT323&display=swap">
+<link rel="stylesheet" href="../../style-kit/tokens.css">
+<link rel="stylesheet" href="../../style-kit/base.css">
+<link rel="stylesheet" href="../../style-kit/chrome.css">
+<link rel="stylesheet" href="../../style-kit/apps.css">
+<style>
+  body.app { display: flex; flex-direction: column; gap: 8px; height: 100vh; box-sizing: border-box; }
+  .bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .seg .btn[aria-pressed="true"] { color: var(--ball); text-shadow: 0 0 6px var(--ball-dim); }
+  .queue { flex: 1; min-height: 0; overflow: auto; background: #000; border-radius: 2px; box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #3a3450; }
+  .q { display: grid; grid-template-columns: minmax(0, 1fr) 150px 150px auto; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid #1a1622; }
+  .q .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+  .q .n small { display: block; color: var(--ink-faint); font-size: 11px; }
+  .q .sz { font: 17px/1 var(--font-lcd); color: var(--ink-dim); white-space: nowrap; }
+  .q .sz b { color: var(--ball); font-weight: normal; }
+  .q .st { font: 17px/1 var(--font-lcd); color: var(--ink-dim); white-space: nowrap; }
+  .q .st.ok { color: var(--ball); } .q .st.bad { color: var(--danger); font: 12px/1.2 inherit; white-space: normal; }
+  .q .prog { height: 6px; background: #1a1622; border-radius: 2px; overflow: hidden; margin-top: 4px; } .q .prog i { display: block; height: 100%; width: 0; background: var(--ball); box-shadow: 0 0 6px var(--ball-dim); }
+  .empty { padding: 30px 16px; text-align: center; color: var(--ink-faint); }
+  body.over .queue { box-shadow: inset 0 0 0 2px var(--ball); }
+  .pick { position: fixed; inset: 0; background: #07050ce6; display: grid; place-items: center; z-index: 40; padding: 16px; }
+  .pick[hidden] { display: none; }
+  .pick .win { width: min(640px, 100%); max-height: 86vh; display: flex; flex-direction: column; }
+  .pick .wbody { min-height: 0; }
+  .pick .list { overflow: auto; max-height: 52vh; display: grid; gap: 1px; }
+  .pick label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 6px; font-size: 12.5px; cursor: pointer; }
+  .pick label:hover { background: #ffffff0a; }
+  .pick label span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pick label small { color: var(--ink-faint); }
+  @media (max-width: 640px) { .q { grid-template-columns: minmax(0, 1fr) auto; } .q .sz { display: none; } }
+</style>
+</head>
+<body class="app">
+  <div class="bar">
+    <span class="lbl">Make</span>
+    <span class="row seg" role="group" aria-label="Format"><button class="btn" data-f="mp3" aria-pressed="true">MP3</button><button class="btn" data-f="opus" aria-pressed="false">Opus</button><button class="btn" data-f="wav" aria-pressed="false">WAV</button></span>
+    <select id="rate" aria-label="Quality"></select>
+    <span style="flex:1"></span>
+    <button class="btn" id="addLib">From the library…</button><button class="btn" id="addFiles">Open files…</button>
+  </div>
+  <div class="queue" id="queue" role="list" aria-label="Songs to convert"></div>
+  <div class="bar">
+    <button class="btn" id="go">Convert</button>
+    <button class="btn" id="saveAll" disabled>Save all…</button>
+    <label class="hint" title="Songs copied into the library are replaced by the converted copies, keeping their playlists, plays and details"><input type="checkbox" id="swap"> Swap the library's copies for the converted ones (frees space)</label>
+    <span style="flex:1"></span>
+    <span class="hint" id="total"></span>
+    <button class="btn" id="clear">Clear</button>
+  </div>
+  <div class="pick" id="pick" hidden role="dialog" aria-modal="true" aria-labelledby="pickT">
+    <div class="win lit"><div class="titlebar"><span class="ttl" id="pickT">Songs from the library</span></div><div class="wbody">
+      <div class="row"><input type="search" id="pickQ" placeholder="Search" aria-label="Search the library" style="flex:1"><button class="btn" id="pickAllB">Select all</button></div>
+      <div class="list" id="pickList"></div>
+      <div class="row"><span class="hint" id="pickN"></span><span style="flex:1"></span><button class="btn" id="pickX">Cancel</button><button class="btn" id="pickOk">Add</button></div>
+    </div></div>
+  </div>
+  <script type="module">
+    import "../../core/os-link.js";
+    import { applyTheme, onTheme } from "../../core/theme.js";
+    import { esc, toast } from "../../style-kit/ui.js";
+    import { FORMATS, convert, tagsOfFile, outName, canOpus } from "../../core/convert.js";
+    import { pickFiles, download } from "../../core/picker.js";
+    import { makeLocalStore } from "../../core/storage.js";
+    import { fileOf } from "../../core/linked.js";
+    import { notifyLibraryChange } from "../../core/backup.js";
+    applyTheme(); onTheme(applyTheme);
+    const $ = id => document.getElementById(id);
+    const KEY = "neon-os:convert"; let S = { format: "mp3", kbps: { mp3: 256, opus: 160 }, swap: false };
+    try { S = { ...S, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch (e) {}
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+    const size = b => b == null ? "" : b >= 1e9 ? (b / 1e9).toFixed(2) + " GB" : b >= 1e6 ? (b / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1e3)) + " KB";
+    let items = [], uid = 0, running = false, store = null;
+    const opusOk = canOpus();
+    // ---------- format ----------
+    function drawFormat() {
+      document.querySelectorAll("[data-f]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === S.format)));
+      const F = FORMATS[S.format];
+      $("rate").hidden = !F.rates.length;
+      $("rate").innerHTML = F.rates.map(r => `<option value="${r}">${r} kbps${r === F.def ? " (recommended)" : ""}</option>`).join("");
+      if (F.rates.length) $("rate").value = String(S.kbps[S.format] || F.def);
+    }
+    document.querySelectorAll("[data-f]").forEach(b => b.addEventListener("click", async () => {
+      if (b.dataset.f === "opus" && !(await opusOk)) { toast("This browser can't make Opus files: try Chrome or Edge", true); return; }
+      S.format = b.dataset.f; save(); drawFormat();
+    }));
+    $("rate").addEventListener("change", () => { S.kbps[S.format] = +$("rate").value; save(); });
+    $("swap").checked = !!S.swap; $("swap").addEventListener("change", () => { S.swap = $("swap").checked; save(); });
+    // ---------- the list ----------
+    function draw() {
+      $("queue").innerHTML = items.length ? items.map(it => `<div class="q" role="listitem" data-id="${it.id}">
+        <span class="n">${esc(it.name)}<small>${esc([it.tags.artist, it.lib ? "from the library" : ""].filter(Boolean).join(" · "))}</small></span>
+        <span class="sz">${size(it.size)}${it.out ? ` → <b>${size(it.out.size)}</b>` : ""}</span>
+        <span class="st ${it.state === "done" ? "ok" : it.state === "failed" ? "bad" : ""}">${it.state === "done" ? (it.swapped ? "SWAPPED ✓" : "DONE ✓") : it.state === "failed" ? esc(it.error) : it.state === "working" ? Math.round(it.p * 100) + "%" : "WAITING"}${it.state === "working" ? `<div class="prog"><i style="width:${it.p * 100}%"></i></div>` : ""}</span>
+        <span>${it.out ? `<button class="btn mini" data-save="${it.id}">Save</button>` : `<button class="btn mini" data-rm="${it.id}" aria-label="Remove ${esc(it.name)}">✕</button>`}</span></div>`).join("")
+        : `<div class="empty">Drop songs here, open files, or pick songs from the library.<br>FLAC, WAV, MP3, M4A, OGG and anything else the browser plays can become MP3, Opus or WAV.</div>`;
+      const done = items.filter(i => i.out), before = done.reduce((n, i) => n + (i.size || 0), 0), after = done.reduce((n, i) => n + i.out.size, 0);
+      $("total").textContent = done.length ? `${done.length} done · ${size(before)} → ${size(after)}${before > after ? ` (${Math.round((1 - after / before) * 100)}% smaller)` : ""}` : items.length ? `${items.length} to convert` : "";
+      $("saveAll").disabled = !done.length; $("go").disabled = running || !items.some(i => !i.out && i.state !== "failed");
+    }
+    function addFiles(files) {
+      for (const f of files) if (/^audio\//.test(f.type) || /\.(mp3|flac|wav|ogg|oga|opus|m4a|aac|aiff?|wma|webm)$/i.test(f.name)) items.push({ id: ++uid, name: f.name, size: f.size, file: f, tags: { title: f.name }, state: "wait", p: 0, fromFile: true });
+      draw();
+    }
+    async function addTracks(ids) {
+      store = store || makeLocalStore(); if (!store.tracks.length) await store.init();
+      for (const id of ids) { const t = store.tracks.find(x => x.id === id); if (!t || items.some(i => i.lib === id)) continue;
+        items.push({ id: ++uid, lib: id, name: `${t.artist ? t.artist + " - " : ""}${t.title}`, size: t.blob ? t.blob.size : t.size || null, tags: { title: t.title, artist: t.artist, album: t.album, year: t.year, genre: t.genre, track: t.track, coverBlob: t.coverBlob }, state: "wait", p: 0 }); }
+      draw();
+    }
+    $("addFiles").addEventListener("click", async () => addFiles(await pickFiles({ accept: "audio/*,.flac,.opus,.m4a", multiple: true })));
+    addEventListener("dragover", e => { e.preventDefault(); document.body.classList.add("over"); });
+    addEventListener("dragleave", e => { if (!e.relatedTarget) document.body.classList.remove("over"); });
+    addEventListener("drop", e => { e.preventDefault(); document.body.classList.remove("over"); addFiles([...e.dataTransfer.files]); });
+    $("queue").addEventListener("click", async e => {
+      const rm = e.target.closest("[data-rm]"), sv = e.target.closest("[data-save]");
+      if (rm) { items = items.filter(i => i.id !== +rm.dataset.rm); draw(); }
+      if (sv) { const it = items.find(i => i.id === +sv.dataset.save); download(it.out, outName(it.fileName || it.name, it.format)); }
+    });
+    $("clear").addEventListener("click", () => { if (running) return; items = []; draw(); });
+    // ---------- converting, one at a time ----------
+    async function run() {
+      if (running) return; running = true; draw();
+      for (const it of items) {
+        if (it.out || it.state === "failed") continue;
+        it.state = "working"; it.p = 0; it.format = S.format; draw();
+        try {
+          let blob = it.file;
+          if (it.lib) { const t = store.tracks.find(x => x.id === it.lib); blob = t && await fileOf(t); if (!blob) throw new Error("Its folder needs permission again (play it in Amp first)"); it.size = blob.size; it.fileName = blob.name || it.name; }
+          else it.tags = { ...await tagsOfFile(blob) };
+          let last = 0;
+          it.out = await convert(blob, { format: S.format, kbps: S.kbps[S.format], tags: it.tags }, p => { it.p = p; const now = performance.now(); if (now - last > 120) { last = now; draw(); } });
+          it.state = "done";
+          // the library's own copy swapped for the smaller one (songs read from a linked folder stay as they are)
+          if (S.swap && it.lib) { const t = store.tracks.find(x => x.id === it.lib); if (t && t.blob) { await store.updateTrack(t.id, { blob: new File([it.out], outName(t.blob.name || t.title, S.format), { type: FORMATS[S.format].mime }), mime: FORMATS[S.format].mime }); it.swapped = true; notifyLibraryChange("edit"); } }
+        } catch (err) { it.state = "failed"; it.error = String(err && err.message || err); }
+        draw();
+      }
+      running = false; draw();
+      const n = items.filter(i => i.state === "done").length; if (n) toast(`${n} song${n === 1 ? "" : "s"} converted`);
+    }
+    $("go").addEventListener("click", run);
+    // Save all: into a folder you choose (Chrome, Edge), otherwise to Downloads one by one
+    $("saveAll").addEventListener("click", async () => {
+      const done = items.filter(i => i.out);
+      if ("showDirectoryPicker" in window) {
+        let dir; try { dir = await showDirectoryPicker({ id: "neon-os-convert", mode: "readwrite" }); } catch (e) { return; }
+        for (const it of done) { const w = await (await dir.getFileHandle(outName(it.fileName || it.name, it.format), { create: true })).createWritable(); await w.write(it.out); await w.close(); }
+        toast(`Saved ${done.length} file${done.length === 1 ? "" : "s"} to ${dir.name}`);
+      } else for (const it of done) download(it.out, outName(it.fileName || it.name, it.format));
+    });
+    // ---------- choosing from the library ----------
+    let picked = new Set();
+    async function openPick() {
+      store = store || makeLocalStore(); await store.init(); picked = new Set(); $("pickQ").value = ""; drawPick(); $("pick").hidden = false; $("pickQ").focus();
+    }
+    const shownTracks = () => { const q = $("pickQ").value.trim().toLowerCase(); return store.tracks.filter(t => !q || [t.title, t.artist, t.album].join(" ").toLowerCase().includes(q)).sort((a, b) => (a.artist || "").localeCompare(b.artist || "") || (a.title || "").localeCompare(b.title || "")); };
+    function drawPick() {
+      const list = shownTracks();
+      $("pickList").innerHTML = list.slice(0, 800).map(t => `<label><input type="checkbox" data-t="${t.id}"${picked.has(t.id) ? " checked" : ""}><span>${esc(t.title)} <small>${esc(t.artist || "")}</small></span><small>${esc(((t.mime || "").split("/")[1] || "").toUpperCase().replace("MPEG", "MP3").replace("X-FLAC", "FLAC"))} ${t.blob ? size(t.blob.size) : "linked"}</small></label>`).join("") || `<p class="hint">No songs match.</p>`;
+      $("pickN").textContent = `${picked.size} chosen`; $("pickAllB").textContent = list.length && list.every(t => picked.has(t.id)) ? "Select none" : "Select all";
+    }
+    $("addLib").addEventListener("click", openPick);
+    $("pickQ").addEventListener("input", drawPick);
+    $("pickList").addEventListener("change", e => { const c = e.target.closest("[data-t]"); if (!c) return; c.checked ? picked.add(c.dataset.t) : picked.delete(c.dataset.t); $("pickN").textContent = `${picked.size} chosen`; });
+    $("pickAllB").addEventListener("click", () => { const list = shownTracks(), all = list.every(t => picked.has(t.id)); list.forEach(t => all ? picked.delete(t.id) : picked.add(t.id)); drawPick(); });
+    $("pickX").addEventListener("click", () => { $("pick").hidden = true; });
+    $("pickOk").addEventListener("click", () => { $("pick").hidden = true; addTracks([...picked]); });
+    addEventListener("keydown", e => { if (e.key === "Escape" && !$("pick").hidden) $("pick").hidden = true; });
+    // Amp's library sends songs here (right-click → Convert…)
+    addEventListener("message", e => { if (e.origin === location.origin && e.data && Array.isArray(e.data.neonOsConvert)) addTracks(e.data.neonOsConvert); });
+    if (parent !== window) parent.postMessage({ neonOs: "ready", app: "convert" }, location.origin);
+    drawFormat(); draw();
+    window.__convert = { get items() { return items; } };
+  </script>
+</body>
+</html>
